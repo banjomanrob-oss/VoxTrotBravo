@@ -124,12 +124,16 @@
         const voxelGeometry = new THREE.BoxGeometry(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
         
         const matSolid = new THREE.MeshLambertMaterial(); 
-        const matGlass = new THREE.MeshPhongMaterial({ 
+        
+        // OPTIMIZATION: Stripped MeshPhongMaterial down to MeshBasicMaterial.
+        // It saves fragment shader overhead for VR since Blender handles the true glass physics post-export.
+        const matGlass = new THREE.MeshBasicMaterial({ 
             transparent: true, 
             opacity: 0.35, 
-            shininess: 100,
             depthWrite: false 
         }); 
+        
+        // Emission remains BasicMaterial, cheap and effective
         const matEmission = new THREE.MeshBasicMaterial(); 
         
         const voxelMaterials = [matSolid, matGlass, matEmission];
@@ -158,19 +162,23 @@
                 
                 worldGroup.add(this.mesh);
 
-                this.voxelToIndex = new Map(); 
-                this.indexToLocal = new Array(CHUNK_VOL); 
+                // OPTIMIZATION: Replaced Memory-heavy ES6 Maps & Arrays with TypedArrays
+                // 65535 acts as our "empty/null" sentinel value since indices only go up to 32767
+                this.voxelToIndex = new Uint16Array(CHUNK_VOL);
+                this.voxelToIndex.fill(65535); 
+                
+                this.indexToLocal = new Uint16Array(CHUNK_VOL); 
                 this.needsUpdate = false;
             }
 
             addVoxel(localIdx, worldPos, color) {
-                if (this.voxelToIndex.has(localIdx)) {
-                    const instIdx = this.voxelToIndex.get(localIdx);
+                if (this.voxelToIndex[localIdx] !== 65535) {
+                    const instIdx = this.voxelToIndex[localIdx];
                     this.mesh.setColorAt(instIdx, color);
                     this.needsUpdate = true;
                 } else {
                     const instIdx = this.mesh.count;
-                    this.voxelToIndex.set(localIdx, instIdx);
+                    this.voxelToIndex[localIdx] = instIdx;
                     this.indexToLocal[instIdx] = localIdx;
                     
                     tempMatrix.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
@@ -184,8 +192,8 @@
             }
 
             removeVoxel(localIdx) {
-                if (this.voxelToIndex.has(localIdx)) {
-                    const instIdxToRemove = this.voxelToIndex.get(localIdx);
+                if (this.voxelToIndex[localIdx] !== 65535) {
+                    const instIdxToRemove = this.voxelToIndex[localIdx];
                     const lastInstIdx = this.mesh.count - 1;
 
                     if (instIdxToRemove !== lastInstIdx) {
@@ -197,12 +205,11 @@
                         this.mesh.setMatrixAt(instIdxToRemove, tempMatrix);
                         this.mesh.setColorAt(instIdxToRemove, tempColor);
                         
-                        this.voxelToIndex.set(lastLocalIdx, instIdxToRemove);
+                        this.voxelToIndex[lastLocalIdx] = instIdxToRemove;
                         this.indexToLocal[instIdxToRemove] = lastLocalIdx;
                     }
 
-                    this.voxelToIndex.delete(localIdx);
-                    this.indexToLocal[lastInstIdx] = undefined;
+                    this.voxelToIndex[localIdx] = 65535;
                     this.mesh.count--;
                     totalActiveVoxels--;
                     this.needsUpdate = true;
@@ -681,7 +688,6 @@
         }
 
         function pickColorFromCanvas(cx, cy) {
-            // Determine the active boundaries based on magnification state
             let minX, maxX, minY, maxY;
             if (isPaletteMagnified) {
                 minX = 20; maxX = 492;
@@ -693,20 +699,17 @@
 
             const targetColor = activeColorSlot === 1 ? brushColor : brushColor2;
 
-            // Mathematically calculate the color to avoid catastrophic PCIe bus readbacks in PCVR
             if (activeMaterialType === 2) {
-                // Emission is a horizontal grayscale slider
                 const gray = (cx - minX) / (maxX - minX);
                 targetColor.setRGB(gray, gray, gray);
             } else {
-                // HSL Calculation mapping to the exact X/Y of the gradient rect
                 const h = (cx - minX) / (maxX - minX);
                 const l = 1.0 - ((cy - minY) / (maxY - minY));
                 targetColor.setHSL(h, 1.0, l);
             }
 
-            updateCursors(); // Fast cursor mesh update (90fps)
-            colorMenuNeedsUpdate = true; // Queue heavy UI texture update (10fps)
+            updateCursors(); 
+            colorMenuNeedsUpdate = true; 
         }
 
         function handleColorMenuClick(cx, cy) {
@@ -716,8 +719,8 @@
                 if (cx >= 342 && cx <= 482) {
                     activeMaterialType = 2;
                     activeColorSlot = 1;
-                    colorMode = 'solid'; // Emission only supports Solid mode
-                    brushColor.setHex(0x808080); // Default to mid-range emission
+                    colorMode = 'solid'; 
+                    brushColor.setHex(0x808080); 
                     updateCursors();
                 }
             }
@@ -763,7 +766,6 @@
             rightMenuCtx.textAlign = 'center';
             rightMenuCtx.fillText(`Tool Selection`, 256, 35);
 
-            // Refactored positions for 5 tools seamlessly spaced
             drawButton(rightMenuCtx, 50, 50, 412, 60, 'Brush (Standard)', activeTool === 'brush');
             drawButton(rightMenuCtx, 50, 130, 412, 60, 'Stroke (Continuous)', activeTool === 'stroke');
             drawButton(rightMenuCtx, 50, 210, 412, 60, 'Paint (Recolor)', activeTool === 'paint');
@@ -813,12 +815,17 @@
         updateColorMenuTexture();
 
         // --- Export Pipeline ---
+        // OPTIMIZATION: Implemented Array Chunking for Export
+        // Constructing massive string allocations with "+=" triggers memory crashes on large models.
+        // Arraying the string chunks handles millions of vertices elegantly.
         function exportToOBJ() {
-            let objData = "# VoxTrotBravo Export\n";
-            objData += "mtllib voxel_materials.mtl\n"; // Signals standard materials mapping
-            let vertexOffset = 1;
             const isMesh = exportMode === 'mesh';
+            const blobParts = [
+                "# VoxTrotBravo Export\n",
+                "mtllib voxel_materials.mtl\n"
+            ];
             
+            let vertexOffset = 1;
             const hs = VOXEL_SIZE / 2;
             const faceVerts = {
                 px: [new THREE.Vector3( hs, -hs,  hs), new THREE.Vector3( hs, -hs, -hs), new THREE.Vector3( hs,  hs, -hs), new THREE.Vector3( hs,  hs,  hs)],
@@ -853,21 +860,18 @@
             const pos = new THREE.Vector3();
             const col = new THREE.Color();
             
-            let objVerts = "";
-            let objFaces = "";
-
+            const vertsArray = [];
+            const facesArrays = [[], [], []];
             const matNames = ["Voxel_Solid", "Voxel_Glass", "Voxel_Emission"];
 
             for (let matIdx = 0; matIdx < 3; matIdx++) {
-                let currentMatFaces = "";
-                
                 chunks.forEach(chunk => {
                     const layer = chunk.layers[matIdx];
                     if (!layer || layer.mesh.count === 0) return;
 
                     for (let i = 0; i < layer.mesh.count; i++) {
                         const localIdx = layer.indexToLocal[i];
-                        if (localIdx === undefined) continue;
+                        if (localIdx === 65535) continue;
 
                         const lx = localIdx % CHUNK_SIZE;
                         const ly = Math.floor(localIdx / CHUNK_SIZE) % CHUNK_SIZE;
@@ -884,28 +888,31 @@
                             if (!hasVoxel(gx + dir.d[0], gy + dir.d[1], gz + dir.d[2])) {
                                 dir.v.forEach(vert => {
                                     pos.copy(vert).applyMatrix4(mat4).applyMatrix4(worldGroup.matrixWorld);
-                                    objVerts += `v ${pos.x.toFixed(4)} ${pos.y.toFixed(4)} ${pos.z.toFixed(4)} ${r} ${g} ${b}\n`;
+                                    vertsArray.push(`v ${pos.x.toFixed(4)} ${pos.y.toFixed(4)} ${pos.z.toFixed(4)} ${r} ${g} ${b}\n`);
                                 });
                                 if (isMesh) {
-                                    currentMatFaces += `f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2}\n`;
-                                    currentMatFaces += `f ${vertexOffset} ${vertexOffset+2} ${vertexOffset+3}\n`;
+                                    facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2}\n`);
+                                    facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+2} ${vertexOffset+3}\n`);
                                 } else {
-                                    currentMatFaces += `f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2} ${vertexOffset+3}\n`;
+                                    facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2} ${vertexOffset+3}\n`);
                                 }
                                 vertexOffset += 4;
                             }
                         });
                     }
                 });
+            }
 
-                if (currentMatFaces.length > 0) {
-                    objFaces += `\ng ${matNames[matIdx]}\nusemtl ${matNames[matIdx]}\n${currentMatFaces}`;
+            blobParts.push(vertsArray.join(""));
+            
+            for (let matIdx = 0; matIdx < 3; matIdx++) {
+                if (facesArrays[matIdx].length > 0) {
+                    blobParts.push(`\ng ${matNames[matIdx]}\nusemtl ${matNames[matIdx]}\n`);
+                    blobParts.push(facesArrays[matIdx].join(""));
                 }
             }
             
-            objData += objVerts + objFaces;
-            
-            const blob = new Blob([objData], { type: 'text/plain' });
+            const blob = new Blob(blobParts, { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.style.display = 'none';
@@ -936,11 +943,9 @@
             return brushColor;
         }
 
-        // Global instances to prevent GC freezing during flood fills
         const queryColor = new THREE.Color();
         const targetQueryColor = new THREE.Color();
 
-        // Helper to grab Voxel state without altering it (used for flood-fill and recoloring)
         function getVoxelMatAndColor(gx, gy, gz, outColor) {
             const cx = Math.floor(gx / CHUNK_SIZE);
             const cy = Math.floor(gy / CHUNK_SIZE);
@@ -957,8 +962,8 @@
             const matType = chunk.voxelMatMap[localIdx];
             if (matType !== -1 && outColor) {
                 const layer = chunk.layers[matType];
-                const instIdx = layer.voxelToIndex.get(localIdx);
-                layer.mesh.getColorAt(instIdx, outColor);
+                const instIdx = layer.voxelToIndex[localIdx];
+                if (instIdx !== 65535) layer.mesh.getColorAt(instIdx, outColor);
             }
 
             return matType;
@@ -991,7 +996,6 @@
         function recolorVoxel(gx, gy, gz, color, targetMatType) {
             const matType = getVoxelMatAndColor(gx, gy, gz, queryColor);
             if (matType !== -1) {
-                // Ignore if it's already the exact target color and material to save performance
                 if (matType === targetMatType &&
                     Math.abs(queryColor.r - color.r) < 0.02 &&
                     Math.abs(queryColor.g - color.g) < 0.02 &&
@@ -1099,7 +1103,6 @@
             }
         }
 
-        // Fast BFS Flood Fill to determine all connected blocks of exact same color/material
         function calculateFloodFill(startX, startY, startZ) {
             hoveredFillCoords = [];
             const targetMat = getVoxelMatAndColor(startX, startY, startZ, targetQueryColor);
@@ -1109,7 +1112,6 @@
             const queue = [[startX, startY, startZ]];
             visited.add(`${startX},${startY},${startZ}`);
 
-            // Cap the spread at 4000 blocks to prevent hard freezing in VR
             while(queue.length > 0 && hoveredFillCoords.length < 4000) {
                 const [x, y, z] = queue.shift();
                 hoveredFillCoords.push(new THREE.Vector3(x, y, z));
@@ -1227,7 +1229,6 @@
             } else {
                 if (activeTool === 'stroke' && strokeMode === 'line') {
                     if (isPreviewingLineRight) {
-                        // The opposite hand trigger closes the chain
                         drawLineVoxels(lineStartRight, leftTargetLocal, false);
                         isPreviewingLineRight = false;
                         lineStartRight.set(Infinity, Infinity, Infinity);
@@ -1244,7 +1245,6 @@
                     isDrawing = true; drawStartPos.copy(leftTargetLocal); 
                     
                     if (activeTool === 'paint' && paintMode === 'bucket' && hoveredFillCoords.length > 0) {
-                        // Prevent Max Call Stack Exceeded crash by avoiding spread operator on massive arrays
                         let minX = Infinity, maxX = -Infinity;
                         let minY = Infinity, maxY = -Infinity;
                         for (let i = 0; i < hoveredFillCoords.length; i++) {
@@ -1261,7 +1261,6 @@
                         });
                         
                         leftMenuNeedsUpdate = true;
-                        // Reset to force re-calculation
                         lastHoveredVoxel.set(Infinity, Infinity, Infinity); 
                         hoveredFillCoords = [];
                         bucketPreviewMesh.visible = false;
@@ -1286,7 +1285,6 @@
                 const cx = Math.floor(colorMenuUV.x * 512); 
                 const cy = Math.floor((1 - colorMenuUV.y) * 512);
                 
-                // If interacting within the Color Picker Bounds trigger the magnification
                 if (cy >= 130 && cy <= 330 && cx >= 30 && cx <= 482) {
                     isColorPicking = true;
                     isPaletteMagnified = true;
@@ -1297,7 +1295,6 @@
             } else {
                 if (activeTool === 'stroke' && strokeMode === 'line') {
                     if (isPreviewingLineLeft) {
-                        // The opposite hand trigger closes the chain
                         drawLineVoxels(lineStartLeft, rightTargetLocal, true);
                         isPreviewingLineLeft = false;
                         lineStartLeft.set(Infinity, Infinity, Infinity);
@@ -1429,7 +1426,6 @@
                     leftMenuHovered = false; colorMenuHovered = false; rightLaserLine.visible = false;
                 }
 
-                // Real-time Drag-to-Pick Logic with Magnification Coordinates
                 if (isColorPicking && colorMenuHovered) {
                     const cx = Math.floor(colorMenuUV.x * 512); 
                     const cy = Math.floor((1 - colorMenuUV.y) * 512);
@@ -1468,7 +1464,6 @@
                 leftTargetLocal.set(Math.round(leftTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(leftTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(leftTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE);
                 cursorLeft.position.copy(leftTargetLocal);
                 
-                // Paint Bucket Hover Preview Logic
                 if (activeTool === 'paint' && paintMode === 'bucket' && !isDrawing) {
                     const gx = Math.round(leftTargetLocal.x / VOXEL_SIZE);
                     const gy = Math.round(leftTargetLocal.y / VOXEL_SIZE);
@@ -1476,7 +1471,6 @@
                     
                     if (gx !== lastHoveredVoxel.x || gy !== lastHoveredVoxel.y || gz !== lastHoveredVoxel.z) {
                         
-                        // Performance Fix: Check if we just moved to another voxel inside the same exact highlight region!
                         let alreadyInRegion = false;
                         for (let i = 0; i < hoveredFillCoords.length; i++) {
                             if (hoveredFillCoords[i].x === gx && hoveredFillCoords[i].y === gy && hoveredFillCoords[i].z === gz) {
@@ -1502,7 +1496,6 @@
                             }
                         }
                         
-                        // Always update lastHovered to avoid checking the loop on dead frames
                         lastHoveredVoxel.set(gx, gy, gz);
                     }
                 } else {
@@ -1532,7 +1525,6 @@
                 rightTargetLocal.set(Math.round(rightTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(rightTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(rightTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE);
                 cursorRight.position.copy(rightTargetLocal);
 
-                // Erasing ONLY occurs if we are not actively picking a color
                 if (isErasing && !isColorPicking) {
                     if (activeTool === 'brush') {
                         if (!rightTargetLocal.equals(lastErasedPos)) { placeBrushVoxels(rightTargetLocal, false); lastErasedPos.copy(rightTargetLocal); }
@@ -1545,7 +1537,6 @@
                     else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, rightTargetLocal, false);
                 }
 
-                // Render Straight Line Preview correctly representing the brush width
                 if (activeTool === 'stroke' && strokeMode === 'line') {
                     if (isPreviewingLineLeft) {
                         linePreviewMesh.visible = true;
@@ -1579,4 +1570,3 @@
     </script>
 </body>
 </html>
-
