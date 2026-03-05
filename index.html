@@ -561,15 +561,42 @@
         // --- Export Pipeline ---
         function exportToOBJ() {
             let objData = "# VR Voxel Painter Ultra Export\n";
+            objData += "o VoxelArt\n"; // Prevents Blender from splitting into millions of objects
             let vertexOffset = 1;
             
             const hs = VOXEL_SIZE / 2;
-            const baseVertices = [
-                new THREE.Vector3(-hs, -hs, -hs), new THREE.Vector3( hs, -hs, -hs),
-                new THREE.Vector3(-hs,  hs, -hs), new THREE.Vector3( hs,  hs, -hs),
-                new THREE.Vector3(-hs, -hs,  hs), new THREE.Vector3( hs, -hs,  hs),
-                new THREE.Vector3(-hs,  hs,  hs), new THREE.Vector3( hs,  hs,  hs)
+            const faceVerts = {
+                px: [new THREE.Vector3( hs, -hs,  hs), new THREE.Vector3( hs, -hs, -hs), new THREE.Vector3( hs,  hs, -hs), new THREE.Vector3( hs,  hs,  hs)],
+                nx: [new THREE.Vector3(-hs, -hs, -hs), new THREE.Vector3(-hs, -hs,  hs), new THREE.Vector3(-hs,  hs,  hs), new THREE.Vector3(-hs,  hs, -hs)],
+                py: [new THREE.Vector3(-hs,  hs,  hs), new THREE.Vector3( hs,  hs,  hs), new THREE.Vector3( hs,  hs, -hs), new THREE.Vector3(-hs,  hs, -hs)],
+                ny: [new THREE.Vector3(-hs, -hs, -hs), new THREE.Vector3( hs, -hs, -hs), new THREE.Vector3( hs, -hs,  hs), new THREE.Vector3(-hs, -hs,  hs)],
+                pz: [new THREE.Vector3(-hs, -hs,  hs), new THREE.Vector3( hs, -hs,  hs), new THREE.Vector3( hs,  hs,  hs), new THREE.Vector3(-hs,  hs,  hs)],
+                nz: [new THREE.Vector3( hs, -hs, -hs), new THREE.Vector3(-hs, -hs, -hs), new THREE.Vector3(-hs,  hs, -hs), new THREE.Vector3( hs,  hs, -hs)]
+            };
+            
+            const dirs = [
+                { d: [1, 0, 0], v: faceVerts.px },
+                { d: [-1, 0, 0], v: faceVerts.nx },
+                { d: [0, 1, 0], v: faceVerts.py },
+                { d: [0, -1, 0], v: faceVerts.ny },
+                { d: [0, 0, 1], v: faceVerts.pz },
+                { d: [0, 0, -1], v: faceVerts.nz }
             ];
+
+            // Helper to check if a neighboring voxel block exists
+            function hasVoxel(gx, gy, gz) {
+                const cx = Math.floor(gx / CHUNK_SIZE);
+                const cy = Math.floor(gy / CHUNK_SIZE);
+                const cz = Math.floor(gz / CHUNK_SIZE);
+                const chunkKey = (cx + 65536) + ((cy + 65536) * 131072) + ((cz + 65536) * 17179869184);
+                const chunk = chunks.get(chunkKey);
+                if (!chunk) return false;
+                const lx = gx - (cx * CHUNK_SIZE);
+                const ly = gy - (cy * CHUNK_SIZE);
+                const lz = gz - (cz * CHUNK_SIZE);
+                const localIdx = lx + (ly * CHUNK_SIZE) + (lz * CHUNK_SIZE * CHUNK_SIZE);
+                return chunk.voxelToIndex.has(localIdx);
+            }
             
             const mat4 = new THREE.Matrix4();
             const pos = new THREE.Vector3();
@@ -577,23 +604,32 @@
             
             chunks.forEach(chunk => {
                 for (let i = 0; i < chunk.mesh.count; i++) {
+                    const localIdx = chunk.indexToLocal[i];
+                    const lx = localIdx % CHUNK_SIZE;
+                    const ly = Math.floor(localIdx / CHUNK_SIZE) % CHUNK_SIZE;
+                    const lz = Math.floor(localIdx / (CHUNK_SIZE * CHUNK_SIZE));
+                    const gx = (chunk.cx * CHUNK_SIZE) + lx;
+                    const gy = (chunk.cy * CHUNK_SIZE) + ly;
+                    const gz = (chunk.cz * CHUNK_SIZE) + lz;
+
                     chunk.mesh.getMatrixAt(i, mat4);
                     chunk.mesh.getColorAt(i, col);
                     
-                    for (let v = 0; v < 8; v++) {
-                        pos.copy(baseVertices[v]).applyMatrix4(mat4).applyMatrix4(worldGroup.matrixWorld);
-                        objData += `v ${pos.x.toFixed(4)} ${pos.y.toFixed(4)} ${pos.z.toFixed(4)} ${col.r.toFixed(4)} ${col.g.toFixed(4)} ${col.b.toFixed(4)}\n`;
-                    }
+                    const r = col.r.toFixed(4);
+                    const g = col.g.toFixed(4);
+                    const b = col.b.toFixed(4);
                     
-                    const o = vertexOffset;
-                    objData += `f ${o+4} ${o+5} ${o+7} ${o+6}\n`; 
-                    objData += `f ${o+1} ${o+0} ${o+2} ${o+3}\n`; 
-                    objData += `f ${o+2} ${o+6} ${o+7} ${o+3}\n`; 
-                    objData += `f ${o+0} ${o+1} ${o+5} ${o+4}\n`; 
-                    objData += `f ${o+1} ${o+5} ${o+7} ${o+3}\n`; 
-                    objData += `f ${o+0} ${o+4} ${o+6} ${o+2}\n`; 
-                    
-                    vertexOffset += 8;
+                    // Surface Meshing: ONLY export faces that touch empty air
+                    dirs.forEach(dir => {
+                        if (!hasVoxel(gx + dir.d[0], gy + dir.d[1], gz + dir.d[2])) {
+                            dir.v.forEach(vert => {
+                                pos.copy(vert).applyMatrix4(mat4).applyMatrix4(worldGroup.matrixWorld);
+                                objData += `v ${pos.x.toFixed(4)} ${pos.y.toFixed(4)} ${pos.z.toFixed(4)} ${r} ${g} ${b}\n`;
+                            });
+                            objData += `f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2} ${vertexOffset+3}\n`;
+                            vertexOffset += 4;
+                        }
+                    });
                 }
             });
             
