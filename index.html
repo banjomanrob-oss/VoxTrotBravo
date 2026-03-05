@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VR Voxel Painter Ultra</title>
+    <title>VoxTrotBravo</title>
     <style>
         body {
             margin: 0;
@@ -39,7 +39,7 @@
 </head>
 <body>
     <div id="ui-container">
-        <h1>VR Voxel Painter Ultra</h1>
+        <h1>VoxTrotBravo</h1>
         <p><b>Left Trigger:</b> Draw | <b>Right Trigger:</b> Erase (or Pick Color)</p>
         <p><b>Grips:</b> Grab to Move, Scale & Rotate World</p>
         <p><b>A Button (Right):</b> Tool Menu | <b>X Button:</b> Options Menu | <b>Y Button:</b> Color & Material</p>
@@ -493,10 +493,15 @@
                     colorMenuCtx.fillRect(20, 50, 472, 400);
                 }
 
-                colorMenuCtx.fillStyle = 'rgba(255,255,255,0.2)';
+                // Live dynamic swatch representing the currently picked color
+                const activeColorHex = activeColorSlot === 1 ? brushColor.getHexString() : brushColor2.getHexString();
+                colorMenuCtx.fillStyle = '#' + activeColorHex;
                 colorMenuCtx.fillRect(20, 460, 472, 40);
-                colorMenuCtx.fillStyle = '#fff';
-                colorMenuCtx.font = '20px sans-serif';
+                
+                // Adaptive text over the swatch
+                const hsl = {}; (activeColorSlot === 1 ? brushColor : brushColor2).getHSL(hsl);
+                colorMenuCtx.fillStyle = hsl.l > 0.6 ? 'black' : 'white';
+                colorMenuCtx.font = 'bold 20px sans-serif';
                 colorMenuCtx.fillText(`Release trigger to apply`, 256, 487);
 
             } else {
@@ -688,7 +693,7 @@
 
         // --- Export Pipeline ---
         function exportToOBJ() {
-            let objData = "# VR Voxel Painter Ultra Export\n";
+            let objData = "# VoxTrotBravo Export\n";
             objData += "mtllib voxel_materials.mtl\n"; // Signals standard materials mapping
             let vertexOffset = 1;
             
@@ -778,7 +783,7 @@
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            a.download = 'voxel_concept_materials.obj';
+            a.download = 'voxtrotbravo_export.obj';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
