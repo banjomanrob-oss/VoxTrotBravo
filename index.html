@@ -341,9 +341,12 @@
         bucketPreviewMesh.visible = false;
         worldGroup.add(bucketPreviewMesh);
 
-        const linePreviewMat = new THREE.MeshBasicMaterial({ color: 0x4facfe, transparent: true, opacity: 0.4, wireframe: false });
-        const linePreviewMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), linePreviewMat);
+        // OPTIMIZED LINE PREVIEW (Perfect Voxel Accuracy)
+        const linePreviewMat = new THREE.MeshBasicMaterial({ color: 0x4facfe, transparent: true, opacity: 0.4, depthTest: false, depthWrite: false });
+        const linePreviewMesh = new THREE.InstancedMesh(voxelGeometry, linePreviewMat, 15000);
+        linePreviewMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         linePreviewMesh.matrixAutoUpdate = false;
+        linePreviewMesh.updateMatrix();
         linePreviewMesh.visible = false;
         worldGroup.add(linePreviewMesh);
 
@@ -1624,7 +1627,7 @@
             selVisited.clear();
             selQueue.length = 0;
             selQueue.push(startX, startY, startZ);
-            selVisited.add(`${startX},${startY},${startZ}`);
+            selVisited.add((startX + 32768) + (startY + 32768) * 65536 + (startZ + 32768) * 4294967296);
             
             baseSelection.length = 0;
 
@@ -1646,7 +1649,7 @@
                     
                     for(let i=0; i < selDirs.length; i+=3) {
                         const nx = x + selDirs[i]; const ny = y + selDirs[i+1]; const nz = z + selDirs[i+2];
-                        const key = `${nx},${ny},${nz}`;
+                        const key = (nx + 32768) + (ny + 32768) * 65536 + (nz + 32768) * 4294967296;
                         if (!selVisited.has(key)) {
                             selVisited.add(key);
                             const nMat = getVoxelMatAndColor(nx, ny, nz, queryColor);
@@ -1801,7 +1804,7 @@
             fillVisited.clear();
             fillQueue.length = 0;
             fillQueue.push(startX, startY, startZ);
-            fillVisited.add(`${startX},${startY},${startZ}`);
+            fillVisited.add((startX + 32768) + (startY + 32768) * 65536 + (startZ + 32768) * 4294967296);
 
             let qHead = 0;
             const neighbors = [1,0,0, -1,0,0, 0,1,0, 0,-1,0, 0,0,1, 0,0,-1];
@@ -1817,7 +1820,7 @@
                     const nx = x + neighbors[i];
                     const ny = y + neighbors[i+1];
                     const nz = z + neighbors[i+2];
-                    const key = `${nx},${ny},${nz}`;
+                    const key = (nx + 32768) + (ny + 32768) * 65536 + (nz + 32768) * 4294967296;
                     if (!fillVisited.has(key)) {
                         fillVisited.add(key);
                         const nMat = getVoxelMatAndColor(nx, ny, nz, queryColor);
@@ -2044,18 +2047,19 @@
                         }
                     }
                 } else if (activeTool === 'stroke' && strokeMode === 'line') {
-                    if (isPreviewingLineRight) {
-                        drawLineVoxels(lineStartRight, leftTargetLocal, false);
+                    if (!isPreviewingLineLeft) {
+                        // Start tracking from left cursor
+                        lineStartLeft.copy(leftTargetLocal);
+                        isPreviewingLineLeft = true;
+                        // Cancel any conflicting right-handed stroke to prevent cross-contamination
                         isPreviewingLineRight = false;
                         lineStartRight.set(Infinity, Infinity, Infinity);
                     } else {
-                        if (!isPreviewingLineLeft) {
-                            lineStartLeft.copy(leftTargetLocal);
-                            isPreviewingLineLeft = true;
-                        } else {
-                            drawLineVoxels(lineStartLeft, leftTargetLocal, true);
-                            lineStartLeft.copy(leftTargetLocal);
-                        }
+                        // Finish clicking using left trigger, but draw line exactly up to right cursor's target!
+                        drawLineVoxels(lineStartLeft, rightTargetLocal, true);
+                        
+                        // Advance the anchor to the right target so you can continue a polyline seamlessly
+                        lineStartLeft.copy(rightTargetLocal);
                     }
                 } else {
                     isDrawing = true; drawStartPos.copy(leftTargetLocal); 
@@ -2131,18 +2135,15 @@
                 if (activeTool === 'select' && hasSelection) {
                     applySelection();
                 } else if (activeTool === 'stroke' && strokeMode === 'line') {
-                    if (isPreviewingLineLeft) {
-                        drawLineVoxels(lineStartLeft, rightTargetLocal, true);
+                    if (!isPreviewingLineRight) {
+                        // Symmetrical logic for erasing
+                        lineStartRight.copy(rightTargetLocal);
+                        isPreviewingLineRight = true;
                         isPreviewingLineLeft = false;
                         lineStartLeft.set(Infinity, Infinity, Infinity);
                     } else {
-                        if (!isPreviewingLineRight) {
-                            lineStartRight.copy(rightTargetLocal);
-                            isPreviewingLineRight = true;
-                        } else {
-                            drawLineVoxels(lineStartRight, rightTargetLocal, false);
-                            lineStartRight.copy(rightTargetLocal);
-                        }
+                        drawLineVoxels(lineStartRight, leftTargetLocal, false);
+                        lineStartRight.copy(leftTargetLocal); 
                     }
                 } else {
                     isErasing = true; drawStartPos.copy(rightTargetLocal);
@@ -2396,11 +2397,6 @@
                     } else if (activeTool === 'paint' && paintMode === 'brush') {
                         if (lastPaintedPos.x === Infinity) { placePaintVoxels(leftTargetLocal); lastPaintedPos.copy(leftTargetLocal); } 
                         else if (!leftTargetLocal.equals(lastPaintedPos)) { drawPaintLineVoxels(lastPaintedPos, leftTargetLocal); lastPaintedPos.copy(leftTargetLocal); }
-                    } else if (activeTool === 'stroke') {
-                        if (strokeMode === 'continuous') {
-                            if (lastPaintedPos.x === Infinity) { placeBrushVoxels(leftTargetLocal, true); lastPaintedPos.copy(leftTargetLocal); } 
-                            else if (!leftTargetLocal.equals(lastPaintedPos)) { drawLineVoxels(lastPaintedPos, leftTargetLocal, true); lastPaintedPos.copy(leftTargetLocal); }
-                        }
                     } else if (activeTool === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, leftTargetLocal, true);
                     else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, leftTargetLocal, true);
                     else if (activeTool === 'plane' && isPreviewingPlane) updatePlanePreview(drawStartPos, leftTargetLocal, true);
@@ -2414,35 +2410,61 @@
                 if (isErasing && !isColorPicking) {
                     if (activeTool === 'brush') {
                         if (!rightTargetLocal.equals(lastErasedPos)) { placeBrushVoxels(rightTargetLocal, false); lastErasedPos.copy(rightTargetLocal); }
-                    } else if (activeTool === 'stroke') {
-                        if (strokeMode === 'continuous') {
-                            if (lastErasedPos.x === Infinity) { placeBrushVoxels(rightTargetLocal, false); lastErasedPos.copy(rightTargetLocal); } 
-                            else if (!rightTargetLocal.equals(lastErasedPos)) { drawLineVoxels(lastErasedPos, rightTargetLocal, false); lastErasedPos.copy(rightTargetLocal); }
-                        }
                     } else if (activeTool === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, rightTargetLocal, false);
                     else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, rightTargetLocal, false);
                     else if (activeTool === 'plane' && isPreviewingPlane) updatePlanePreview(drawStartPos, rightTargetLocal, false);
                 }
 
                 if (activeTool === 'stroke' && strokeMode === 'line') {
-                    if (isPreviewingLineLeft) {
+                    if (isPreviewingLineLeft || isPreviewingLineRight) {
+                        const startPos = isPreviewingLineLeft ? lineStartLeft : lineStartRight;
+                        const endPos = isPreviewingLineLeft ? rightTargetLocal : leftTargetLocal;
+                        const isPainting = isPreviewingLineLeft;
+
+                        const dist = startPos.distanceTo(endPos);
+                        let steps = Math.max(1, Math.ceil(dist / (VOXEL_SIZE * 0.25))); 
+                        if (steps > 300) steps = 300; 
+                        
+                        let instCount = 0;
+                        const r = brushSize - 1;
+                        const rSq = (r + 0.1) * (r + 0.1); 
+                        
+                        fillVisited.clear(); // Reusing the integer hash Set from Flood Fill to prevent rendering duplicate instances
+
+                        for (let i = 0; i <= steps; i++) {
+                            tempPos.lerpVectors(startPos, endPos, i / steps);
+                            const cx = Math.round(tempPos.x / VOXEL_SIZE);
+                            const cy = Math.round(tempPos.y / VOXEL_SIZE);
+                            const cz = Math.round(tempPos.z / VOXEL_SIZE);
+                            
+                            for (let dx = -r; dx <= r; dx++) {
+                                for (let dy = -r; dy <= r; dy++) {
+                                    for (let dz = -r; dz <= r; dz++) {
+                                        if (brushShape === 'sphere' && (dx*dx + dy*dy + dz*dz > rSq)) continue;
+                                        
+                                        // Lightning-fast bitshifted hash to prevent memory allocations
+                                        const hash = (cx+dx + 32768) + (cy+dy + 32768) * 65536 + (cz+dz + 32768) * 4294967296;
+                                        if (!fillVisited.has(hash)) {
+                                            fillVisited.add(hash);
+                                            if (instCount < 15000) {
+                                                tempMatrix.makeTranslation((cx+dx)*VOXEL_SIZE, (cy+dy)*VOXEL_SIZE, (cz+dz)*VOXEL_SIZE);
+                                                linePreviewMesh.setMatrixAt(instCount, tempMatrix);
+                                                instCount++;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        linePreviewMesh.count = instCount;
+                        linePreviewMesh.instanceMatrix.needsUpdate = true;
+                        if (isPainting) {
+                            linePreviewMat.color.copy(activeColorSlot === 1 ? brushColor : brushColor2);
+                        } else {
+                            linePreviewMat.color.setHex(0xff0055);
+                        }
                         linePreviewMesh.visible = true;
-                        const dist = lineStartLeft.distanceTo(leftTargetLocal) + VOXEL_SIZE;
-                        linePreviewMesh.position.copy(lineStartLeft).lerp(leftTargetLocal, 0.5);
-                        linePreviewMesh.lookAt(leftTargetLocal);
-                        const w = ((brushSize - 1) * 2 + 1) * VOXEL_SIZE;
-                        linePreviewMesh.scale.set(w, w, dist);
-                        linePreviewMesh.updateMatrix();
-                        linePreviewMat.color.copy(activeColorSlot === 1 ? brushColor : brushColor2);
-                    } else if (isPreviewingLineRight) {
-                        linePreviewMesh.visible = true;
-                        const dist = lineStartRight.distanceTo(rightTargetLocal) + VOXEL_SIZE;
-                        linePreviewMesh.position.copy(lineStartRight).lerp(rightTargetLocal, 0.5);
-                        linePreviewMesh.lookAt(rightTargetLocal);
-                        const w = ((brushSize - 1) * 2 + 1) * VOXEL_SIZE;
-                        linePreviewMesh.scale.set(w, w, dist);
-                        linePreviewMesh.updateMatrix();
-                        linePreviewMat.color.setHex(0xff0055);
                     } else {
                         linePreviewMesh.visible = false;
                     }
