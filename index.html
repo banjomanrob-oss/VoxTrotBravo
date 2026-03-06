@@ -357,9 +357,6 @@
                 }
                 const g = previewGroups[pIdx];
                 
-                // CRITICAL OPTIMIZATION: 
-                // We share the InstancedBufferAttributes directly from the main selection. 
-                // This prevents duplicating megabytes of arrays and keeps memory usage flat!
                 g.children[0].instanceMatrix = selMeshSolid.instanceMatrix;
                 g.children[0].instanceColor = selMeshSolid.instanceColor;
                 g.children[0].count = selMeshSolid.count;
@@ -391,15 +388,64 @@
                 const cy = offY * step;
                 const cz = offZ * step;
 
-                // Step > 1 needs unmirrored preview (Step 1 is the main selectionGroup itself)
                 if (step > 1) {
                     getPreviewGroup(cx, cy, cz, 1, 1, 1);
                 }
                 
-                // Mirrored copies for all steps
                 if (mirrorX) getPreviewGroup(-cx, cy, cz, -1, 1, 1);
                 if (mirrorZ) getPreviewGroup(cx, cy, -cz, 1, 1, -1);
                 if (mirrorX && mirrorZ) getPreviewGroup(-cx, cy, -cz, -1, 1, -1);
+            }
+        }
+
+        // --- Tool & Cursor Mirror Proxy System ---
+        const toolMirrorGroups = [];
+        const mgX = new THREE.Group(); mgX.scale.set(-1, 1, 1); worldGroup.add(mgX); toolMirrorGroups.push(mgX);
+        const mgZ = new THREE.Group(); mgZ.scale.set(1, 1, -1); worldGroup.add(mgZ); toolMirrorGroups.push(mgZ);
+        const mgXZ = new THREE.Group(); mgXZ.scale.set(-1, 1, -1); worldGroup.add(mgXZ); toolMirrorGroups.push(mgXZ);
+
+        function createMirrorProxies(baseMesh) {
+            const proxies = [];
+            for (let i = 0; i < 3; i++) {
+                let proxy;
+                if (baseMesh.isInstancedMesh) {
+                    proxy = new THREE.InstancedMesh(baseMesh.geometry, baseMesh.material, baseMesh.instanceMatrix.count);
+                    proxy.instanceMatrix = baseMesh.instanceMatrix;
+                    if (baseMesh.instanceColor) proxy.instanceColor = baseMesh.instanceColor;
+                } else {
+                    proxy = new THREE.Mesh(baseMesh.geometry, baseMesh.material);
+                }
+                proxy.visible = false;
+                toolMirrorGroups[i].add(proxy);
+                proxies.push(proxy);
+            }
+            return proxies;
+        }
+
+        const cursorLeftMirrors = createMirrorProxies(cursorLeft);
+        const cursorRightMirrors = createMirrorProxies(cursorRight);
+        const boxPreviewMirrors = createMirrorProxies(boxPreviewMesh);
+        const spherePreviewMirrors = createMirrorProxies(spherePreviewMesh);
+        const bucketPreviewMirrors = createMirrorProxies(bucketPreviewMesh);
+        const linePreviewMirrors = createMirrorProxies(linePreviewMesh);
+
+        function syncMirrorProxies(baseMesh, proxies, showMirrors) {
+            const isVisible = baseMesh.visible && showMirrors;
+            proxies[0].visible = isVisible && mirrorX;
+            proxies[1].visible = isVisible && mirrorZ;
+            proxies[2].visible = isVisible && mirrorX && mirrorZ;
+
+            if (isVisible) {
+                for (let i=0; i<3; i++) {
+                    if (proxies[i].visible) {
+                        proxies[i].position.copy(baseMesh.position);
+                        proxies[i].quaternion.copy(baseMesh.quaternion);
+                        proxies[i].scale.copy(baseMesh.scale);
+                        if (baseMesh.isInstancedMesh) {
+                            proxies[i].count = baseMesh.count;
+                        }
+                    }
+                }
             }
         }
 
@@ -419,6 +465,9 @@
             cursorLeft.geometry = geo;
             cursorRight.geometry = geo;
             
+            cursorLeftMirrors.forEach(m => m.geometry = geo);
+            cursorRightMirrors.forEach(m => m.geometry = geo);
+
             const activeColor = activeColorSlot === 1 ? brushColor : brushColor2;
             cursorLeft.material.color.copy(activeColor);
         }
@@ -1342,8 +1391,6 @@
         }
 
         function applySelection() {
-            // FIX: Using the total visual offset of the selectionGroup, NOT the delta of the final drag stroke.
-            // This prevents array copies from jumping backwards if the user's hand twitches upon releasing the trigger.
             const offX = Math.round(selectionGroup.position.x / VOXEL_SIZE);
             const offY = Math.round(selectionGroup.position.y / VOXEL_SIZE);
             const offZ = Math.round(selectionGroup.position.z / VOXEL_SIZE);
@@ -1958,6 +2005,15 @@
                 } else if (previewGroups.length > 0 && previewGroups[0].visible) {
                     for (let i = 0; i < previewGroups.length; i++) previewGroups[i].visible = false;
                 }
+
+                // Sync all tool mirror proxies before render
+                const showToolMirrors = activeTool !== 'select';
+                syncMirrorProxies(cursorLeft, cursorLeftMirrors, showToolMirrors);
+                syncMirrorProxies(cursorRight, cursorRightMirrors, showToolMirrors && !isColorPicking);
+                syncMirrorProxies(boxPreviewMesh, boxPreviewMirrors, showToolMirrors);
+                syncMirrorProxies(spherePreviewMesh, spherePreviewMirrors, showToolMirrors);
+                syncMirrorProxies(bucketPreviewMesh, bucketPreviewMirrors, showToolMirrors);
+                syncMirrorProxies(linePreviewMesh, linePreviewMirrors, showToolMirrors);
 
                 chunks.forEach(chunk => chunk.updateBuffers());
             }
