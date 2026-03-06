@@ -48,7 +48,6 @@
     <script type="module">
         import * as THREE from 'three';
         import { VRButton } from 'three/addons/webxr/VRButton.js';
-        // Removed XRControllerModelFactory import for performance
 
         // --- Configuration & Global State ---
         const VOXEL_SIZE = 0.05; 
@@ -67,14 +66,21 @@
         let paintMode = 'brush'; 
         let exportMode = 'boxes'; 
         
+        // Plane Tool specific variables
+        let planeOutline = true;
+        let planeOutlineThick = 1;
+        let planeOffset = false;
+        let planeOffsetThick = 1;
+        let planeGridMode = 'wireframe'; 
+        let planeDivU = 2;
+        let planeDivV = 2;
+        
         // Selection State variables
-        let selectMode = 'box'; // 'box' or 'connected'
-        let transformMode = 'move'; // 'move' or 'copy'
+        let selectMode = 'box'; 
+        let transformMode = 'move'; 
         let numCopies = 1; 
         let hasSelection = false;
         
-        // baseSelection holds the true, unrotated original source blocks.
-        // selectedVoxels holds the active array of transformed preview blocks.
         let baseSelection = [];
         let selectedVoxels = [];
         
@@ -83,11 +89,10 @@
         const dragStartCtrlPos = new THREE.Vector3();
         const dragStartOffset = new THREE.Vector3();
         
-        // Selection Rotation States
         let selectionRotX = 0;
         let selectionRotY = 0;
         let selectionRotZ = 0;
-        let activeSliderDrag = null; // Tracks if user is actively dragging a slider
+        let activeSliderDrag = null; 
 
         let activeMaterialType = 0; 
         let colorMode = 'solid'; 
@@ -104,6 +109,7 @@
         
         let isPreviewingBox = false;
         let isPreviewingSphere = false;
+        let isPreviewingPlane = false;
         let isPreviewingLineLeft = false;
         let isPreviewingLineRight = false;
 
@@ -141,7 +147,6 @@
 
         const gridHelper = new THREE.GridHelper(20, 40, 0x444444, 0x222222);
         gridHelper.position.y = -0.01; 
-        // Matrix opt: Grid never moves locally
         gridHelper.matrixAutoUpdate = false;
         gridHelper.updateMatrix();
         worldGroup.add(gridHelper);
@@ -168,12 +173,9 @@
             constructor(cx, cy, cz, material) {
                 this.mesh = new THREE.InstancedMesh(voxelGeometry, material, CHUNK_VOL);
                 
-                // PERFORMANCE OPTIMIZATION: 
-                // Disabling matrixAutoUpdate prevents Three.js from recalculating local/world 
-                // transforms for thousands of chunks every frame, eliminating CPU stutter.
                 this.mesh.matrixAutoUpdate = false;
                 this.mesh.updateMatrix();
-                this.mesh.visible = false; // Never render until we have >0 blocks
+                this.mesh.visible = false; 
                 
                 this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
                 this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CHUNK_VOL * 3), 3);
@@ -248,7 +250,6 @@
                     this.mesh.instanceMatrix.needsUpdate = true;
                     this.mesh.instanceColor.needsUpdate = true;
                     this.needsUpdate = false;
-                    // Auto-hide totally empty arrays to save massive draw calls
                     this.mesh.visible = this.mesh.count > 0;
                 }
             }
@@ -332,7 +333,6 @@
         linePreviewMesh.visible = false;
         worldGroup.add(linePreviewMesh);
 
-        // Selection Render Group
         const selectionGroup = new THREE.Group();
         selectionGroup.visible = false;
         worldGroup.add(selectionGroup);
@@ -364,7 +364,6 @@
         selBoxMesh.matrixAutoUpdate = false;
         selectionGroup.add(selBoxMesh);
 
-        // --- Preview System for Arrays and Mirrors ---
         const previewContainer = new THREE.Group();
         worldGroup.add(previewContainer);
         const previewGroups = [];
@@ -441,7 +440,6 @@
             }
         }
 
-        // --- Tool & Cursor Mirror Proxy System ---
         const toolMirrorGroups = [];
         const mgX = new THREE.Group(); mgX.scale.set(-1, 1, 1); mgX.matrixAutoUpdate = false; mgX.updateMatrix(); worldGroup.add(mgX); toolMirrorGroups.push(mgX);
         const mgZ = new THREE.Group(); mgZ.scale.set(1, 1, -1); mgZ.matrixAutoUpdate = false; mgZ.updateMatrix(); worldGroup.add(mgZ); toolMirrorGroups.push(mgZ);
@@ -496,7 +494,7 @@
 
         function updateCursors() {
             let effSize = brushSize;
-            if (activeTool === 'box' || activeTool === 'quadsphere' || activeTool === 'select' || (activeTool === 'paint' && paintMode === 'bucket')) {
+            if (activeTool === 'box' || activeTool === 'quadsphere' || activeTool === 'select' || activeTool === 'plane' || (activeTool === 'paint' && paintMode === 'bucket')) {
                 effSize = 1;
             }
             
@@ -504,7 +502,7 @@
             if (cursorLeft.geometry) cursorLeft.geometry.dispose();
             if (cursorRight.geometry) cursorRight.geometry.dispose();
 
-            const isBoxShape = (brushShape === 'cube' || activeTool === 'box' || activeTool === 'select' || activeTool === 'quadsphere' || (activeTool === 'paint' && paintMode === 'bucket'));
+            const isBoxShape = (brushShape === 'cube' || activeTool === 'box' || activeTool === 'select' || activeTool === 'quadsphere' || activeTool === 'plane' || (activeTool === 'paint' && paintMode === 'bucket'));
             const geo = isBoxShape ? new THREE.BoxGeometry(width, width, width) : new THREE.SphereGeometry(width / 2, 16, 16);
             
             cursorLeft.geometry = geo;
@@ -534,6 +532,41 @@
             } else boxPreviewMat.color.setHex(0xff0055);
         }
 
+        function updatePlanePreview(start, end, isPainting) {
+            boxPreviewMesh.visible = true;
+            
+            const gStartX = Math.round(start.x / VOXEL_SIZE) * VOXEL_SIZE;
+            const gStartY = Math.round(start.y / VOXEL_SIZE) * VOXEL_SIZE;
+            const gStartZ = Math.round(start.z / VOXEL_SIZE) * VOXEL_SIZE;
+
+            let startX = start.x, startY = start.y, startZ = start.z;
+            let endX = end.x, endY = end.y, endZ = end.z;
+
+            const dx = Math.abs(endX - startX);
+            const dy = Math.abs(endY - startY);
+            const dz = Math.abs(endZ - startZ);
+
+            let flatAxis = 'y';
+            if (dx <= dy && dx <= dz) flatAxis = 'x';
+            else if (dz <= dx && dz <= dy) flatAxis = 'z';
+
+            if (flatAxis === 'x') { endX = gStartX; startX = gStartX; }
+            if (flatAxis === 'y') { endY = gStartY; startY = gStartY; }
+            if (flatAxis === 'z') { endZ = gStartZ; startZ = gStartZ; }
+
+            boxPreviewMesh.position.set(startX + endX, startY + endY, startZ + endZ).multiplyScalar(0.5);
+            const sizeX = Math.abs(endX - startX) + VOXEL_SIZE;
+            const sizeY = Math.abs(endY - startY) + VOXEL_SIZE;
+            const sizeZ = Math.abs(endZ - startZ) + VOXEL_SIZE;
+            boxPreviewMesh.scale.set(sizeX, sizeY, sizeZ);
+            boxPreviewMesh.updateMatrix();
+            boxPreviewMat.wireframe = false;
+            
+            if (isPainting) {
+                boxPreviewMat.color.copy(activeColorSlot === 1 ? brushColor : brushColor2);
+            } else boxPreviewMat.color.setHex(0xff0055);
+        }
+
         function updateSpherePreview(start, end, isPainting) {
             spherePreviewMesh.visible = true;
             spherePreviewMesh.position.copy(start).add(end).multiplyScalar(0.5);
@@ -551,7 +584,6 @@
         }
 
         // --- Controllers & Raycaster ---
-        // Optimization: Removed XRControllerModelFactory to save memory and eliminate GLTF model draw calls.
         const controllerRight = renderer.xr.getController(0);
         scene.add(controllerRight);
         const controllerLeft = renderer.xr.getController(1);
@@ -666,6 +698,29 @@
             } else if (activeTool === 'quadsphere') {
                 drawButton(leftMenuCtx, 50, 140, 200, 50, 'SOLID', sphereMode === 'solid');
                 drawButton(leftMenuCtx, 262, 140, 200, 50, 'SHELL', sphereMode === 'shell');
+            } else if (activeTool === 'plane') {
+                drawButton(leftMenuCtx, 50, 140, 150, 50, `OUTLINE: ${planeOutline?'ON':'OFF'}`, planeOutline);
+                if (planeOutline) {
+                    drawButton(leftMenuCtx, 210, 140, 50, 50, '-', false);
+                    drawButton(leftMenuCtx, 270, 140, 130, 50, `Thick: ${planeOutlineThick}`, false);
+                    drawButton(leftMenuCtx, 410, 140, 50, 50, '+', false);
+                }
+
+                drawButton(leftMenuCtx, 50, 210, 150, 50, `OFFSET: ${planeOffset?'ON':'OFF'}`, planeOffset);
+                if (planeOffset) {
+                    drawButton(leftMenuCtx, 210, 210, 50, 50, '-', false);
+                    drawButton(leftMenuCtx, 270, 210, 130, 50, `Gap: ${planeOffsetThick}`, false);
+                    drawButton(leftMenuCtx, 410, 210, 50, 50, '+', false);
+                }
+
+                drawButton(leftMenuCtx, 30, 280, 130, 50, planeGridMode === 'wireframe' ? 'GRID: WIRE' : 'GRID: FILL', planeGridMode==='fill');
+                drawButton(leftMenuCtx, 170, 280, 40, 50, '-', false);
+                drawButton(leftMenuCtx, 215, 280, 60, 50, `X: ${planeDivU}`, false);
+                drawButton(leftMenuCtx, 280, 280, 40, 50, '+', false);
+                
+                drawButton(leftMenuCtx, 330, 280, 40, 50, '-', false);
+                drawButton(leftMenuCtx, 375, 280, 60, 50, `Y: ${planeDivV}`, false);
+                drawButton(leftMenuCtx, 440, 280, 40, 50, '+', false);
             } else if (activeTool === 'select') {
                 if (!hasSelection) {
                     drawButton(leftMenuCtx, 50, 140, 200, 50, 'BOX MODE', selectMode === 'box');
@@ -761,8 +816,28 @@
                 } else if (activeTool === 'select' && !hasSelection) {
                     if (cx >= 50 && cx <= 250) selectMode = 'box';
                     if (cx >= 262 && cx <= 462) selectMode = 'connected';
+                } else if (activeTool === 'plane') {
+                    if (cx >= 50 && cx <= 200) planeOutline = !planeOutline;
+                    if (planeOutline) {
+                        if (cx >= 210 && cx <= 260) planeOutlineThick = Math.max(1, planeOutlineThick - 1);
+                        if (cx >= 410 && cx <= 460) planeOutlineThick = Math.min(10, planeOutlineThick + 1);
+                    }
                 }
                 updateCursors();
+            } else if (activeTool === 'plane') {
+                if (cy >= 210 && cy <= 260) {
+                    if (cx >= 50 && cx <= 200) planeOffset = !planeOffset;
+                    if (planeOffset) {
+                        if (cx >= 210 && cx <= 260) planeOffsetThick = Math.max(1, planeOffsetThick - 1);
+                        if (cx >= 410 && cx <= 460) planeOffsetThick = Math.min(10, planeOffsetThick + 1);
+                    }
+                } else if (cy >= 280 && cy <= 330) {
+                    if (cx >= 30 && cx <= 160) planeGridMode = planeGridMode === 'wireframe' ? 'fill' : 'wireframe';
+                    if (cx >= 170 && cx <= 210) planeDivU = Math.max(1, planeDivU - 1);
+                    if (cx >= 280 && cx <= 320) planeDivU = Math.min(20, planeDivU + 1);
+                    if (cx >= 330 && cx <= 370) planeDivV = Math.max(1, planeDivV - 1);
+                    if (cx >= 440 && cx <= 480) planeDivV = Math.min(20, planeDivV + 1);
+                }
             } else if (activeTool === 'paint' && paintMode === 'brush') {
                 if (cy >= 210 && cy <= 260) {
                     if (cx >= 50 && cx <= 250) brushShape = 'cube';
@@ -1030,12 +1105,13 @@
             rightMenuCtx.textAlign = 'center';
             rightMenuCtx.fillText(`Tool Selection`, 256, 30);
 
-            drawButton(rightMenuCtx, 50, 45, 412, 55, 'Brush (Standard)', activeTool === 'brush');
-            drawButton(rightMenuCtx, 50, 115, 412, 55, 'Stroke (Continuous)', activeTool === 'stroke');
-            drawButton(rightMenuCtx, 50, 185, 412, 55, 'Paint (Recolor)', activeTool === 'paint');
-            drawButton(rightMenuCtx, 50, 255, 412, 55, 'Box / Volumes', activeTool === 'box');
-            drawButton(rightMenuCtx, 50, 325, 412, 55, 'Quad Sphere (Shell)', activeTool === 'quadsphere');
-            drawButton(rightMenuCtx, 50, 395, 412, 55, 'Select & Transform', activeTool === 'select');
+            drawButton(rightMenuCtx, 50, 45, 412, 50, 'Brush (Standard)', activeTool === 'brush');
+            drawButton(rightMenuCtx, 50, 105, 412, 50, 'Stroke (Continuous)', activeTool === 'stroke');
+            drawButton(rightMenuCtx, 50, 165, 412, 50, 'Paint (Recolor)', activeTool === 'paint');
+            drawButton(rightMenuCtx, 50, 225, 412, 50, 'Plane (2D Grid/Shape)', activeTool === 'plane');
+            drawButton(rightMenuCtx, 50, 285, 412, 50, 'Box / Volumes', activeTool === 'box');
+            drawButton(rightMenuCtx, 50, 345, 412, 50, 'Quad Sphere (Shell)', activeTool === 'quadsphere');
+            drawButton(rightMenuCtx, 50, 405, 412, 50, 'Select & Transform', activeTool === 'select');
 
             rightMenuTexture.needsUpdate = true;
         }
@@ -1046,6 +1122,7 @@
 
                 isPreviewingBox = false;
                 isPreviewingSphere = false;
+                isPreviewingPlane = false;
                 boxPreviewMesh.visible = false;
                 spherePreviewMesh.visible = false;
                 bucketPreviewMesh.visible = false;
@@ -1061,12 +1138,13 @@
                 lastPaintedPos.set(Infinity, Infinity, Infinity);
                 lastErasedPos.set(Infinity, Infinity, Infinity);
 
-                if (cy >= 45 && cy <= 100) activeTool = 'brush';
-                if (cy >= 115 && cy <= 170) activeTool = 'stroke';
-                if (cy >= 185 && cy <= 240) activeTool = 'paint';
-                if (cy >= 255 && cy <= 310) activeTool = 'box';
-                if (cy >= 325 && cy <= 380) activeTool = 'quadsphere';
-                if (cy >= 395 && cy <= 450) activeTool = 'select';
+                if (cy >= 45 && cy <= 95) activeTool = 'brush';
+                if (cy >= 105 && cy <= 155) activeTool = 'stroke';
+                if (cy >= 165 && cy <= 215) activeTool = 'paint';
+                if (cy >= 225 && cy <= 275) activeTool = 'plane';
+                if (cy >= 285 && cy <= 335) activeTool = 'box';
+                if (cy >= 345 && cy <= 395) activeTool = 'quadsphere';
+                if (cy >= 405 && cy <= 455) activeTool = 'select';
                 
                 updateCursors();
                 rightMenuNeedsUpdate = true;
@@ -1351,7 +1429,6 @@
             );
             const R = new THREE.Matrix4().makeRotationFromEuler(tempEuler);
             
-            // Fast-path: Orthogonal rotations (90, 180, 270) don't create voids, safe for simple forward mapping.
             const isOrthogonal = (selectionRotX % 90 === 0) && (selectionRotY % 90 === 0) && (selectionRotZ % 90 === 0);
 
             selectedVoxels = [];
@@ -1369,10 +1446,8 @@
                     });
                 }
             } else {
-                // INVERSE MAPPING for arbitrary angles to prevent "swiss cheese" voids.
                 const R_inv = new THREE.Matrix4().copy(R).invert();
                 
-                // Using integer spatial hash mapping instead of string keys to process inverse math 10x faster
                 const origMap = new Map();
                 let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
                 
@@ -1380,7 +1455,6 @@
                     const hash = (v.x + 32768) + (v.y + 32768) * 65536 + (v.z + 32768) * 4294967296;
                     origMap.set(hash, v);
                     
-                    // We calculate the boundary of the *Target* shape to scan through
                     tempVec3.set(v.x - selectionCenter.x, v.y - selectionCenter.y, v.z - selectionCenter.z);
                     tempVec3.applyMatrix4(R);
                     const rx = selectionCenter.x + tempVec3.x;
@@ -1392,12 +1466,10 @@
                     if (rz < minZ) minZ = rz; if (rz > maxZ) maxZ = rz;
                 }
                 
-                // Add 1-voxel padding border to catch soft-rotated edges
                 minX = Math.floor(minX) - 1; maxX = Math.ceil(maxX) + 1;
                 minY = Math.floor(minY) - 1; maxY = Math.ceil(maxY) + 1;
                 minZ = Math.floor(minZ) - 1; maxZ = Math.ceil(maxZ) + 1;
                 
-                // Manual unroll of matrix multiplication for inner-loop performance
                 const e = R_inv.elements;
                 const inv0 = e[0], inv4 = e[4], inv8 = e[8];
                 const inv1 = e[1], inv5 = e[5], inv9 = e[9];
@@ -1414,7 +1486,6 @@
                         for (let z = minZ; z <= maxZ; z++) {
                             const dz = z - cz;
 
-                            // Inverse rotate the empty target space coordinate to find its original coordinate
                             const srcX = Math.round(cx + dx * inv0 + dy * inv4 + dz * inv8);
                             const srcY = Math.round(cy + dx * inv1 + dy * inv5 + dz * inv9);
                             const srcZ = Math.round(cz + dx * inv2 + dy * inv6 + dz * inv10);
@@ -1445,9 +1516,8 @@
             
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
             
-            // BaseSelection is stored un-rotated permanently.
             for(let v of baseSelection) {
-                setVoxelCore(v.x, v.y, v.z, false, null); // erase true original from scene
+                setVoxelCore(v.x, v.y, v.z, false, null); 
                 minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x);
                 minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
                 minZ = Math.min(minZ, v.z); maxZ = Math.max(maxZ, v.z);
@@ -1458,7 +1528,6 @@
             selectionGroup.position.set(0,0,0);
             selectionCenter.set( (minX + maxX)/2, (minY + maxY)/2, (minZ + maxZ)/2 );
             
-            // selectedVoxels manages dynamic visual preview array
             selectedVoxels = baseSelection.map(v => ({...v}));
             
             updateSelectionVisuals();
@@ -1503,7 +1572,6 @@
             
             baseSelection = [];
 
-            // 26-way adjacency includes touching opposite corners
             const selDirs = [];
             for(let x=-1; x<=1; x++) {
                 for(let y=-1; y<=1; y++) {
@@ -1514,7 +1582,6 @@
                 }
             }
 
-            // Cap the spread to avoid freezing VR
             while(queue.length > 0 && baseSelection.length < 65000) {
                 const [x, y, z] = queue.shift();
                 
@@ -1565,7 +1632,6 @@
 
         function cancelSelection() {
             if (transformMode === 'move') {
-                // Must restore baseSelection to avoid voiding the model!
                 for(let v of baseSelection) {
                     setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat);
                 }
@@ -1772,6 +1838,111 @@
             leftMenuNeedsUpdate = true;
         }
 
+        // --- Plane Tool Algorithm ---
+        function executePlaneTool(startPos, endPos, isPainting) {
+            const gStartX = Math.round(startPos.x / VOXEL_SIZE); const gEndX = Math.round(endPos.x / VOXEL_SIZE);
+            const gStartY = Math.round(startPos.y / VOXEL_SIZE); const gEndY = Math.round(endPos.y / VOXEL_SIZE);
+            const gStartZ = Math.round(startPos.z / VOXEL_SIZE); const gEndZ = Math.round(endPos.z / VOXEL_SIZE);
+
+            let minX = Math.min(gStartX, gEndX); let maxX = Math.max(gStartX, gEndX);
+            let minY = Math.min(gStartY, gEndY); let maxY = Math.max(gStartY, gEndY);
+            let minZ = Math.min(gStartZ, gEndZ); let maxZ = Math.max(gStartZ, gEndZ);
+
+            // Determine flat axis by finding the smallest drag delta
+            const dx = maxX - minX;
+            const dy = maxY - minY;
+            const dz = maxZ - minZ;
+
+            let flatAxis = 'y';
+            if (dx <= dy && dx <= dz) flatAxis = 'x';
+            else if (dz <= dx && dz <= dy) flatAxis = 'z';
+
+            // Snap the flat axis exactly to the start coordinate face
+            if (flatAxis === 'x') { minX = gStartX; maxX = gStartX; }
+            if (flatAxis === 'y') { minY = gStartY; maxY = gStartY; }
+            if (flatAxis === 'z') { minZ = gStartZ; maxZ = gStartZ; }
+
+            // Hard boundary cap
+            if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
+
+            const oThick = planeOutline ? planeOutlineThick : 0;
+            const offThick = planeOffset ? planeOffsetThick : 0;
+
+            const col1 = brushColor;
+            const col2 = brushColor2;
+
+            for(let gx = minX; gx <= maxX; gx++) {
+                for(let gy = minY; gy <= maxY; gy++) {
+                    for(let gz = minZ; gz <= maxZ; gz++) {
+                        
+                        if (!isPainting) {
+                            // Eraser cleanly clears the entire block footprint
+                            setVoxel(gx, gy, gz, false, null);
+                            continue;
+                        }
+
+                        // Project to 2D U,V space
+                        let u, v, minU, maxU, minV, maxV;
+                        if (flatAxis === 'x') { u = gy; v = gz; minU = minY; maxU = maxY; minV = minZ; maxV = maxZ; }
+                        else if (flatAxis === 'y') { u = gx; v = gz; minU = minX; maxU = maxX; minV = minZ; maxV = maxZ; }
+                        else { u = gx; v = gy; minU = minX; maxU = maxX; minV = minY; maxV = maxY; }
+
+                        const distU = Math.min(u - minU, maxU - u);
+                        const distV = Math.min(v - minV, maxV - v);
+                        const minDist = Math.min(distU, distV);
+
+                        if (minDist < oThick) {
+                            // Outline uses solid primary color
+                            setVoxel(gx, gy, gz, true, col1);
+                        } else if (minDist < oThick + offThick) {
+                            // Offset is a void gap
+                            setVoxel(gx, gy, gz, false, null);
+                        } else {
+                            // Inner Grid Bounds
+                            const gMinU = minU + oThick + offThick;
+                            const gMaxU = maxU - oThick - offThick;
+                            const gMinV = minV + oThick + offThick;
+                            const gMaxV = maxV - oThick - offThick;
+                            
+                            const gSizeU = gMaxU - gMinU + 1;
+                            const gSizeV = gMaxV - gMinV + 1;
+
+                            if (gSizeU <= 0 || gSizeV <= 0) continue; // Crushed grid space
+
+                            let isGridLine = false;
+
+                            if (planeDivU > 1) {
+                                const stepU = gSizeU / planeDivU;
+                                const relU = u - gMinU;
+                                for (let i = 1; i < planeDivU; i++) {
+                                    if (relU === Math.round(i * stepU)) { isGridLine = true; break; }
+                                }
+                            }
+
+                            if (planeDivV > 1) {
+                                const stepV = gSizeV / planeDivV;
+                                const relV = v - gMinV;
+                                for (let i = 1; i < planeDivV; i++) {
+                                    if (relV === Math.round(i * stepV)) { isGridLine = true; break; }
+                                }
+                            }
+
+                            if (isGridLine) {
+                                setVoxel(gx, gy, gz, true, col1);
+                            } else {
+                                if (planeGridMode === 'fill') {
+                                    setVoxel(gx, gy, gz, true, col2); // Body fill is color 2
+                                } else {
+                                    setVoxel(gx, gy, gz, false, null); // Wireframe body is void
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            leftMenuNeedsUpdate = true;
+        }
+
         // --- Interactions & Handlers ---
         let isDrawing = false; let isErasing = false; let isColorPicking = false;
         let rightMenuHovered = false; let leftMenuHovered = false; let colorMenuHovered = false;
@@ -1795,7 +1966,7 @@
             } else {
                 if (activeTool === 'select') {
                     if (hasSelection) {
-                        isDrawing = true; // Dragging selection
+                        isDrawing = true; 
                         dragStartCtrlPos.copy(leftTargetLocal);
                         dragStartOffset.copy(selectionGroup.position);
                     } else {
@@ -1844,6 +2015,7 @@
 
                     if (activeTool === 'box') isPreviewingBox = true;
                     if (activeTool === 'quadsphere') isPreviewingSphere = true;
+                    if (activeTool === 'plane') isPreviewingPlane = true;
                 }
             }
         });
@@ -1855,6 +2027,7 @@
             }
             if (activeTool === 'box' && isPreviewingBox) { executeBoxTool(drawStartPos, leftTargetLocal, true); isPreviewingBox = false; boxPreviewMesh.visible = false; }
             if (activeTool === 'quadsphere' && isPreviewingSphere) { executeQuadSphereTool(drawStartPos, leftTargetLocal, true); isPreviewingSphere = false; spherePreviewMesh.visible = false; }
+            if (activeTool === 'plane' && isPreviewingPlane) { executePlaneTool(drawStartPos, leftTargetLocal, true); isPreviewingPlane = false; boxPreviewMesh.visible = false; }
             lastPaintedPos.set(Infinity, Infinity, Infinity); 
         });
         
@@ -1863,7 +2036,6 @@
                 const cx = Math.floor(leftMenuUV.x * 512); 
                 const cy = Math.floor((1 - leftMenuUV.y) * 512);
                 
-                // Allow scrubbing sliders if pointing at them
                 if (activeTool === 'select' && hasSelection && cy >= 130 && cy <= 270 && cx >= 50 && cx <= 462) {
                     if (cy <= 170) activeSliderDrag = 'rotX';
                     else if (cy <= 220) activeSliderDrag = 'rotY';
@@ -1903,6 +2075,7 @@
                     isErasing = true; drawStartPos.copy(rightTargetLocal);
                     if (activeTool === 'box') isPreviewingBox = true;
                     if (activeTool === 'quadsphere') isPreviewingSphere = true;
+                    if (activeTool === 'plane') isPreviewingPlane = true;
                 }
             }
         });
@@ -1917,6 +2090,7 @@
                 isErasing = false; 
                 if (activeTool === 'box' && isPreviewingBox) { executeBoxTool(drawStartPos, rightTargetLocal, false); isPreviewingBox = false; boxPreviewMesh.visible = false; }
                 if (activeTool === 'quadsphere' && isPreviewingSphere) { executeQuadSphereTool(drawStartPos, rightTargetLocal, false); isPreviewingSphere = false; spherePreviewMesh.visible = false; }
+                if (activeTool === 'plane' && isPreviewingPlane) { executePlaneTool(drawStartPos, rightTargetLocal, false); isPreviewingPlane = false; boxPreviewMesh.visible = false; }
                 lastErasedPos.set(Infinity, Infinity, Infinity); 
             }
         });
@@ -1987,7 +2161,6 @@
                     lastMenuUpdateTime = Date.now();
                 }
 
-                // Laser Intersections
                 if (rightMenuMesh.visible) {
                     tempMatrix.identity().extractRotation(controllerLeft.matrixWorld);
                     raycaster.ray.origin.setFromMatrixPosition(controllerLeft.matrixWorld);
@@ -2138,6 +2311,7 @@
                         }
                     } else if (activeTool === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, leftTargetLocal, true);
                     else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, leftTargetLocal, true);
+                    else if (activeTool === 'plane' && isPreviewingPlane) updatePlanePreview(drawStartPos, leftTargetLocal, true);
                 }
 
                 controllerRight.getWorldDirection(rightDir); rightTargetLocal.copy(rightPos).addScaledVector(rightDir, -0.05); worldGroup.worldToLocal(rightTargetLocal);
@@ -2155,6 +2329,7 @@
                         }
                     } else if (activeTool === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, rightTargetLocal, false);
                     else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, rightTargetLocal, false);
+                    else if (activeTool === 'plane' && isPreviewingPlane) updatePlanePreview(drawStartPos, rightTargetLocal, false);
                 }
 
                 if (activeTool === 'stroke' && strokeMode === 'line') {
