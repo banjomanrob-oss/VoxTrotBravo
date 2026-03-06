@@ -69,6 +69,8 @@
         
         // Selection State variables
         let selectMode = 'box'; // 'box' or 'connected'
+        let transformMode = 'move'; // 'move' or 'copy'
+        let numCopies = 1; 
         let hasSelection = false;
         let selectedVoxels = [];
         const selectionCenter = new THREE.Vector3();
@@ -499,19 +501,32 @@
                     drawButton(leftMenuCtx, 190, 140, 130, 50, 'ROT Y', false);
                     drawButton(leftMenuCtx, 330, 140, 132, 50, 'ROT Z', false);
                     
-                    drawButton(leftMenuCtx, 50, 210, 200, 50, 'APPLY', false);
-                    drawButton(leftMenuCtx, 262, 210, 200, 50, 'DELETE', false);
+                    drawButton(leftMenuCtx, 50, 210, 200, 50, 'MODE: MOVE', transformMode === 'move');
+                    drawButton(leftMenuCtx, 262, 210, 200, 50, 'MODE: COPY', transformMode === 'copy');
+
+                    if (transformMode === 'copy') {
+                        drawButton(leftMenuCtx, 50, 280, 80, 50, '[-]', false);
+                        drawButton(leftMenuCtx, 140, 280, 232, 50, `Copies: ${numCopies}`, false);
+                        drawButton(leftMenuCtx, 382, 280, 80, 50, '[+]', false);
+                    }
+                    
+                    drawButton(leftMenuCtx, 50, 350, 130, 50, 'APPLY', false);
+                    drawButton(leftMenuCtx, 190, 350, 130, 50, 'CANCEL', false);
+                    drawButton(leftMenuCtx, 330, 350, 132, 50, 'DELETE', false);
 
                     leftMenuCtx.fillStyle = '#aaa';
                     leftMenuCtx.font = '16px sans-serif';
-                    leftMenuCtx.fillText('Hold Left Trigger to Grab and Move.', 256, 300);
+                    leftMenuCtx.fillText('Hold Left Trigger to Grab and Move.', 256, 440);
                 }
             }
 
-            drawButton(leftMenuCtx, 50, 350, 200, 50, 'Export: BOXES', exportMode === 'boxes');
-            drawButton(leftMenuCtx, 262, 350, 200, 50, 'Export: MESH', exportMode === 'mesh');
+            if (!(activeTool === 'select' && hasSelection)) {
+                drawButton(leftMenuCtx, 50, 350, 200, 50, 'Export: BOXES', exportMode === 'boxes');
+                drawButton(leftMenuCtx, 262, 350, 200, 50, 'Export: MESH', exportMode === 'mesh');
 
-            drawButton(leftMenuCtx, 50, 420, 412, 60, 'EXPORT TO .OBJ', false);
+                drawButton(leftMenuCtx, 50, 420, 412, 60, 'EXPORT TO .OBJ', false);
+            }
+            
             leftMenuTexture.needsUpdate = true;
         }
 
@@ -554,8 +569,27 @@
             
             if (activeTool === 'select' && hasSelection) {
                 if (cy >= 210 && cy <= 260) {
-                    if (cx >= 50 && cx <= 250) applySelection();
-                    if (cx >= 262 && cx <= 462) deleteSelection();
+                    let newMode = null;
+                    if (cx >= 50 && cx <= 250) newMode = 'move';
+                    if (cx >= 262 && cx <= 462) newMode = 'copy';
+                    
+                    if (newMode && newMode !== transformMode) {
+                        transformMode = newMode;
+                        if (transformMode === 'copy') {
+                            for(let v of selectedVoxels) setVoxelCore(v.origX, v.origY, v.origZ, true, v.color, v.mat);
+                        } else {
+                            for(let v of selectedVoxels) setVoxelCore(v.origX, v.origY, v.origZ, false, null);
+                        }
+                    }
+                }
+                if (transformMode === 'copy' && cy >= 280 && cy <= 330) {
+                    if (cx >= 50 && cx <= 130) numCopies = Math.max(1, numCopies - 1);
+                    if (cx >= 382 && cx <= 462) numCopies = Math.min(20, numCopies + 1);
+                }
+                if (cy >= 350 && cy <= 400) {
+                    if (cx >= 50 && cx <= 180) applySelection();
+                    if (cx >= 190 && cx <= 320) cancelSelection();
+                    if (cx >= 330 && cx <= 462) deleteSelection();
                 }
             } else if (activeTool === 'paint' && paintMode === 'brush') {
                 if (cy >= 210 && cy <= 260) {
@@ -590,13 +624,14 @@
                 updateCursors();
             }
 
-            if (cy >= 350 && cy <= 400) {
-                if (cx >= 50 && cx <= 250) exportMode = 'boxes';
-                if (cx >= 262 && cx <= 462) exportMode = 'mesh';
-            }
-
-            if (cy >= 420 && cy <= 480 && cx >= 50 && cx <= 462) {
-                exportToOBJ();
+            if (!(activeTool === 'select' && hasSelection)) {
+                if (cy >= 350 && cy <= 400) {
+                    if (cx >= 50 && cx <= 250) exportMode = 'boxes';
+                    if (cx >= 262 && cx <= 462) exportMode = 'mesh';
+                }
+                if (cy >= 420 && cy <= 480 && cx >= 50 && cx <= 462) {
+                    exportToOBJ();
+                }
             }
             leftMenuNeedsUpdate = true;
         }
@@ -1124,8 +1159,10 @@
         }
 
         function finalizeSelection() {
+            transformMode = 'move';
+            numCopies = 1;
             for(let v of selectedVoxels) {
-                setVoxelCore(v.x, v.y, v.z, false, null);
+                setVoxelCore(v.origX, v.origY, v.origZ, false, null);
             }
             hasSelection = true;
             selectionOffset.set(0,0,0);
@@ -1133,9 +1170,9 @@
             
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
             for(let v of selectedVoxels) {
-                minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x);
-                minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
-                minZ = Math.min(minZ, v.z); maxZ = Math.max(maxZ, v.z);
+                minX = Math.min(minX, v.origX); maxX = Math.max(maxX, v.origX);
+                minY = Math.min(minY, v.origY); maxY = Math.max(maxY, v.origY);
+                minZ = Math.min(minZ, v.origZ); maxZ = Math.max(maxZ, v.origZ);
             }
             selectionCenter.set( (minX + maxX)/2, (minY + maxY)/2, (minZ + maxZ)/2 );
             
@@ -1160,7 +1197,7 @@
                     for(let gz = minZ; gz <= maxZ; gz++) {
                         const matType = getVoxelMatAndColor(gx, gy, gz, tempColor);
                         if (matType !== -1) {
-                            selectedVoxels.push({ x: gx, y: gy, z: gz, color: tempColor.clone(), mat: matType });
+                            selectedVoxels.push({ origX: gx, origY: gy, origZ: gz, x: gx, y: gy, z: gz, color: tempColor.clone(), mat: matType });
                         }
                     }
                 }
@@ -1198,7 +1235,7 @@
                 
                 const matType = getVoxelMatAndColor(x, y, z, tempColor);
                 if (matType !== -1) {
-                    selectedVoxels.push({ x, y, z, color: tempColor.clone(), mat: matType });
+                    selectedVoxels.push({ origX: x, origY: y, origZ: z, x: x, y: y, z: z, color: tempColor.clone(), mat: matType });
                     
                     for(let [dx, dy, dz] of selDirs) {
                         const nx = x + dx; const ny = y + dy; const nz = z + dz;
@@ -1238,8 +1275,31 @@
             const offY = Math.round(selectionOffset.y / VOXEL_SIZE);
             const offZ = Math.round(selectionOffset.z / VOXEL_SIZE);
             
-            for(let v of selectedVoxels) {
-                setVoxelCore(v.x + offX, v.y + offY, v.z + offZ, true, v.color, v.mat);
+            if (transformMode === 'copy') {
+                for (let step = 1; step <= numCopies; step++) {
+                    for(let v of selectedVoxels) {
+                        setVoxelCore(v.x + offX * step, v.y + offY * step, v.z + offZ * step, true, v.color, v.mat);
+                    }
+                }
+            } else {
+                for(let v of selectedVoxels) {
+                    setVoxelCore(v.x + offX, v.y + offY, v.z + offZ, true, v.color, v.mat);
+                }
+            }
+            
+            selectedVoxels = [];
+            hasSelection = false;
+            selectionGroup.visible = false;
+            selectionGroup.position.set(0,0,0);
+            selectionOffset.set(0,0,0);
+            leftMenuNeedsUpdate = true;
+        }
+
+        function cancelSelection() {
+            if (transformMode === 'move') {
+                for(let v of selectedVoxels) {
+                    setVoxelCore(v.origX, v.origY, v.origZ, true, v.color, v.mat);
+                }
             }
             selectedVoxels = [];
             hasSelection = false;
