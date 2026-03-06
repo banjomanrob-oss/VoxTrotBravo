@@ -815,8 +815,10 @@
                     if (cx >= 262 && cx <= 462) selectMode = 'connected';
                 } else if (activeTool === 'plane') {
                     if (cx >= 30 && cx <= 180) planeOutline = !planeOutline;
-                    if (cx >= 190 && cx <= 240) planeOutlineThick = Math.max(1, planeOutlineThick - 1);
-                    if (cx >= 420 && cx <= 470) planeOutlineThick = Math.min(10, planeOutlineThick + 1);
+                    if (planeOutline) {
+                        if (cx >= 190 && cx <= 240) planeOutlineThick = Math.max(1, planeOutlineThick - 1);
+                        if (cx >= 420 && cx <= 470) planeOutlineThick = Math.min(10, planeOutlineThick + 1);
+                    }
                 }
                 updateCursors();
             } else if (activeTool === 'plane') {
@@ -1608,7 +1610,8 @@
             const startY = Math.round(targetPos.y / VOXEL_SIZE);
             const startZ = Math.round(targetPos.z / VOXEL_SIZE);
             
-            if (getVoxelMatAndColor(startX, startY, startZ, tempColor) === -1) return; 
+            const targetMat = getVoxelMatAndColor(startX, startY, startZ, targetQueryColor);
+            if (targetMat === -1) return; 
 
             const visited = new Set();
             const queue = [[startX, startY, startZ]];
@@ -1638,7 +1641,11 @@
                         const key = `${nx},${ny},${nz}`;
                         if (!visited.has(key)) {
                             visited.add(key);
-                            if (getVoxelMatAndColor(nx, ny, nz, queryColor) !== -1) {
+                            const nMat = getVoxelMatAndColor(nx, ny, nz, queryColor);
+                            if (nMat === targetMat &&
+                                Math.abs(queryColor.r - targetQueryColor.r) < 0.05 &&
+                                Math.abs(queryColor.g - targetQueryColor.g) < 0.05 &&
+                                Math.abs(queryColor.b - targetQueryColor.b) < 0.05) {
                                 queue.push([nx, ny, nz]);
                             }
                         }
@@ -2012,9 +2019,13 @@
                         dragStartCtrlPos.copy(leftTargetLocal);
                         dragStartOffset.copy(selectionGroup.position);
                     } else {
-                        isDrawing = true; drawStartPos.copy(leftTargetLocal);
-                        if (selectMode === 'box') isPreviewingBox = true;
-                        if (selectMode === 'connected') executeSelectConnected(leftTargetLocal);
+                        if (selectMode === 'box') {
+                            isDrawing = true; 
+                            drawStartPos.copy(leftTargetLocal);
+                            isPreviewingBox = true;
+                        } else if (selectMode === 'connected') {
+                            executeSelectConnected(leftTargetLocal);
+                        }
                     }
                 } else if (activeTool === 'stroke' && strokeMode === 'line') {
                     if (isPreviewingLineRight) {
