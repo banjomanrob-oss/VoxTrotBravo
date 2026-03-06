@@ -629,7 +629,7 @@
             const sizeZ = Math.abs(end.z - start.z) + VOXEL_SIZE;
             boxPreviewMesh.scale.set(sizeX, sizeY, sizeZ);
             boxPreviewMesh.updateMatrix();
-            boxPreviewMat.wireframe = (boxMode === 'wireframe' && activeTool === 'box');
+            boxPreviewMat.wireframe = (boxMode === 'wireframe' && activeTool === 'box') || (pyramidMode === 'wireframe' && activeTool === 'pyramid');
             
             if (isPainting) {
                 const activeColor = activeColorSlot === 1 ? brushColor : brushColor2;
@@ -807,8 +807,15 @@
                 drawButton(leftMenuCtx, 185, 70, 140, 50, 'PYRAMID', pyramidShape === 'pyramid');
                 drawButton(leftMenuCtx, 335, 70, 135, 50, 'TETRA', pyramidShape === 'tetra');
 
-                drawButton(leftMenuCtx, 50, 140, 200, 50, 'SOLID', pyramidMode === 'solid');
-                drawButton(leftMenuCtx, 262, 140, 200, 50, 'SHELL', pyramidMode === 'shell');
+                drawButton(leftMenuCtx, 50, 140, 130, 50, 'SOLID', pyramidMode === 'solid');
+                drawButton(leftMenuCtx, 190, 140, 130, 50, 'SHELL', pyramidMode === 'shell');
+                drawButton(leftMenuCtx, 330, 140, 132, 50, 'WIRE', pyramidMode === 'wireframe');
+
+                if (pyramidMode === 'wireframe') {
+                    drawButton(leftMenuCtx, 50, 210, 80, 50, '[-]', false);
+                    drawButton(leftMenuCtx, 140, 210, 232, 50, `Thickness: ${wireWidth}`, false);
+                    drawButton(leftMenuCtx, 382, 210, 80, 50, '[+]', false);
+                }
             } else if (activeTool === 'quadsphere') {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'SOLID', sphereMode === 'solid');
                 drawButton(leftMenuCtx, 262, 70, 200, 50, 'SHELL', sphereMode === 'shell');
@@ -982,8 +989,12 @@
                 updateCursors();
             } else if (activeTool === 'pyramid') {
                 if (cy >= 140 && cy <= 190) {
-                    if (cx >= 50 && cx <= 250) pyramidMode = 'solid';
-                    if (cx >= 262 && cx <= 462) pyramidMode = 'shell';
+                    if (cx >= 50 && cx <= 180) pyramidMode = 'solid';
+                    if (cx >= 190 && cx <= 320) pyramidMode = 'shell';
+                    if (cx >= 330 && cx <= 462) pyramidMode = 'wireframe';
+                } else if (cy >= 210 && cy <= 260 && pyramidMode === 'wireframe') {
+                    if (cx >= 50 && cx <= 130) wireWidth = Math.max(1, wireWidth - 1);
+                    if (cx >= 382 && cx <= 462) wireWidth = Math.min(5, wireWidth + 1);
                 }
             }
 
@@ -2045,6 +2056,7 @@
 
             // Draw base at the starting point, taper towards the release point
             const apexY = startPos.y <= endPos.y ? maxY : minY;
+            const baseY = startPos.y <= endPos.y ? minY : maxY;
             const H = Math.abs(maxY - minY);
             
             const rx = (maxX - minX) / 2;
@@ -2080,12 +2092,56 @@
                 return false;
             };
 
+            let edges = [];
+            if (pyramidMode === 'wireframe') {
+                const vApex = [cx, apexY, cz];
+                if (pyramidShape === 'pyramid') {
+                    const v1 = [minX, baseY, minZ], v2 = [maxX, baseY, minZ];
+                    const v3 = [maxX, baseY, maxZ], v4 = [minX, baseY, maxZ];
+                    edges = [[v1, v2], [v2, v3], [v3, v4], [v4, v1], [v1, vApex], [v2, vApex], [v3, vApex], [v4, vApex]];
+                } else if (pyramidShape === 'tetra') {
+                    const v1 = [minX, baseY, minZ], v2 = [maxX, baseY, minZ], v3 = [cx, baseY, maxZ];
+                    edges = [[v1, v2], [v2, v3], [v3, v1], [v1, vApex], [v2, vApex], [v3, vApex]];
+                } else if (pyramidShape === 'cone') {
+                    const v1 = [minX, baseY, cz], v2 = [maxX, baseY, cz];
+                    const v3 = [cx, baseY, minZ], v4 = [cx, baseY, maxZ];
+                    edges = [[v1, vApex], [v2, vApex], [v3, vApex], [v4, vApex]];
+                }
+            }
+
+            const distToSegSq = (px, py, pz, ax, ay, az, bx, by, bz) => {
+                const l2 = (bx - ax)**2 + (by - ay)**2 + (bz - az)**2;
+                if (l2 === 0) return (px - ax)**2 + (py - ay)**2 + (pz - az)**2;
+                let t = ((px - ax) * (bx - ax) + (py - ay) * (by - ay) + (pz - az) * (bz - az)) / l2;
+                t = Math.max(0, Math.min(1, t));
+                return (px - (ax + t * (bx - ax)))**2 + (py - (ay + t * (by - ay)))**2 + (pz - (az + t * (bz - az)))**2;
+            };
+
+            const threshSq = (wireWidth * 0.8) ** 2;
+
             for(let gx = minX; gx <= maxX; gx++) {
                 for(let gy = minY; gy <= maxY; gy++) {
                     for(let gz = minZ; gz <= maxZ; gz++) {
                         if (isInside(gx, gy, gz)) {
                             const c = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY);
-                            if (pyramidMode === 'shell') {
+                            if (pyramidMode === 'wireframe') {
+                                let isWire = false;
+                                for(let i=0; i<edges.length; i++) {
+                                    if (distToSegSq(gx, gy, gz, edges[i][0][0], edges[i][0][1], edges[i][0][2], edges[i][1][0], edges[i][1][1], edges[i][1][2]) <= threshSq) {
+                                        isWire = true; break;
+                                    }
+                                }
+                                if (!isWire && pyramidShape === 'cone') {
+                                    if (Math.abs(gy - baseY) < wireWidth) {
+                                        if (!isInside(gx + wireWidth, gy, gz) || !isInside(gx - wireWidth, gy, gz) ||
+                                            !isInside(gx, gy, gz + wireWidth) || !isInside(gx, gy, gz - wireWidth)) {
+                                            isWire = true;
+                                        }
+                                    }
+                                }
+                                if (isWire) setVoxel(gx, gy, gz, isPainting, c);
+                                else setVoxel(gx, gy, gz, false, null);
+                            } else if (pyramidMode === 'shell') {
                                 if (gx === minX || gx === maxX || gy === minY || gy === maxY || gz === minZ || gz === maxZ ||
                                     !isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) ||
                                     !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) ||
@@ -2095,6 +2151,8 @@
                             } else {
                                 setVoxel(gx, gy, gz, isPainting, c);
                             }
+                        } else if (pyramidMode === 'wireframe' || pyramidMode === 'shell') {
+                             setVoxel(gx, gy, gz, false, null);
                         }
                     }
                 }
@@ -2384,10 +2442,18 @@
             if (!session) return;
             for (let i = 0; i < session.inputSources.length; i++) {
                 const source = session.inputSources[i];
-                if (source && source.gamepad) {
+                if (source && source.gamepad && source.gamepad.buttons) {
+                    const buttons = source.gamepad.buttons;
+                    
+                    const getBtn = (idx1, idx2) => {
+                        if (buttons.length > idx1 && buttons[idx1]) return buttons[idx1].pressed;
+                        if (buttons.length > idx2 && buttons[idx2]) return buttons[idx2].pressed;
+                        return false;
+                    };
+
                     if (source.handedness === 'right') {
-                        const btnA = source.gamepad.buttons[4]?.pressed || false; 
-                        const btnB = source.gamepad.buttons[5]?.pressed || false; 
+                        const btnA = getBtn(4, 3); // A or Thumbstick
+                        const btnB = getBtn(5, 2); // B or Touchpad
 
                         if (btnA && !lastRightBtnA) {
                             rightMenuMesh.visible = !rightMenuMesh.visible;
@@ -2406,8 +2472,8 @@
                         lastRightBtnA = btnA; lastRightBtnB = btnB;
                     }
                     if (source.handedness === 'left') {
-                        const btnX = source.gamepad.buttons[4]?.pressed || false; 
-                        const btnY = source.gamepad.buttons[5]?.pressed || false; 
+                        const btnX = getBtn(4, 3); // X or Thumbstick
+                        const btnY = getBtn(5, 2); // Y or Touchpad
                         
                         if (btnX && !lastLeftBtnX) {
                             leftMenuMesh.visible = !leftMenuMesh.visible;
