@@ -2047,19 +2047,19 @@
                         }
                     }
                 } else if (activeTool === 'stroke' && strokeMode === 'line') {
-                    if (!isPreviewingLineLeft) {
-                        // Start tracking from left cursor
-                        lineStartLeft.copy(leftTargetLocal);
-                        isPreviewingLineLeft = true;
-                        // Cancel any conflicting right-handed stroke to prevent cross-contamination
+                    if (isPreviewingLineRight) {
+                        // Finish the Erase line at the Left Cursor and stop chaining
+                        drawLineVoxels(lineStartRight, leftTargetLocal, false);
                         isPreviewingLineRight = false;
                         lineStartRight.set(Infinity, Infinity, Infinity);
+                    } else if (!isPreviewingLineLeft) {
+                        // Start tracking from Left Cursor
+                        lineStartLeft.copy(leftTargetLocal);
+                        isPreviewingLineLeft = true;
                     } else {
-                        // Finish clicking using left trigger, but draw line exactly up to right cursor's target!
-                        drawLineVoxels(lineStartLeft, rightTargetLocal, true);
-                        
-                        // Advance the anchor to the right target so you can continue a polyline seamlessly
-                        lineStartLeft.copy(rightTargetLocal);
+                        // Chain segment at Left Cursor
+                        drawLineVoxels(lineStartLeft, leftTargetLocal, true);
+                        lineStartLeft.copy(leftTargetLocal);
                     }
                 } else {
                     isDrawing = true; drawStartPos.copy(leftTargetLocal); 
@@ -2135,15 +2135,19 @@
                 if (activeTool === 'select' && hasSelection) {
                     applySelection();
                 } else if (activeTool === 'stroke' && strokeMode === 'line') {
-                    if (!isPreviewingLineRight) {
-                        // Symmetrical logic for erasing
-                        lineStartRight.copy(rightTargetLocal);
-                        isPreviewingLineRight = true;
+                    if (isPreviewingLineLeft) {
+                        // Finish the Draw line at the Right Cursor and stop chaining
+                        drawLineVoxels(lineStartLeft, rightTargetLocal, true);
                         isPreviewingLineLeft = false;
                         lineStartLeft.set(Infinity, Infinity, Infinity);
+                    } else if (!isPreviewingLineRight) {
+                        // Start Erase line at Right Cursor
+                        lineStartRight.copy(rightTargetLocal);
+                        isPreviewingLineRight = true;
                     } else {
-                        drawLineVoxels(lineStartRight, leftTargetLocal, false);
-                        lineStartRight.copy(leftTargetLocal); 
+                        // Chain Erase line at Right Cursor
+                        drawLineVoxels(lineStartRight, rightTargetLocal, false);
+                        lineStartRight.copy(rightTargetLocal); 
                     }
                 } else {
                     isErasing = true; drawStartPos.copy(rightTargetLocal);
@@ -2418,7 +2422,7 @@
                 if (activeTool === 'stroke' && strokeMode === 'line') {
                     if (isPreviewingLineLeft || isPreviewingLineRight) {
                         const startPos = isPreviewingLineLeft ? lineStartLeft : lineStartRight;
-                        const endPos = isPreviewingLineLeft ? rightTargetLocal : leftTargetLocal;
+                        const endPos = isPreviewingLineLeft ? leftTargetLocal : rightTargetLocal;
                         const isPainting = isPreviewingLineLeft;
 
                         const dist = startPos.distanceTo(endPos);
