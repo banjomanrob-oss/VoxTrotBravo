@@ -168,34 +168,47 @@
         matCloud.onBeforeCompile = (shader) => {
             shader.vertexShader = shader.vertexShader.replace(
                 `#include <common>`,
-                `#include <common>\n varying float vDist;\n varying vec2 vMyUv;`
+                `#include <common>
+                 varying float vDist;
+                 varying vec2 vMyUv;
+                `
             );
             shader.vertexShader = shader.vertexShader.replace(
                 `#include <project_vertex>`,
-                `#include <project_vertex>\n vMyUv = uv;\n vDist = length(mvPosition.xyz);`
+                `#include <project_vertex>
+                 vMyUv = uv;
+                 vDist = length(mvPosition.xyz);
+                `
             );
             shader.fragmentShader = shader.fragmentShader.replace(
                 `#include <common>`,
-                `#include <common>\n varying float vDist;\n varying vec2 vMyUv;`
+                `#include <common>
+                 varying float vDist;
+                 varying vec2 vMyUv;
+                `
             );
             shader.fragmentShader = shader.fragmentShader.replace(
                 `vec4 diffuseColor = vec4( diffuse, opacity );`,
                 `
+                 // Thick wireframe borders
                  float borderX = step(vMyUv.x, 0.05) + step(0.95, vMyUv.x);
                  float borderY = step(vMyUv.y, 0.05) + step(0.95, vMyUv.y);
                  float isWire = clamp(borderX + borderY, 0.0, 1.0);
                  
+                 // Smiley Face SDF
                  vec2 localUv = vMyUv - 0.5;
                  float eyes = step(length(localUv - vec2(-0.15, 0.15)), 0.06) + step(length(localUv - vec2(0.15, 0.15)), 0.06);
                  float smileDist = length(localUv - vec2(0.0, -0.05));
                  float smile = step(0.15, smileDist) * step(smileDist, 0.22) * step(localUv.y, -0.05);
                  float face = clamp(eyes + smile, 0.0, 1.0);
                  
+                 // Face is fully visible at 0.5m, fades out completely by 2.0m to save render noise
                  float faceAlpha = 1.0 - smoothstep(0.5, 2.0, vDist);
                  float finalAlpha = max(isWire, face * faceAlpha);
                  
                  if (finalAlpha < 0.5) discard;
-                 vec4 diffuseColor = vec4(1.0, 1.0, 1.0, 1.0);
+                 
+                 vec4 diffuseColor = vec4(1.0, 1.0, 1.0, 1.0); // Cloud is always purely white
                 `
             );
         };
@@ -1038,7 +1051,7 @@
                     drawButton(colorMenuCtx, 260, 350, 105, 40, 'GRAD-V', colorMode === 'grad_v');
                     drawButton(colorMenuCtx, 375, 350, 107, 40, 'SHIFT', colorMode === 'shift');
 
-                    const showColor2 = (activeMaterialType !== 2) && (colorMode !== 'solid');
+                    const showColor2 = (activeMaterialType !== 2);
                     
                     if (!showColor2) {
                         colorMenuCtx.fillStyle = '#' + brushColor.getHexString();
@@ -2080,7 +2093,7 @@
             } else {
                 if (activeTool === 'select') {
                     if (hasSelection) {
-                        isDrawing = true; // Dragging selection
+                        isDrawing = true; 
                         dragStartCtrlPos.copy(leftTargetLocal);
                         dragStartOffset.copy(selectionGroup.position);
                     } else {
