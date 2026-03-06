@@ -130,6 +130,9 @@
 
         const gridHelper = new THREE.GridHelper(20, 40, 0x444444, 0x222222);
         gridHelper.position.y = -0.01; 
+        // Matrix opt: Grid never moves locally
+        gridHelper.matrixAutoUpdate = false;
+        gridHelper.updateMatrix();
         worldGroup.add(gridHelper);
 
         // --- Material System & Chunk Engine ---
@@ -153,6 +156,14 @@
         class ChunkLayer {
             constructor(cx, cy, cz, material) {
                 this.mesh = new THREE.InstancedMesh(voxelGeometry, material, CHUNK_VOL);
+                
+                // PERFORMANCE OPTIMIZATION: 
+                // Disabling matrixAutoUpdate prevents Three.js from recalculating local/world 
+                // transforms for thousands of chunks every frame, eliminating CPU stutter.
+                this.mesh.matrixAutoUpdate = false;
+                this.mesh.updateMatrix();
+                this.mesh.visible = false; // Never render until we have >0 blocks
+                
                 this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
                 this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CHUNK_VOL * 3), 3);
                 this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
@@ -226,6 +237,8 @@
                     this.mesh.instanceMatrix.needsUpdate = true;
                     this.mesh.instanceColor.needsUpdate = true;
                     this.needsUpdate = false;
+                    // Auto-hide totally empty arrays to save massive draw calls
+                    this.mesh.visible = this.mesh.count > 0;
                 }
             }
         }
@@ -284,22 +297,27 @@
 
         const boxPreviewMat = new THREE.MeshBasicMaterial({ color: 0x4facfe, transparent: true, opacity: 0.3, wireframe: false });
         const boxPreviewMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), boxPreviewMat);
+        boxPreviewMesh.matrixAutoUpdate = false; 
         boxPreviewMesh.visible = false;
         worldGroup.add(boxPreviewMesh);
 
         const spherePreviewMat = new THREE.MeshBasicMaterial({ color: 0x4facfe, transparent: true, opacity: 0.3, wireframe: true });
         const spherePreviewMesh = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), spherePreviewMat);
+        spherePreviewMesh.matrixAutoUpdate = false;
         spherePreviewMesh.visible = false;
         worldGroup.add(spherePreviewMesh);
 
         const bucketPreviewMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, depthTest: false });
         const bucketPreviewMesh = new THREE.InstancedMesh(voxelGeometry, bucketPreviewMat, 8000);
         bucketPreviewMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        bucketPreviewMesh.matrixAutoUpdate = false;
+        bucketPreviewMesh.updateMatrix();
         bucketPreviewMesh.visible = false;
         worldGroup.add(bucketPreviewMesh);
 
         const linePreviewMat = new THREE.MeshBasicMaterial({ color: 0x4facfe, transparent: true, opacity: 0.4, wireframe: false });
         const linePreviewMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), linePreviewMat);
+        linePreviewMesh.matrixAutoUpdate = false;
         linePreviewMesh.visible = false;
         worldGroup.add(linePreviewMesh);
 
@@ -309,16 +327,19 @@
         worldGroup.add(selectionGroup);
 
         const selMeshSolid = new THREE.InstancedMesh(voxelGeometry, matSolid, 65000);
+        selMeshSolid.matrixAutoUpdate = false; selMeshSolid.updateMatrix();
         selMeshSolid.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         selMeshSolid.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(65000 * 3), 3);
         selMeshSolid.instanceColor.setUsage(THREE.DynamicDrawUsage);
         
         const selMeshGlass = new THREE.InstancedMesh(voxelGeometry, matGlass, 65000);
+        selMeshGlass.matrixAutoUpdate = false; selMeshGlass.updateMatrix();
         selMeshGlass.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         selMeshGlass.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(65000 * 3), 3);
         selMeshGlass.instanceColor.setUsage(THREE.DynamicDrawUsage);
 
         const selMeshEmission = new THREE.InstancedMesh(voxelGeometry, matEmission, 65000);
+        selMeshEmission.matrixAutoUpdate = false; selMeshEmission.updateMatrix();
         selMeshEmission.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         selMeshEmission.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(65000 * 3), 3);
         selMeshEmission.instanceColor.setUsage(THREE.DynamicDrawUsage);
@@ -329,6 +350,7 @@
 
         const selBoxMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.9 });
         const selBoxMesh = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), selBoxMat);
+        selBoxMesh.matrixAutoUpdate = false;
         selectionGroup.add(selBoxMesh);
 
         // --- Preview System for Arrays and Mirrors ---
@@ -344,12 +366,17 @@
             function getPreviewGroup(px, py, pz, sx, sy, sz) {
                 if (pIdx >= previewGroups.length) {
                     const g = new THREE.Group();
+                    g.matrixAutoUpdate = false;
                     
                     const m1 = new THREE.InstancedMesh(voxelGeometry, matSolid, 65000);
+                    m1.matrixAutoUpdate = false; m1.updateMatrix();
                     const m2 = new THREE.InstancedMesh(voxelGeometry, matGlass, 65000);
+                    m2.matrixAutoUpdate = false; m2.updateMatrix();
                     const m3 = new THREE.InstancedMesh(voxelGeometry, matEmission, 65000);
+                    m3.matrixAutoUpdate = false; m3.updateMatrix();
                     
                     const bMesh = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), selBoxMat);
+                    bMesh.matrixAutoUpdate = false;
                     g.add(m1); g.add(m2); g.add(m3); g.add(bMesh);
                     
                     previewContainer.add(g);
@@ -360,20 +387,25 @@
                 g.children[0].instanceMatrix = selMeshSolid.instanceMatrix;
                 g.children[0].instanceColor = selMeshSolid.instanceColor;
                 g.children[0].count = selMeshSolid.count;
+                g.children[0].visible = selMeshSolid.visible;
 
                 g.children[1].instanceMatrix = selMeshGlass.instanceMatrix;
                 g.children[1].instanceColor = selMeshGlass.instanceColor;
                 g.children[1].count = selMeshGlass.count;
+                g.children[1].visible = selMeshGlass.visible;
 
                 g.children[2].instanceMatrix = selMeshEmission.instanceMatrix;
                 g.children[2].instanceColor = selMeshEmission.instanceColor;
                 g.children[2].count = selMeshEmission.count;
+                g.children[2].visible = selMeshEmission.visible;
                 
                 g.children[3].position.copy(selBoxMesh.position);
                 g.children[3].scale.copy(selBoxMesh.scale);
+                g.children[3].updateMatrix();
                 
                 g.position.set(px, py, pz);
                 g.scale.set(sx, sy, sz);
+                g.updateMatrix();
                 g.visible = true;
                 pIdx++;
             }
@@ -400,9 +432,9 @@
 
         // --- Tool & Cursor Mirror Proxy System ---
         const toolMirrorGroups = [];
-        const mgX = new THREE.Group(); mgX.scale.set(-1, 1, 1); worldGroup.add(mgX); toolMirrorGroups.push(mgX);
-        const mgZ = new THREE.Group(); mgZ.scale.set(1, 1, -1); worldGroup.add(mgZ); toolMirrorGroups.push(mgZ);
-        const mgXZ = new THREE.Group(); mgXZ.scale.set(-1, 1, -1); worldGroup.add(mgXZ); toolMirrorGroups.push(mgXZ);
+        const mgX = new THREE.Group(); mgX.scale.set(-1, 1, 1); mgX.matrixAutoUpdate = false; mgX.updateMatrix(); worldGroup.add(mgX); toolMirrorGroups.push(mgX);
+        const mgZ = new THREE.Group(); mgZ.scale.set(1, 1, -1); mgZ.matrixAutoUpdate = false; mgZ.updateMatrix(); worldGroup.add(mgZ); toolMirrorGroups.push(mgZ);
+        const mgXZ = new THREE.Group(); mgXZ.scale.set(-1, 1, -1); mgXZ.matrixAutoUpdate = false; mgXZ.updateMatrix(); worldGroup.add(mgXZ); toolMirrorGroups.push(mgXZ);
 
         function createMirrorProxies(baseMesh) {
             const proxies = [];
@@ -415,6 +447,7 @@
                 } else {
                     proxy = new THREE.Mesh(baseMesh.geometry, baseMesh.material);
                 }
+                proxy.matrixAutoUpdate = false;
                 proxy.visible = false;
                 toolMirrorGroups[i].add(proxy);
                 proxies.push(proxy);
@@ -441,6 +474,7 @@
                         proxies[i].position.copy(baseMesh.position);
                         proxies[i].quaternion.copy(baseMesh.quaternion);
                         proxies[i].scale.copy(baseMesh.scale);
+                        proxies[i].updateMatrix();
                         if (baseMesh.isInstancedMesh) {
                             proxies[i].count = baseMesh.count;
                         }
@@ -480,6 +514,7 @@
             const sizeY = Math.abs(end.y - start.y) + VOXEL_SIZE;
             const sizeZ = Math.abs(end.z - start.z) + VOXEL_SIZE;
             boxPreviewMesh.scale.set(sizeX, sizeY, sizeZ);
+            boxPreviewMesh.updateMatrix();
             boxPreviewMat.wireframe = (boxMode === 'wireframe' && activeTool !== 'select');
             
             if (isPainting) {
@@ -495,6 +530,7 @@
             const sizeY = Math.abs(end.y - start.y) + VOXEL_SIZE;
             const sizeZ = Math.abs(end.z - start.z) + VOXEL_SIZE;
             spherePreviewMesh.scale.set(sizeX, sizeY, sizeZ);
+            spherePreviewMesh.updateMatrix();
             spherePreviewMat.wireframe = (sphereMode === 'shell');
             
             if (isPainting) {
@@ -729,8 +765,8 @@
                     if (cx >= 382 && cx <= 462) brushSize = Math.min(5, brushSize + 1);
                     updateCursors();
                 }
-            } else if (cy >= 210 && cy <= 260) {
-                if (activeTool === 'brush') {
+            } else if (activeTool === 'brush') {
+                if (cy >= 210 && cy <= 260) {
                     if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1);
                     if (cx >= 382 && cx <= 462) brushSize = Math.min(5, brushSize + 1);
                 } else if (activeTool === 'box' && boxMode === 'wireframe') {
@@ -1263,6 +1299,10 @@
             
             selMeshSolid.count = iSolid; selMeshGlass.count = iGlass; selMeshEmission.count = iEmission;
             
+            selMeshSolid.visible = iSolid > 0;
+            selMeshGlass.visible = iGlass > 0;
+            selMeshEmission.visible = iEmission > 0;
+            
             if (selectedVoxels.length > 0) {
                 const cx = (minX + maxX) / 2 * VOXEL_SIZE;
                 const cy = (minY + maxY) / 2 * VOXEL_SIZE;
@@ -1272,6 +1312,7 @@
                 const d = (maxZ - minZ + 1.1) * VOXEL_SIZE;
                 selBoxMesh.position.set(cx, cy, cz);
                 selBoxMesh.scale.set(w, h, d);
+                selBoxMesh.updateMatrix();
                 selectionGroup.visible = true;
             } else {
                 selectionGroup.visible = false;
@@ -1894,6 +1935,7 @@
                 controllerLeft.getWorldDirection(leftDir); leftTargetLocal.copy(leftPos).addScaledVector(leftDir, -0.05); worldGroup.worldToLocal(leftTargetLocal);
                 leftTargetLocal.set(Math.round(leftTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(leftTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(leftTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE);
                 cursorLeft.position.copy(leftTargetLocal);
+                cursorLeft.updateMatrix();
                 
                 if (activeTool === 'paint' && paintMode === 'bucket' && !isDrawing) {
                     const gx = Math.round(leftTargetLocal.x / VOXEL_SIZE);
@@ -1944,6 +1986,7 @@
                         selectionOffset.y = Math.round(selectionOffset.y / VOXEL_SIZE) * VOXEL_SIZE;
                         selectionOffset.z = Math.round(selectionOffset.z / VOXEL_SIZE) * VOXEL_SIZE;
                         selectionGroup.position.copy(dragStartOffset).add(selectionOffset);
+                        selectionGroup.updateMatrix();
                     } else if (activeTool === 'select' && selectMode === 'box' && isPreviewingBox) {
                         updateBoxPreview(drawStartPos, leftTargetLocal, true);
                     } else if (activeTool === 'brush') {
@@ -1963,6 +2006,7 @@
                 controllerRight.getWorldDirection(rightDir); rightTargetLocal.copy(rightPos).addScaledVector(rightDir, -0.05); worldGroup.worldToLocal(rightTargetLocal);
                 rightTargetLocal.set(Math.round(rightTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(rightTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(rightTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE);
                 cursorRight.position.copy(rightTargetLocal);
+                cursorRight.updateMatrix();
 
                 if (isErasing && !isColorPicking) {
                     if (activeTool === 'brush') {
@@ -1984,6 +2028,7 @@
                         linePreviewMesh.lookAt(leftTargetLocal);
                         const w = ((brushSize - 1) * 2 + 1) * VOXEL_SIZE;
                         linePreviewMesh.scale.set(w, w, dist);
+                        linePreviewMesh.updateMatrix();
                         linePreviewMat.color.copy(activeColorSlot === 1 ? brushColor : brushColor2);
                     } else if (isPreviewingLineRight) {
                         linePreviewMesh.visible = true;
@@ -1992,6 +2037,7 @@
                         linePreviewMesh.lookAt(rightTargetLocal);
                         const w = ((brushSize - 1) * 2 + 1) * VOXEL_SIZE;
                         linePreviewMesh.scale.set(w, w, dist);
+                        linePreviewMesh.updateMatrix();
                         linePreviewMat.color.setHex(0xff0055);
                     } else {
                         linePreviewMesh.visible = false;
