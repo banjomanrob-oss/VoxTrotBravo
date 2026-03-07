@@ -120,6 +120,7 @@
         const lastHoveredVoxel = new THREE.Vector3(Infinity, Infinity, Infinity);
 
         // --- Performance & GC Optimization Pre-allocations ---
+        const dirtyLayers = new Set(); // O(1) performance updates for chunk buffers
         const rotR = new THREE.Matrix4();
         const rotR_inv = new THREE.Matrix4();
         const selRotEuler = new THREE.Euler();
@@ -187,6 +188,7 @@
                 this.mesh.matrixAutoUpdate = false;
                 this.mesh.updateMatrix();
                 this.mesh.visible = false; 
+                this.mesh.frustumCulled = true; // Optimization: Ensure off-screen chunks cull early
                 this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
                 this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CHUNK_VOL * 3), 3);
                 this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
@@ -200,14 +202,17 @@
                 this.voxelToIndex = new Uint16Array(CHUNK_VOL);
                 this.voxelToIndex.fill(65535); 
                 this.indexToLocal = new Uint16Array(CHUNK_VOL); 
-                this.needsUpdate = false;
+            }
+
+            markDirty() {
+                dirtyLayers.add(this);
             }
 
             addVoxel(localIdx, worldPos, color) {
                 if (this.voxelToIndex[localIdx] !== 65535) {
                     const instIdx = this.voxelToIndex[localIdx];
                     this.mesh.setColorAt(instIdx, color);
-                    this.needsUpdate = true;
+                    this.markDirty();
                 } else {
                     const instIdx = this.mesh.count;
                     this.voxelToIndex[localIdx] = instIdx;
@@ -217,7 +222,7 @@
                     this.mesh.setColorAt(instIdx, color);
                     this.mesh.count++;
                     totalActiveVoxels++;
-                    this.needsUpdate = true;
+                    this.markDirty();
                 }
             }
 
@@ -239,17 +244,14 @@
                     this.voxelToIndex[localIdx] = 65535;
                     this.mesh.count--;
                     totalActiveVoxels--;
-                    this.needsUpdate = true;
+                    this.markDirty();
                 }
             }
 
             updateBuffers() {
-                if (this.needsUpdate) {
-                    this.mesh.instanceMatrix.needsUpdate = true;
-                    this.mesh.instanceColor.needsUpdate = true;
-                    this.needsUpdate = false;
-                    this.mesh.visible = this.mesh.count > 0;
-                }
+                this.mesh.instanceMatrix.needsUpdate = true;
+                this.mesh.instanceColor.needsUpdate = true;
+                this.mesh.visible = this.mesh.count > 0;
             }
         }
 
@@ -280,12 +282,6 @@
                 if (currentMat !== -1) {
                     this.layers[currentMat].removeVoxel(localIdx);
                     this.voxelMatMap[localIdx] = -1;
-                }
-            }
-
-            updateBuffers() {
-                for (let i = 0; i < 3; i++) {
-                    if (this.layers[i]) this.layers[i].updateBuffers();
                 }
             }
         }
@@ -798,7 +794,10 @@
             }
             
             const mat4 = new THREE.Matrix4(); const pos = new THREE.Vector3(); const col = new THREE.Color();
-            const vertsArray = []; const facesArrays = [[], [], []]; const matNames = ["Voxel_Solid", "Voxel_Glass", "Voxel_Emission"];
+            let vertsArray = []; const facesArrays = [[], [], []]; const matNames = ["Voxel_Solid", "Voxel_Glass", "Voxel_Emission"];
+
+            // Memory Opt: Limit array size to prevent out of memory crash on joining massive strings
+            const FLUSH_LIMIT = 20000; 
 
             for (let matIdx = 0; matIdx < 3; matIdx++) {
                 chunks.forEach(chunk => {
@@ -822,17 +821,30 @@
                                     facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2}\n`); facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+2} ${vertexOffset+3}\n`);
                                 } else facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2} ${vertexOffset+3}\n`);
                                 vertexOffset += 4;
+
+                                // Prevent Out Of Memory String Join on enormous voxel counts
+                                if (vertsArray.length > FLUSH_LIMIT) {
+                                    blobParts.push(vertsArray.join(""));
+                                    vertsArray.length = 0;
+                                }
                             }
                         });
                     }
                 });
             }
 
-            blobParts.push(vertsArray.join(""));
+            if (vertsArray.length > 0) {
+                blobParts.push(vertsArray.join(""));
+            }
+
             for (let matIdx = 0; matIdx < 3; matIdx++) {
                 if (facesArrays[matIdx].length > 0) {
                     blobParts.push(`\ng ${matNames[matIdx]}\nusemtl ${matNames[matIdx]}\n`);
-                    blobParts.push(facesArrays[matIdx].join(""));
+                    let matFaces = facesArrays[matIdx];
+                    // Slice and flush to avoid single giant strings
+                    for (let i = 0; i < matFaces.length; i += FLUSH_LIMIT) {
+                        blobParts.push(matFaces.slice(i, i + FLUSH_LIMIT).join(""));
+                    }
                 }
             }
             
@@ -1293,7 +1305,9 @@
                     lastMenuUpdateTime = Date.now();
                 }
 
-                if ((rightMenuMesh.visible || globalMenuMesh.visible) && xrLeft) {
+                // OPTIMIZATION: Raycast only when menus are active and present
+                const rightMenusVisible = (rightMenuMesh && rightMenuMesh.visible) || (globalMenuMesh && globalMenuMesh.visible);
+                if (rightMenusVisible && xrLeft) {
                     tempMatrix.identity().extractRotation(xrLeft.matrixWorld); raycaster.ray.origin.setFromMatrixPosition(xrLeft.matrixWorld); raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
                     if (rightMenuMesh.visible) {
                         const intersects = raycaster.intersectObject(rightMenuMesh);
@@ -1305,7 +1319,9 @@
                     leftLaserLine.visible = true;
                 } else { rightMenuHovered = false; globalMenuHovered = false; if(leftLaserLine) leftLaserLine.visible = false; }
 
-                if ((leftMenuMesh.visible || colorMenuMesh.visible) && xrRight) {
+                // OPTIMIZATION: Raycast only when menus are active and present
+                const leftMenusVisible = (leftMenuMesh && leftMenuMesh.visible) || (colorMenuMesh && colorMenuMesh.visible);
+                if (leftMenusVisible && xrRight) {
                     tempMatrix.identity().extractRotation(xrRight.matrixWorld); raycaster.ray.origin.setFromMatrixPosition(xrRight.matrixWorld); raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
                     if (leftMenuMesh.visible) {
                         const intersects = raycaster.intersectObject(leftMenuMesh);
@@ -1458,7 +1474,11 @@
                 syncMirrorProxies(bucketPreviewMesh, bucketPreviewMirrors, showToolMirrors);
                 syncMirrorProxies(linePreviewMesh, linePreviewMirrors, showToolMirrors);
 
-                chunks.forEach(chunk => chunk.updateBuffers());
+                // OPTIMIZATION: Only update buffers for chunks that actually changed this frame (O(1) updates)
+                dirtyLayers.forEach(layer => {
+                    layer.updateBuffers();
+                });
+                dirtyLayers.clear();
             }
             renderer.render(scene, camera);
         });
