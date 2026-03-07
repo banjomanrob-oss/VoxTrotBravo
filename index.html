@@ -515,49 +515,19 @@
         scene.add(controller0); scene.add(controller1);
         scene.add(grip0); scene.add(grip1);
 
+        // Fallback mappings just in case session doesn't expose handedness instantly
+        xrRight = controller0; xrLeft = controller1;
+        gripRight = grip0; gripLeft = grip1;
+
         const raycaster = new THREE.Raycaster();
         
         const leftLaserLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }));
         leftLaserLine.scale.z = 5; leftLaserLine.visible = false;
+        xrLeft.add(leftLaserLine);
         
         const rightLaserLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }));
         rightLaserLine.scale.z = 5; rightLaserLine.visible = false;
-
-        function onControllerConnected(event) {
-            if (event.data.handedness === 'right') {
-                xrRight = this;
-                gripRight = this === controller0 ? grip0 : grip1;
-                this.add(rightLaserLine);
-                this.add(rightMenuMesh);
-                this.add(globalMenuMesh);
-            } else if (event.data.handedness === 'left') {
-                xrLeft = this;
-                gripLeft = this === controller0 ? grip0 : grip1;
-                this.add(leftLaserLine);
-                this.add(leftMenuMesh);
-                this.add(colorMenuMesh);
-            }
-        }
-
-        function onControllerDisconnected(event) {
-            if (this === xrRight) { 
-                xrRight = null; gripRight = null; 
-                isErasing = false; 
-                rightLaserLine.visible = false;
-                cursorRight.visible = false;
-            }
-            if (this === xrLeft) { 
-                xrLeft = null; gripLeft = null; 
-                isDrawing = false; 
-                leftLaserLine.visible = false;
-                cursorLeft.visible = false;
-            }
-        }
-
-        controller0.addEventListener('connected', onControllerConnected);
-        controller1.addEventListener('connected', onControllerConnected);
-        controller0.addEventListener('disconnected', onControllerDisconnected);
-        controller1.addEventListener('disconnected', onControllerDisconnected);
+        xrRight.add(rightLaserLine);
 
         // --- Interactive VR Menus ---
         function drawButton(ctx, x, y, w, h, text, isActive) {
@@ -579,6 +549,7 @@
         const leftMenuTexture = new THREE.CanvasTexture(leftMenuCanvas);
         const leftMenuMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.15), new THREE.MeshBasicMaterial({ map: leftMenuTexture, transparent: true, side: THREE.DoubleSide }));
         leftMenuMesh.visible = false; leftMenuMesh.position.set(0, 0.15, -0.05); leftMenuMesh.rotation.x = -Math.PI / 4;
+        xrLeft.add(leftMenuMesh);
 
         function updateLeftMenuTexture() {
             leftMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; leftMenuCtx.fillRect(0, 0, 512, 512);
@@ -669,6 +640,7 @@
         const colorMenuTexture = new THREE.CanvasTexture(colorMenuCanvas);
         const colorMenuMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.15), new THREE.MeshBasicMaterial({ map: colorMenuTexture, transparent: true, side: THREE.DoubleSide }));
         colorMenuMesh.visible = false; colorMenuMesh.position.set(0, 0.15, -0.05); colorMenuMesh.rotation.x = -Math.PI / 4;
+        xrLeft.add(colorMenuMesh);
 
         function updateColorMenuTexture() {
             colorMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; colorMenuCtx.fillRect(0, 0, 512, 512);
@@ -747,6 +719,7 @@
         const rightMenuTexture = new THREE.CanvasTexture(rightMenuCanvas);
         const rightMenuMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.15), new THREE.MeshBasicMaterial({ map: rightMenuTexture, transparent: true, side: THREE.DoubleSide }));
         rightMenuMesh.visible = false; rightMenuMesh.position.set(0, 0.15, -0.05); rightMenuMesh.rotation.x = -Math.PI / 4;
+        xrRight.add(rightMenuMesh);
 
         function updateRightMenuTexture() {
             rightMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; rightMenuCtx.fillRect(0, 0, 512, 512);
@@ -778,6 +751,7 @@
         const globalMenuTexture = new THREE.CanvasTexture(globalMenuCanvas);
         const globalMenuMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.15), new THREE.MeshBasicMaterial({ map: globalMenuTexture, transparent: true, side: THREE.DoubleSide }));
         globalMenuMesh.visible = false; globalMenuMesh.position.set(0, 0.15, -0.05); globalMenuMesh.rotation.x = -Math.PI / 4;
+        xrRight.add(globalMenuMesh);
 
         function updateGlobalMenuTexture() {
             globalMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; globalMenuCtx.fillRect(0, 0, 512, 512);
@@ -1288,6 +1262,25 @@
         // --- Main Animation Loop ---
         renderer.setAnimationLoop(() => {
             if (renderer.xr.isPresenting) {
+                // Synchronize controller handedness dynamically
+                const session = renderer.xr.getSession();
+                if (session) {
+                    for (let i = 0; i < session.inputSources.length; i++) {
+                        const source = session.inputSources[i];
+                        if (source) {
+                            const ctrl = i === 0 ? controller0 : controller1;
+                            const grip = i === 0 ? grip0 : grip1;
+                            if (source.handedness === 'right' && xrRight !== ctrl) {
+                                xrRight = ctrl; gripRight = grip;
+                                xrRight.add(rightLaserLine); xrRight.add(rightMenuMesh); xrRight.add(globalMenuMesh);
+                            } else if (source.handedness === 'left' && xrLeft !== ctrl) {
+                                xrLeft = ctrl; gripLeft = grip;
+                                xrLeft.add(leftLaserLine); xrLeft.add(leftMenuMesh); xrLeft.add(colorMenuMesh);
+                            }
+                        }
+                    }
+                }
+
                 pollGamepads();
 
                 if (Date.now() - lastMenuUpdateTime > 100) { 
