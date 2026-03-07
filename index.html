@@ -66,9 +66,6 @@
         let paintMode = 'brush'; 
         let exportMode = 'boxes'; 
         
-        let pyramidShape = 'cone'; // 'cone', 'pyramid', 'tetra'
-        let pyramidMode = 'solid'; // 'solid', 'shell'
-        
         let planeOutline = true;
         let planeOutlineThick = 1;
         let planeFill = true;
@@ -112,7 +109,6 @@
         let isPreviewingBox = false;
         let isPreviewingSphere = false;
         let isPreviewingPlane = false;
-        let isPreviewingPyramid = false;
         let isPreviewingLineLeft = false;
         let isPreviewingLineRight = false;
 
@@ -599,7 +595,7 @@
 
         function updateCursors() {
             let effSize = brushSize;
-            if (activeTool === 'box' || activeTool === 'quadsphere' || activeTool === 'select' || activeTool === 'plane' || activeTool === 'pyramid' || (activeTool === 'paint' && paintMode === 'bucket')) {
+            if (activeTool === 'box' || activeTool === 'quadsphere' || activeTool === 'select' || activeTool === 'plane' || (activeTool === 'paint' && paintMode === 'bucket')) {
                 effSize = 1;
             }
             
@@ -607,7 +603,7 @@
             if (cursorLeft.geometry) cursorLeft.geometry.dispose();
             if (cursorRight.geometry) cursorRight.geometry.dispose();
 
-            const isBoxShape = (brushShape === 'cube' || activeTool === 'box' || activeTool === 'select' || activeTool === 'quadsphere' || activeTool === 'plane' || activeTool === 'pyramid' || (activeTool === 'paint' && paintMode === 'bucket'));
+            const isBoxShape = (brushShape === 'cube' || activeTool === 'box' || activeTool === 'select' || activeTool === 'quadsphere' || activeTool === 'plane' || (activeTool === 'paint' && paintMode === 'bucket'));
             const geo = isBoxShape ? new THREE.BoxGeometry(width, width, width) : new THREE.SphereGeometry(width / 2, 16, 16);
             
             cursorLeft.geometry = geo;
@@ -629,7 +625,7 @@
             const sizeZ = Math.abs(end.z - start.z) + VOXEL_SIZE;
             boxPreviewMesh.scale.set(sizeX, sizeY, sizeZ);
             boxPreviewMesh.updateMatrix();
-            boxPreviewMat.wireframe = (boxMode === 'wireframe' && activeTool === 'box') || (pyramidMode === 'wireframe' && activeTool === 'pyramid');
+            boxPreviewMat.wireframe = (boxMode === 'wireframe' && activeTool !== 'select');
             
             if (isPainting) {
                 const activeColor = activeColorSlot === 1 ? brushColor : brushColor2;
@@ -802,20 +798,6 @@
                     drawButton(leftMenuCtx, 140, 140, 232, 50, `Thickness: ${wireWidth}`, false);
                     drawButton(leftMenuCtx, 382, 140, 80, 50, '[+]', false);
                 }
-            } else if (activeTool === 'pyramid') {
-                drawButton(leftMenuCtx, 40, 70, 135, 50, 'CONE', pyramidShape === 'cone');
-                drawButton(leftMenuCtx, 185, 70, 140, 50, 'PYRAMID', pyramidShape === 'pyramid');
-                drawButton(leftMenuCtx, 335, 70, 135, 50, 'TETRA', pyramidShape === 'tetra');
-
-                drawButton(leftMenuCtx, 50, 140, 130, 50, 'SOLID', pyramidMode === 'solid');
-                drawButton(leftMenuCtx, 190, 140, 130, 50, 'SHELL', pyramidMode === 'shell');
-                drawButton(leftMenuCtx, 330, 140, 132, 50, 'WIRE', pyramidMode === 'wireframe');
-
-                if (pyramidMode === 'wireframe') {
-                    drawButton(leftMenuCtx, 50, 210, 80, 50, '[-]', false);
-                    drawButton(leftMenuCtx, 140, 210, 232, 50, `Thickness: ${wireWidth}`, false);
-                    drawButton(leftMenuCtx, 382, 210, 80, 50, '[+]', false);
-                }
             } else if (activeTool === 'quadsphere') {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'SOLID', sphereMode === 'solid');
                 drawButton(leftMenuCtx, 262, 70, 200, 50, 'SHELL', sphereMode === 'shell');
@@ -920,10 +902,6 @@
                     if (cx >= 50 && cx <= 180) boxMode = 'solid';
                     if (cx >= 190 && cx <= 320) boxMode = 'shell';
                     if (cx >= 330 && cx <= 462) boxMode = 'wireframe';
-                } else if (activeTool === 'pyramid') {
-                    if (cx >= 40 && cx <= 175) pyramidShape = 'cone';
-                    if (cx >= 185 && cx <= 325) pyramidShape = 'pyramid';
-                    if (cx >= 335 && cx <= 470) pyramidShape = 'tetra';
                 } else if (activeTool === 'quadsphere') {
                     if (cx >= 50 && cx <= 250) sphereMode = 'solid';
                     if (cx >= 262 && cx <= 462) sphereMode = 'shell';
@@ -987,15 +965,6 @@
                     if (cx >= 382 && cx <= 462) wireWidth = Math.min(5, wireWidth + 1);
                 }
                 updateCursors();
-            } else if (activeTool === 'pyramid') {
-                if (cy >= 140 && cy <= 190) {
-                    if (cx >= 50 && cx <= 180) pyramidMode = 'solid';
-                    if (cx >= 190 && cx <= 320) pyramidMode = 'shell';
-                    if (cx >= 330 && cx <= 462) pyramidMode = 'wireframe';
-                } else if (cy >= 210 && cy <= 260 && pyramidMode === 'wireframe') {
-                    if (cx >= 50 && cx <= 130) wireWidth = Math.max(1, wireWidth - 1);
-                    if (cx >= 382 && cx <= 462) wireWidth = Math.min(5, wireWidth + 1);
-                }
             }
 
             leftMenuNeedsUpdate = true;
@@ -1235,15 +1204,13 @@
             rightMenuCtx.textAlign = 'center';
             rightMenuCtx.fillText(`Tool Selection`, 256, 30);
 
-            // Re-spaced to fit 8 beautifully 
-            drawButton(rightMenuCtx, 50, 40, 412, 45, 'Brush (Standard)', activeTool === 'brush');
-            drawButton(rightMenuCtx, 50, 95, 412, 45, 'Stroke (Continuous)', activeTool === 'stroke');
-            drawButton(rightMenuCtx, 50, 150, 412, 45, 'Paint (Recolor)', activeTool === 'paint');
-            drawButton(rightMenuCtx, 50, 205, 412, 45, 'Plane (2D Grid/Shape)', activeTool === 'plane');
-            drawButton(rightMenuCtx, 50, 260, 412, 45, 'Box / Volumes', activeTool === 'box');
-            drawButton(rightMenuCtx, 50, 315, 412, 45, 'Quad Sphere (Shell)', activeTool === 'quadsphere');
-            drawButton(rightMenuCtx, 50, 370, 412, 45, 'Pyramid / Cone', activeTool === 'pyramid');
-            drawButton(rightMenuCtx, 50, 425, 412, 45, 'Select & Transform', activeTool === 'select');
+            drawButton(rightMenuCtx, 50, 45, 412, 50, 'Brush (Standard)', activeTool === 'brush');
+            drawButton(rightMenuCtx, 50, 105, 412, 50, 'Stroke (Continuous)', activeTool === 'stroke');
+            drawButton(rightMenuCtx, 50, 165, 412, 50, 'Paint (Recolor)', activeTool === 'paint');
+            drawButton(rightMenuCtx, 50, 225, 412, 50, 'Plane (2D Grid/Shape)', activeTool === 'plane');
+            drawButton(rightMenuCtx, 50, 285, 412, 50, 'Box / Volumes', activeTool === 'box');
+            drawButton(rightMenuCtx, 50, 345, 412, 50, 'Quad Sphere (Shell)', activeTool === 'quadsphere');
+            drawButton(rightMenuCtx, 50, 405, 412, 50, 'Select & Transform', activeTool === 'select');
 
             rightMenuTexture.needsUpdate = true;
         }
@@ -1255,7 +1222,6 @@
                 isPreviewingBox = false;
                 isPreviewingSphere = false;
                 isPreviewingPlane = false;
-                isPreviewingPyramid = false;
                 boxPreviewMesh.visible = false;
                 spherePreviewMesh.visible = false;
                 bucketPreviewMesh.visible = false;
@@ -1271,14 +1237,13 @@
                 lastPaintedPos.set(Infinity, Infinity, Infinity);
                 lastErasedPos.set(Infinity, Infinity, Infinity);
 
-                if (cy >= 40 && cy <= 85) activeTool = 'brush';
-                if (cy >= 95 && cy <= 140) activeTool = 'stroke';
-                if (cy >= 150 && cy <= 195) activeTool = 'paint';
-                if (cy >= 205 && cy <= 250) activeTool = 'plane';
-                if (cy >= 260 && cy <= 305) activeTool = 'box';
-                if (cy >= 315 && cy <= 360) activeTool = 'quadsphere';
-                if (cy >= 370 && cy <= 415) activeTool = 'pyramid';
-                if (cy >= 425 && cy <= 470) activeTool = 'select';
+                if (cy >= 45 && cy <= 95) activeTool = 'brush';
+                if (cy >= 105 && cy <= 155) activeTool = 'stroke';
+                if (cy >= 165 && cy <= 215) activeTool = 'paint';
+                if (cy >= 225 && cy <= 275) activeTool = 'plane';
+                if (cy >= 285 && cy <= 335) activeTool = 'box';
+                if (cy >= 345 && cy <= 395) activeTool = 'quadsphere';
+                if (cy >= 405 && cy <= 455) activeTool = 'select';
                 
                 updateCursors();
                 rightMenuNeedsUpdate = true;
@@ -2038,128 +2003,6 @@
             leftMenuNeedsUpdate = true;
         }
 
-        // --- Geometric Pyramid & Cone Tool Algorithm ---
-        function executePyramidTool(startPos, endPos, isPainting) {
-            const gStartX = Math.round(startPos.x / VOXEL_SIZE); const gEndX = Math.round(endPos.x / VOXEL_SIZE);
-            const gStartY = Math.round(startPos.y / VOXEL_SIZE); const gEndY = Math.round(endPos.y / VOXEL_SIZE);
-            const gStartZ = Math.round(startPos.z / VOXEL_SIZE); const gEndZ = Math.round(endPos.z / VOXEL_SIZE);
-
-            const minX = Math.min(gStartX, gEndX); const maxX = Math.max(gStartX, gEndX);
-            const minY = Math.min(gStartY, gEndY); const maxY = Math.max(gStartY, gEndY);
-            const minZ = Math.min(gStartZ, gEndZ); const maxZ = Math.max(gStartZ, gEndZ);
-
-            // Safety limit to maintain VR framerate
-            if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
-
-            const cx = (minX + maxX) / 2;
-            const cz = (minZ + maxZ) / 2;
-
-            // Draw base at the starting point, taper towards the release point
-            const apexY = startPos.y <= endPos.y ? maxY : minY;
-            const baseY = startPos.y <= endPos.y ? minY : maxY;
-            const H = Math.abs(maxY - minY);
-            
-            const rx = (maxX - minX) / 2;
-            const rz = (maxZ - minZ) / 2;
-
-            const isInside = (x, y, z) => {
-                if (x < minX || x > maxX || y < minY || y > maxY || z < minZ || z > maxZ) return false;
-                if (H === 0) return true; 
-
-                // Taper factor 't'. (1 at the base, 0 at the apex)
-                const t = Math.abs(y - apexY) / H;
-                if (t <= 0) return (x === Math.round(cx) && z === Math.round(cz));
-
-                const rCurX = rx * t;
-                const rCurZ = rz * t;
-
-                if (rCurX === 0 || rCurZ === 0) {
-                    return (Math.abs(x - cx) <= rCurX && Math.abs(z - cz) <= rCurZ);
-                }
-
-                if (pyramidShape === 'cone') {
-                    const dx = (x - cx) / rCurX;
-                    const dz = (z - cz) / rCurZ;
-                    return (dx * dx + dz * dz) <= 1.05; // Ellipse math
-                } else if (pyramidShape === 'pyramid') {
-                    return Math.abs(x - cx) <= (rCurX + 0.5) && Math.abs(z - cz) <= (rCurZ + 0.5); // Square math
-                } else if (pyramidShape === 'tetra') {
-                    const nx = (x - cx) / rCurX;
-                    const nz = (z - cz) / rCurZ;
-                    // Standard equilateral bounding triangle (base is at -1, point is at 1)
-                    return nz >= -1.05 && nz <= 1.05 - Math.abs(nx) * 2;
-                }
-                return false;
-            };
-
-            let edges = [];
-            if (pyramidMode === 'wireframe') {
-                const vApex = [cx, apexY, cz];
-                if (pyramidShape === 'pyramid') {
-                    const v1 = [minX, baseY, minZ], v2 = [maxX, baseY, minZ];
-                    const v3 = [maxX, baseY, maxZ], v4 = [minX, baseY, maxZ];
-                    edges = [[v1, v2], [v2, v3], [v3, v4], [v4, v1], [v1, vApex], [v2, vApex], [v3, vApex], [v4, vApex]];
-                } else if (pyramidShape === 'tetra') {
-                    const v1 = [minX, baseY, minZ], v2 = [maxX, baseY, minZ], v3 = [cx, baseY, maxZ];
-                    edges = [[v1, v2], [v2, v3], [v3, v1], [v1, vApex], [v2, vApex], [v3, vApex]];
-                } else if (pyramidShape === 'cone') {
-                    const v1 = [minX, baseY, cz], v2 = [maxX, baseY, cz];
-                    const v3 = [cx, baseY, minZ], v4 = [cx, baseY, maxZ];
-                    edges = [[v1, vApex], [v2, vApex], [v3, vApex], [v4, vApex]];
-                }
-            }
-
-            const distToSegSq = (px, py, pz, ax, ay, az, bx, by, bz) => {
-                const l2 = (bx - ax)**2 + (by - ay)**2 + (bz - az)**2;
-                if (l2 === 0) return (px - ax)**2 + (py - ay)**2 + (pz - az)**2;
-                let t = ((px - ax) * (bx - ax) + (py - ay) * (by - ay) + (pz - az) * (bz - az)) / l2;
-                t = Math.max(0, Math.min(1, t));
-                return (px - (ax + t * (bx - ax)))**2 + (py - (ay + t * (by - ay)))**2 + (pz - (az + t * (bz - az)))**2;
-            };
-
-            const threshSq = (wireWidth * 0.8) ** 2;
-
-            for(let gx = minX; gx <= maxX; gx++) {
-                for(let gy = minY; gy <= maxY; gy++) {
-                    for(let gz = minZ; gz <= maxZ; gz++) {
-                        if (isInside(gx, gy, gz)) {
-                            const c = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY);
-                            if (pyramidMode === 'wireframe') {
-                                let isWire = false;
-                                for(let i=0; i<edges.length; i++) {
-                                    if (distToSegSq(gx, gy, gz, edges[i][0][0], edges[i][0][1], edges[i][0][2], edges[i][1][0], edges[i][1][1], edges[i][1][2]) <= threshSq) {
-                                        isWire = true; break;
-                                    }
-                                }
-                                if (!isWire && pyramidShape === 'cone') {
-                                    if (Math.abs(gy - baseY) < wireWidth) {
-                                        if (!isInside(gx + wireWidth, gy, gz) || !isInside(gx - wireWidth, gy, gz) ||
-                                            !isInside(gx, gy, gz + wireWidth) || !isInside(gx, gy, gz - wireWidth)) {
-                                            isWire = true;
-                                        }
-                                    }
-                                }
-                                if (isWire) setVoxel(gx, gy, gz, isPainting, c);
-                                else setVoxel(gx, gy, gz, false, null);
-                            } else if (pyramidMode === 'shell') {
-                                if (gx === minX || gx === maxX || gy === minY || gy === maxY || gz === minZ || gz === maxZ ||
-                                    !isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) ||
-                                    !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) ||
-                                    !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1)) {
-                                    setVoxel(gx, gy, gz, isPainting, c);
-                                } else setVoxel(gx, gy, gz, false, null); 
-                            } else {
-                                setVoxel(gx, gy, gz, isPainting, c);
-                            }
-                        } else if (pyramidMode === 'wireframe' || pyramidMode === 'shell') {
-                             setVoxel(gx, gy, gz, false, null);
-                        }
-                    }
-                }
-            }
-            leftMenuNeedsUpdate = true;
-        }
-
         // --- Plane Tool Algorithm ---
         function executePlaneTool(startPos, endPos, isPainting) {
             const gStartX = Math.round(startPos.x / VOXEL_SIZE); const gEndX = Math.round(endPos.x / VOXEL_SIZE);
@@ -2342,7 +2185,6 @@
                     if (activeTool === 'box') isPreviewingBox = true;
                     if (activeTool === 'quadsphere') isPreviewingSphere = true;
                     if (activeTool === 'plane') isPreviewingPlane = true;
-                    if (activeTool === 'pyramid') isPreviewingPyramid = true;
                 }
             }
         });
@@ -2355,7 +2197,6 @@
             if (activeTool === 'box' && isPreviewingBox) { executeBoxTool(drawStartPos, leftTargetLocal, true); isPreviewingBox = false; boxPreviewMesh.visible = false; }
             if (activeTool === 'quadsphere' && isPreviewingSphere) { executeQuadSphereTool(drawStartPos, leftTargetLocal, true); isPreviewingSphere = false; spherePreviewMesh.visible = false; }
             if (activeTool === 'plane' && isPreviewingPlane) { executePlaneTool(drawStartPos, leftTargetLocal, true); isPreviewingPlane = false; boxPreviewMesh.visible = false; }
-            if (activeTool === 'pyramid' && isPreviewingPyramid) { executePyramidTool(drawStartPos, leftTargetLocal, true); isPreviewingPyramid = false; boxPreviewMesh.visible = false; }
             lastPaintedPos.set(Infinity, Infinity, Infinity); 
         });
         
@@ -2402,7 +2243,6 @@
                     if (activeTool === 'box') isPreviewingBox = true;
                     if (activeTool === 'quadsphere') isPreviewingSphere = true;
                     if (activeTool === 'plane') isPreviewingPlane = true;
-                    if (activeTool === 'pyramid') isPreviewingPyramid = true;
                 }
             }
         });
@@ -2418,7 +2258,6 @@
                 if (activeTool === 'box' && isPreviewingBox) { executeBoxTool(drawStartPos, rightTargetLocal, false); isPreviewingBox = false; boxPreviewMesh.visible = false; }
                 if (activeTool === 'quadsphere' && isPreviewingSphere) { executeQuadSphereTool(drawStartPos, rightTargetLocal, false); isPreviewingSphere = false; spherePreviewMesh.visible = false; }
                 if (activeTool === 'plane' && isPreviewingPlane) { executePlaneTool(drawStartPos, rightTargetLocal, false); isPreviewingPlane = false; boxPreviewMesh.visible = false; }
-                if (activeTool === 'pyramid' && isPreviewingPyramid) { executePyramidTool(drawStartPos, rightTargetLocal, false); isPreviewingPyramid = false; boxPreviewMesh.visible = false; }
                 lastErasedPos.set(Infinity, Infinity, Infinity); 
             }
         });
@@ -2442,18 +2281,10 @@
             if (!session) return;
             for (let i = 0; i < session.inputSources.length; i++) {
                 const source = session.inputSources[i];
-                if (source && source.gamepad && source.gamepad.buttons) {
-                    const buttons = source.gamepad.buttons;
-                    
-                    const getBtn = (idx1, idx2) => {
-                        if (buttons.length > idx1 && buttons[idx1]) return buttons[idx1].pressed;
-                        if (buttons.length > idx2 && buttons[idx2]) return buttons[idx2].pressed;
-                        return false;
-                    };
-
+                if (source && source.gamepad) {
                     if (source.handedness === 'right') {
-                        const btnA = getBtn(4, 3); // A or Thumbstick
-                        const btnB = getBtn(5, 2); // B or Touchpad
+                        const btnA = source.gamepad.buttons[4]?.pressed || false; 
+                        const btnB = source.gamepad.buttons[5]?.pressed || false; 
 
                         if (btnA && !lastRightBtnA) {
                             rightMenuMesh.visible = !rightMenuMesh.visible;
@@ -2472,8 +2303,8 @@
                         lastRightBtnA = btnA; lastRightBtnB = btnB;
                     }
                     if (source.handedness === 'left') {
-                        const btnX = getBtn(4, 3); // X or Thumbstick
-                        const btnY = getBtn(5, 2); // Y or Touchpad
+                        const btnX = source.gamepad.buttons[4]?.pressed || false; 
+                        const btnY = source.gamepad.buttons[5]?.pressed || false; 
                         
                         if (btnX && !lastLeftBtnX) {
                             leftMenuMesh.visible = !leftMenuMesh.visible;
@@ -2662,7 +2493,6 @@
                     } else if (activeTool === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, leftTargetLocal, true);
                     else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, leftTargetLocal, true);
                     else if (activeTool === 'plane' && isPreviewingPlane) updatePlanePreview(drawStartPos, leftTargetLocal, true);
-                    else if (activeTool === 'pyramid' && isPreviewingPyramid) updateBoxPreview(drawStartPos, leftTargetLocal, true);
                 }
 
                 controllerRight.getWorldDirection(rightDir); rightTargetLocal.copy(rightPos).addScaledVector(rightDir, -0.05); worldGroup.worldToLocal(rightTargetLocal);
@@ -2676,7 +2506,6 @@
                     } else if (activeTool === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, rightTargetLocal, false);
                     else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, rightTargetLocal, false);
                     else if (activeTool === 'plane' && isPreviewingPlane) updatePlanePreview(drawStartPos, rightTargetLocal, false);
-                    else if (activeTool === 'pyramid' && isPreviewingPyramid) updateBoxPreview(drawStartPos, rightTargetLocal, false);
                 }
 
                 if (activeTool === 'stroke' && strokeMode === 'line') {
