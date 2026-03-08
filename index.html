@@ -64,6 +64,7 @@
         let boxMode = 'shell'; 
         let boxDivs = 1;
         let boxDivThick = 1;
+
         let sphereMode = 'shell';
         
         let triangleType = 'cone'; 
@@ -107,22 +108,20 @@
         let selectionRotZ = 0;
         let activeSliderDrag = null; 
 
-        const palette = [
-            { mat: 0, mode: 'solid', c1: new THREE.Color(0x4facfe), c2: new THREE.Color(0x112233) },
-            { mat: 1, mode: 'solid', c1: new THREE.Color(0xff0055), c2: new THREE.Color(0x440011) }
-        ];
-        let activeEditSlot = 0; 
-        let activeSubColor = 1; 
-
+        let activeMaterialType = 0; 
+        let colorMode = 'solid'; 
+        let brushColor = new THREE.Color(0x4facfe);
+        let brushColor2 = new THREE.Color(0xff0055);
+        let activeColorSlot = 1; 
         let shiftProgress = 0;
         let shiftDir = 1;
         const tempColorForDraw = new THREE.Color();
         
         let isVerticalLock = true;
-        let clearInternal = true;
-        let surfaceWireframe = true;
         let mirrorX = false;
         let mirrorZ = false;
+        let clearInterior = false; 
+        let gridMode = 'internal'; 
         
         let isPreviewingBox = false;
         let isPreviewingSphere = false;
@@ -459,7 +458,8 @@
             cursorLeft.geometry = geo; cursorRight.geometry = geo;
             cursorLeftMirrors.forEach(m => m.geometry = geo); cursorRightMirrors.forEach(m => m.geometry = geo);
 
-            cursorRight.material.color.copy(palette[0].c1); 
+            const activeColor = activeColorSlot === 1 ? brushColor : brushColor2;
+            cursorRight.material.color.copy(activeColor); 
         }
         updateCursors();
 
@@ -474,7 +474,8 @@
             boxPreviewMat.wireframe = (boxMode === 'wireframe' && activeTool === 'box');
             
             if (isPainting) {
-                boxPreviewMat.color.copy(activeTool === 'select' ? new THREE.Color(0x00ffcc) : palette[0].c1);
+                const activeColor = activeColorSlot === 1 ? brushColor : brushColor2;
+                boxPreviewMat.color.copy(activeTool === 'select' ? new THREE.Color(0x00ffcc) : activeColor);
             } else boxPreviewMat.color.setHex(0xff0055);
         }
 
@@ -502,7 +503,7 @@
             boxPreviewMesh.updateMatrix();
             boxPreviewMat.wireframe = false;
             
-            if (isPainting) boxPreviewMat.color.copy(palette[0].c1);
+            if (isPainting) boxPreviewMat.color.copy(activeColorSlot === 1 ? brushColor : brushColor2);
             else boxPreviewMat.color.setHex(0xff0055);
         }
 
@@ -515,7 +516,8 @@
             spherePreviewMat.wireframe = (sphereMode === 'shell');
             
             if (isPainting) {
-                spherePreviewMat.color.copy(palette[0].c1);
+                const activeColor = activeColorSlot === 1 ? brushColor : brushColor2;
+                spherePreviewMat.color.copy(activeColor);
             } else spherePreviewMat.color.setHex(0xff0055);
         }
 
@@ -586,12 +588,13 @@
                 }
             } else if (activeTool === 'box') {
                 drawButton(leftMenuCtx, 20, 70, 140, 50, 'SOLID', boxMode === 'solid'); drawButton(leftMenuCtx, 170, 70, 150, 50, 'SHELL', boxMode === 'shell'); drawButton(leftMenuCtx, 330, 70, 160, 50, 'WIRE', boxMode === 'wireframe');
-                drawButton(leftMenuCtx, 20, 140, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 140, 120, 50, `Divs: ${boxDivs}`, false); drawButton(leftMenuCtx, 210, 140, 50, 50, '+', false);
-                drawButton(leftMenuCtx, 270, 140, 50, 50, '-', false); drawButton(leftMenuCtx, 330, 140, 100, 50, `DThk: ${boxDivThick}`, false); drawButton(leftMenuCtx, 440, 140, 50, 50, '+', false);
                 if (boxMode === 'wireframe') {
-                    drawButton(leftMenuCtx, 20, 210, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 210, 160, 50, `Thick: ${wireWidth}`, false); drawButton(leftMenuCtx, 250, 210, 50, 50, '+', false);
-                    drawButton(leftMenuCtx, 330, 210, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill);
+                    drawButton(leftMenuCtx, 20, 140, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 140, 160, 50, `Thick: ${wireWidth}`, false); drawButton(leftMenuCtx, 250, 140, 50, 50, '+', false);
+                    drawButton(leftMenuCtx, 330, 140, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill);
                 }
+                
+                drawButton(leftMenuCtx, 20, 210, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 210, 120, 50, `Divs: ${boxDivs}`, false); drawButton(leftMenuCtx, 210, 210, 50, 50, '+', false);
+                drawButton(leftMenuCtx, 270, 210, 50, 50, '-', false); drawButton(leftMenuCtx, 330, 210, 100, 50, `DThk: ${boxDivThick}`, false); drawButton(leftMenuCtx, 440, 210, 50, 50, '+', false);
             } else if (activeTool === 'quadsphere') {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'SOLID', sphereMode === 'solid'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'SHELL', sphereMode === 'shell');
             } else if (activeTool === 'triangle') {
@@ -599,17 +602,17 @@
                 drawButton(leftMenuCtx, 20, 120, 140, 50, 'SOLID', triangleMode === 'solid'); drawButton(leftMenuCtx, 170, 120, 150, 50, 'SHELL', triangleMode === 'shell'); drawButton(leftMenuCtx, 330, 120, 160, 50, 'WIRE', triangleMode === 'wireframe');
                 drawButton(leftMenuCtx, 20, 180, 140, 50, 'AXIS: X', triangleAxis === 'X'); drawButton(leftMenuCtx, 170, 180, 150, 50, 'AXIS: Y', triangleAxis === 'Y'); drawButton(leftMenuCtx, 330, 180, 160, 50, 'AXIS: Z', triangleAxis === 'Z');
                 
-                if (triangleMode === 'shell' && triangleType === 'cone') {
-                    drawButton(leftMenuCtx, 170, 240, 150, 50, `CAP: ${coneCap?'ON':'OFF'}`, coneCap);
-                } else if (triangleType === 'pyramid') {
+                if (triangleType === 'pyramid') {
                     drawButton(leftMenuCtx, 20, 240, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 240, 160, 50, `Legs: ${pyramidLegs}`, false); drawButton(leftMenuCtx, 250, 240, 50, 50, '+', false);
+                } else if (triangleMode === 'shell' && triangleType === 'cone') {
+                    drawButton(leftMenuCtx, 170, 240, 150, 50, `CAP: ${coneCap?'ON':'OFF'}`, coneCap);
                 }
-                
+
                 if (triangleMode === 'wireframe') {
                     drawButton(leftMenuCtx, 20, 300, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 300, 160, 50, `Thick: ${wireWidth}`, false); drawButton(leftMenuCtx, 250, 300, 50, 50, '+', false);
                     drawButton(leftMenuCtx, 330, 300, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill);
-                }
-
+                } 
+                
                 drawButton(leftMenuCtx, 20, 360, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 360, 120, 50, `Divs: ${triangleDivs}`, false); drawButton(leftMenuCtx, 210, 360, 50, 50, '+', false);
                 drawButton(leftMenuCtx, 270, 360, 50, 50, '-', false); drawButton(leftMenuCtx, 330, 360, 100, 50, `DThk: ${triangleDivThick}`, false); drawButton(leftMenuCtx, 440, 360, 50, 50, '+', false);
             } else if (activeTool === 'plane') {
@@ -640,7 +643,7 @@
                     if (newMode && newMode !== transformMode) {
                         transformMode = newMode;
                         if (transformMode === 'copy') { for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat); } 
-                        else { for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, false, null, -1); }
+                        else { for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, false, null); }
                     }
                 }
                 if (transformMode === 'copy' && cy >= 270 && cy <= 310) { if (cx >= 50 && cx <= 130) numCopies = Math.max(1, numCopies - 1); if (cx >= 382 && cx <= 462) numCopies = Math.min(20, numCopies + 1); }
@@ -653,34 +656,25 @@
                 } else if (cy >= 180 && cy <= 230) {
                     if (cx >= 20 && cx <= 160) triangleAxis = 'X'; if (cx >= 170 && cx <= 320) triangleAxis = 'Y'; if (cx >= 330 && cx <= 490) triangleAxis = 'Z';
                 } else if (cy >= 240 && cy <= 290) {
-                    if (triangleMode === 'shell' && triangleType === 'cone') {
-                        if (cx >= 170 && cx <= 320) coneCap = !coneCap;
-                    } else if (triangleType === 'pyramid') {
+                    if (triangleType === 'pyramid') {
                         if (cx >= 20 && cx <= 70) pyramidLegs = Math.max(3, pyramidLegs - 1); if (cx >= 250 && cx <= 300) pyramidLegs = Math.min(12, pyramidLegs + 1);
-                    }
+                    } else if (triangleMode === 'shell' && triangleType === 'cone') {
+                        if (cx >= 170 && cx <= 320) coneCap = !coneCap;
+                    } 
                 } else if (cy >= 300 && cy <= 350) {
                     if (triangleMode === 'wireframe') {
                         if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
                         if (cx >= 330 && cx <= 490) wireFill = !wireFill;
-                    }
+                    } 
                 } else if (cy >= 360 && cy <= 410) {
                     if (cx >= 20 && cx <= 70) triangleDivs = Math.max(1, triangleDivs - 1); if (cx >= 210 && cx <= 260) triangleDivs = Math.min(20, triangleDivs + 1);
                     if (cx >= 270 && cx <= 320) triangleDivThick = Math.max(1, triangleDivThick - 1); if (cx >= 440 && cx <= 490) triangleDivThick = Math.min(10, triangleDivThick + 1);
-                }
-            } else if (activeTool === 'box') {
-                if (cy >= 70 && cy <= 120) {
-                    if (cx >= 20 && cx <= 160) boxMode = 'solid'; if (cx >= 170 && cx <= 320) boxMode = 'shell'; if (cx >= 330 && cx <= 490) boxMode = 'wireframe';
-                } else if (cy >= 140 && cy <= 190) {
-                    if (cx >= 20 && cx <= 70) boxDivs = Math.max(1, boxDivs - 1); if (cx >= 210 && cx <= 260) boxDivs = Math.min(20, boxDivs + 1);
-                    if (cx >= 270 && cx <= 320) boxDivThick = Math.max(1, boxDivThick - 1); if (cx >= 440 && cx <= 490) boxDivThick = Math.min(10, boxDivThick + 1);
-                } else if (cy >= 210 && cy <= 260 && boxMode === 'wireframe') {
-                    if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
-                    if (cx >= 330 && cx <= 490) wireFill = !wireFill;
                 }
             } else if (cy >= 70 && cy <= 120) {
                 if (activeTool === 'brush') { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; } 
                 else if (activeTool === 'stroke') { if (cx >= 50 && cx <= 250) strokeMode = 'continuous'; if (cx >= 262 && cx <= 462) strokeMode = 'line'; isPreviewingLineLeft = false; isPreviewingLineRight = false; lineStartLeft.set(Infinity, Infinity, Infinity); lineStartRight.set(Infinity, Infinity, Infinity); } 
                 else if (activeTool === 'paint') { if (cx >= 50 && cx <= 250) paintMode = 'brush'; if (cx >= 262 && cx <= 462) paintMode = 'bucket'; } 
+                else if (activeTool === 'box') { if (cx >= 20 && cx <= 160) boxMode = 'solid'; if (cx >= 170 && cx <= 320) boxMode = 'shell'; if (cx >= 330 && cx <= 490) boxMode = 'wireframe'; } 
                 else if (activeTool === 'quadsphere') { if (cx >= 50 && cx <= 250) sphereMode = 'solid'; if (cx >= 262 && cx <= 462) sphereMode = 'shell'; } 
                 else if (activeTool === 'select' && !hasSelection) { if (cx >= 50 && cx <= 250) selectMode = 'box'; if (cx >= 262 && cx <= 462) selectMode = 'connected'; } 
                 else if (activeTool === 'plane') { if (cx >= 30 && cx <= 180) planeOutline = !planeOutline; if (planeOutline) { if (cx >= 190 && cx <= 240) planeOutlineThick = Math.max(1, planeOutlineThick - 1); if (cx >= 420 && cx <= 470) planeOutlineThick = Math.min(10, planeOutlineThick + 1); } }
@@ -693,6 +687,14 @@
                 if (cy >= 210 && cy <= 260) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(5, brushSize + 1); }
             } else if (activeTool === 'brush') {
                 if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(5, brushSize + 1); } 
+            } else if (activeTool === 'box') {
+                if (cy >= 140 && cy <= 190 && boxMode === 'wireframe') {
+                    if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
+                    if (cx >= 330 && cx <= 490) wireFill = !wireFill;
+                } else if (cy >= 210 && cy <= 260) {
+                    if (cx >= 20 && cx <= 70) boxDivs = Math.max(1, boxDivs - 1); if (cx >= 210 && cx <= 260) boxDivs = Math.min(20, boxDivs + 1);
+                    if (cx >= 270 && cx <= 320) boxDivThick = Math.max(1, boxDivThick - 1); if (cx >= 440 && cx <= 490) boxDivThick = Math.min(10, boxDivThick + 1);
+                }
             }
             updateCursors();
             leftMenuNeedsUpdate = true;
@@ -711,7 +713,7 @@
             colorMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; colorMenuCtx.fillRect(0, 0, 512, 512);
             if (isPaletteMagnified) {
                 colorMenuCtx.fillStyle = '#4facfe'; colorMenuCtx.font = 'bold 26px sans-serif'; colorMenuCtx.textAlign = 'center'; colorMenuCtx.fillText(`Precision Picker`, 256, 36);
-                if (palette[activeEditSlot].mat === 2) {
+                if (activeMaterialType === 2) {
                     const grad = colorMenuCtx.createLinearGradient(20, 50, 492, 50); grad.addColorStop(0, '#000000'); grad.addColorStop(1, '#ffffff'); colorMenuCtx.fillStyle = grad; colorMenuCtx.fillRect(20, 50, 472, 400);
                 } else {
                     const gradH = colorMenuCtx.createLinearGradient(20, 50, 492, 50);
@@ -721,43 +723,33 @@
                     gradV.addColorStop(0, 'rgba(255,255,255,1)'); gradV.addColorStop(0.5, 'rgba(255,255,255,0)'); gradV.addColorStop(0.5, 'rgba(0,0,0,0)'); gradV.addColorStop(1, 'rgba(0,0,0,1)');
                     colorMenuCtx.fillStyle = gradV; colorMenuCtx.fillRect(20, 50, 472, 400);
                 }
-                const targetColor = activeSubColor === 1 ? palette[activeEditSlot].c1 : palette[activeEditSlot].c2;
-                colorMenuCtx.fillStyle = '#' + targetColor.getHexString(); colorMenuCtx.fillRect(20, 460, 472, 40);
-                const hsl = {}; targetColor.getHSL(hsl); colorMenuCtx.fillStyle = hsl.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = 'bold 20px sans-serif'; colorMenuCtx.fillText(`Release trigger to apply`, 256, 487);
+                const activeColorHex = activeColorSlot === 1 ? brushColor.getHexString() : brushColor2.getHexString(); colorMenuCtx.fillStyle = '#' + activeColorHex; colorMenuCtx.fillRect(20, 460, 472, 40);
+                const hsl = {}; (activeColorSlot === 1 ? brushColor : brushColor2).getHSL(hsl); colorMenuCtx.fillStyle = hsl.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = 'bold 20px sans-serif'; colorMenuCtx.fillText(`Release trigger to apply`, 256, 487);
             } else {
-                drawButton(colorMenuCtx, 30, 20, 216, 50, 'EDIT: PRIMARY', activeEditSlot === 0);
-                drawButton(colorMenuCtx, 266, 20, 216, 50, 'EDIT: SECONDARY', activeEditSlot === 1);
-
-                const curSlot = palette[activeEditSlot];
-                drawButton(colorMenuCtx, 30, 90, 140, 50, 'SOLID', curSlot.mat === 0); 
-                drawButton(colorMenuCtx, 186, 90, 140, 50, 'GLASS', curSlot.mat === 1); 
-                drawButton(colorMenuCtx, 342, 90, 140, 50, 'EMISSION', curSlot.mat === 2);
-                
-                if (curSlot.mat === 2) {
-                    const grad = colorMenuCtx.createLinearGradient(30, 160, 482, 160); grad.addColorStop(0, '#000000'); grad.addColorStop(1, '#ffffff'); colorMenuCtx.fillStyle = grad; colorMenuCtx.fillRect(30, 160, 452, 180);
-                    colorMenuCtx.fillStyle = 'rgba(0, 0, 0, 0.4)'; colorMenuCtx.fillRect(30, 220, 452, 60); colorMenuCtx.fillStyle = '#fff'; colorMenuCtx.font = 'bold 24px sans-serif'; colorMenuCtx.fillText(`Emission Brightness Range`, 256, 250);
+                colorMenuCtx.fillStyle = '#4facfe'; colorMenuCtx.font = 'bold 26px sans-serif'; colorMenuCtx.textAlign = 'center'; colorMenuCtx.fillText(`Materials & Colors`, 256, 36);
+                drawButton(colorMenuCtx, 30, 60, 140, 50, 'SOLID', activeMaterialType === 0); drawButton(colorMenuCtx, 186, 60, 140, 50, 'GLASS', activeMaterialType === 1); drawButton(colorMenuCtx, 342, 60, 140, 50, 'EMISSION', activeMaterialType === 2);
+                if (activeMaterialType === 2) {
+                    const grad = colorMenuCtx.createLinearGradient(30, 130, 482, 130); grad.addColorStop(0, '#000000'); grad.addColorStop(1, '#ffffff'); colorMenuCtx.fillStyle = grad; colorMenuCtx.fillRect(30, 130, 452, 200);
+                    colorMenuCtx.fillStyle = 'rgba(0, 0, 0, 0.4)'; colorMenuCtx.fillRect(30, 200, 452, 60); colorMenuCtx.fillStyle = '#fff'; colorMenuCtx.font = 'bold 24px sans-serif'; colorMenuCtx.fillText(`Emission Brightness Range`, 256, 230);
                 } else {
-                    const gradH = colorMenuCtx.createLinearGradient(30, 160, 482, 160);
+                    const gradH = colorMenuCtx.createLinearGradient(30, 130, 482, 130);
                     gradH.addColorStop(0, '#ff0000'); gradH.addColorStop(1/6, '#ffff00'); gradH.addColorStop(2/6, '#00ff00'); gradH.addColorStop(3/6, '#00ffff'); gradH.addColorStop(4/6, '#0000ff'); gradH.addColorStop(5/6, '#ff00ff'); gradH.addColorStop(1, '#ff0000');
-                    colorMenuCtx.fillStyle = gradH; colorMenuCtx.fillRect(30, 160, 452, 180);
-                    const gradV = colorMenuCtx.createLinearGradient(30, 160, 30, 340);
+                    colorMenuCtx.fillStyle = gradH; colorMenuCtx.fillRect(30, 130, 452, 200);
+                    const gradV = colorMenuCtx.createLinearGradient(30, 130, 30, 330);
                     gradV.addColorStop(0, 'rgba(255,255,255,1)'); gradV.addColorStop(0.5, 'rgba(255,255,255,0)'); gradV.addColorStop(0.5, 'rgba(0,0,0,0)'); gradV.addColorStop(1, 'rgba(0,0,0,1)');
-                    colorMenuCtx.fillStyle = gradV; colorMenuCtx.fillRect(30, 160, 452, 180);
+                    colorMenuCtx.fillStyle = gradV; colorMenuCtx.fillRect(30, 130, 452, 200);
                 }
-
-                drawButton(colorMenuCtx, 30, 360, 105, 40, 'SOLID', curSlot.mode === 'solid'); 
-                drawButton(colorMenuCtx, 145, 360, 105, 40, 'GRAD-H', curSlot.mode === 'grad_h'); 
-                drawButton(colorMenuCtx, 260, 360, 105, 40, 'GRAD-V', curSlot.mode === 'grad_v'); 
-                drawButton(colorMenuCtx, 375, 360, 107, 40, 'SHIFT', curSlot.mode === 'shift');
-
-                if (curSlot.mat !== 2) {
-                    colorMenuCtx.fillStyle = '#' + curSlot.c1.getHexString(); colorMenuCtx.fillRect(30, 420, 216, 60); colorMenuCtx.strokeStyle = activeSubColor === 1 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeSubColor === 1 ? 4 : 2; colorMenuCtx.strokeRect(30, 420, 216, 60);
-                    colorMenuCtx.fillStyle = '#' + curSlot.c2.getHexString(); colorMenuCtx.fillRect(266, 420, 216, 60); colorMenuCtx.strokeStyle = activeSubColor === 2 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeSubColor === 2 ? 4 : 2; colorMenuCtx.strokeRect(266, 420, 216, 60);
-                    const hsl1 = {}; curSlot.c1.getHSL(hsl1); colorMenuCtx.fillStyle = hsl1.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color 1', 138, 450);
-                    const hsl2 = {}; curSlot.c2.getHSL(hsl2); colorMenuCtx.fillStyle = hsl2.l > 0.6 ? 'black' : 'white'; colorMenuCtx.fillText('Color 2', 374, 450);
+                drawButton(colorMenuCtx, 30, 350, 105, 40, 'SOLID', colorMode === 'solid'); drawButton(colorMenuCtx, 145, 350, 105, 40, 'GRAD-H', colorMode === 'grad_h'); drawButton(colorMenuCtx, 260, 350, 105, 40, 'GRAD-V', colorMode === 'grad_v'); drawButton(colorMenuCtx, 375, 350, 107, 40, 'SHIFT', colorMode === 'shift');
+                
+                const showColor2 = (activeMaterialType !== 2);
+                if (!showColor2) {
+                    colorMenuCtx.fillStyle = '#' + brushColor.getHexString(); colorMenuCtx.fillRect(30, 410, 452, 60); colorMenuCtx.strokeStyle = '#fff'; colorMenuCtx.lineWidth = 4; colorMenuCtx.strokeRect(30, 410, 452, 60);
+                    const hsl1 = {}; brushColor.getHSL(hsl1); colorMenuCtx.fillStyle = hsl1.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color 1', 256, 440);
                 } else {
-                    colorMenuCtx.fillStyle = '#' + curSlot.c1.getHexString(); colorMenuCtx.fillRect(30, 420, 452, 60); colorMenuCtx.strokeStyle = '#fff'; colorMenuCtx.lineWidth = 4; colorMenuCtx.strokeRect(30, 420, 452, 60);
-                    const hsl1 = {}; curSlot.c1.getHSL(hsl1); colorMenuCtx.fillStyle = hsl1.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color 1', 256, 450);
+                    colorMenuCtx.fillStyle = '#' + brushColor.getHexString(); colorMenuCtx.fillRect(30, 410, 216, 60); colorMenuCtx.strokeStyle = activeColorSlot === 1 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSlot === 1 ? 4 : 2; colorMenuCtx.strokeRect(30, 410, 216, 60);
+                    colorMenuCtx.fillStyle = '#' + brushColor2.getHexString(); colorMenuCtx.fillRect(266, 410, 216, 60); colorMenuCtx.strokeStyle = activeColorSlot === 2 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSlot === 2 ? 4 : 2; colorMenuCtx.strokeRect(266, 410, 216, 60);
+                    const hsl1 = {}; brushColor.getHSL(hsl1); colorMenuCtx.fillStyle = hsl1.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color 1', 138, 440);
+                    const hsl2 = {}; brushColor2.getHSL(hsl2); colorMenuCtx.fillStyle = hsl2.l > 0.6 ? 'black' : 'white'; colorMenuCtx.fillText('Color 2', 374, 440);
                 }
             }
             colorMenuTexture.needsUpdate = true;
@@ -765,33 +757,26 @@
 
         function pickColorFromCanvas(cx, cy) {
             let minX, maxX, minY, maxY;
-            if (isPaletteMagnified) { minX = 20; maxX = 492; minY = 50; maxY = 450; } else { minX = 30; maxX = 482; minY = 160; maxY = 340; }
-            const targetColor = activeSubColor === 1 ? palette[activeEditSlot].c1 : palette[activeEditSlot].c2;
-            if (palette[activeEditSlot].mat === 2) { const gray = (cx - minX) / (maxX - minX); targetColor.setRGB(gray, gray, gray); } 
+            if (isPaletteMagnified) { minX = 20; maxX = 492; minY = 50; maxY = 450; } else { minX = 30; maxX = 482; minY = 130; maxY = 330; }
+            const targetColor = activeColorSlot === 1 ? brushColor : brushColor2;
+            if (activeMaterialType === 2) { const gray = (cx - minX) / (maxX - minX); targetColor.setRGB(gray, gray, gray); } 
             else { const h = (cx - minX) / (maxX - minX); const l = 1.0 - ((cy - minY) / (maxY - minY)); targetColor.setHSL(h, 1.0, l); }
             updateCursors(); colorMenuNeedsUpdate = true; 
         }
 
         function handleColorMenuClick(cx, cy) {
-            if (cy >= 20 && cy <= 70) {
-                if (cx >= 30 && cx <= 250) activeEditSlot = 0;
-                if (cx >= 262 && cx <= 482) activeEditSlot = 1;
-            } else if (cy >= 90 && cy <= 140) {
-                if (cx >= 30 && cx <= 170) palette[activeEditSlot].mat = 0;
-                if (cx >= 186 && cx <= 326) palette[activeEditSlot].mat = 1;
-                if (cx >= 342 && cx <= 482) { palette[activeEditSlot].mat = 2; palette[activeEditSlot].mode = 'solid'; activeSubColor = 1; palette[activeEditSlot].c1.setHex(0x808080); }
-            } else if (cy >= 360 && cy <= 400) {
-                if (cx >= 30 && cx <= 135) { palette[activeEditSlot].mode = 'solid'; activeSubColor = 1; }
-                if (cx >= 145 && cx <= 250) palette[activeEditSlot].mode = 'grad_h'; 
-                if (cx >= 260 && cx <= 365) palette[activeEditSlot].mode = 'grad_v'; 
-                if (cx >= 375 && cx <= 482) palette[activeEditSlot].mode = 'shift';
-            } else if (cy >= 420 && cy <= 480) {
-                if (palette[activeEditSlot].mat !== 2) { 
-                    if (cx >= 30 && cx <= 246) activeSubColor = 1; 
-                    if (cx >= 266 && cx <= 482) activeSubColor = 2; 
-                }
+            if (cy >= 60 && cy <= 110) {
+                if (cx >= 30 && cx <= 170) activeMaterialType = 0;
+                if (cx >= 186 && cx <= 326) activeMaterialType = 1;
+                if (cx >= 342 && cx <= 482) { activeMaterialType = 2; activeColorSlot = 1; colorMode = 'solid'; brushColor.setHex(0x808080); updateCursors(); }
             }
-            updateCursors();
+            if (cy >= 350 && cy <= 390) {
+                if (cx >= 30 && cx <= 135) { colorMode = 'solid'; activeColorSlot = 1; updateCursors(); }
+                if (cx >= 145 && cx <= 250) colorMode = 'grad_h'; if (cx >= 260 && cx <= 365) colorMode = 'grad_v'; if (cx >= 375 && cx <= 482) colorMode = 'shift';
+            }
+            if (cy >= 410 && cy <= 470) {
+                if (activeMaterialType !== 2) { if (cx >= 30 && cx <= 246) activeColorSlot = 1; if (cx >= 266 && cx <= 482) activeColorSlot = 2; updateCursors(); }
+            }
             colorMenuNeedsUpdate = true;
         }
 
@@ -853,23 +838,41 @@
         function updateGlobalMenuTexture() {
             globalMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; globalMenuCtx.fillRect(0, 0, 512, 512);
             globalMenuCtx.fillStyle = '#4facfe'; globalMenuCtx.font = 'bold 28px sans-serif'; globalMenuCtx.textAlign = 'center'; globalMenuCtx.fillText(`Global Settings`, 256, 40);
-            drawButton(globalMenuCtx, 50, 80, 200, 60, `Vert Lock: ${isVerticalLock ? 'ON' : 'OFF'}`, isVerticalLock);
-            drawButton(globalMenuCtx, 262, 80, 200, 60, `Clr Int: ${clearInternal ? 'ON' : 'OFF'}`, clearInternal);
-            drawButton(globalMenuCtx, 50, 160, 200, 60, `Mirror X: ${mirrorX ? 'ON' : 'OFF'}`, mirrorX); 
-            drawButton(globalMenuCtx, 262, 160, 200, 60, `Mirror Z: ${mirrorZ ? 'ON' : 'OFF'}`, mirrorZ);
-            drawButton(globalMenuCtx, 50, 240, 200, 60, 'Export: BOXES', exportMode === 'boxes'); 
-            drawButton(globalMenuCtx, 262, 240, 200, 60, 'Export: MESH', exportMode === 'mesh');
-            drawButton(globalMenuCtx, 50, 320, 412, 60, `Wireframe: ${surfaceWireframe ? 'SURFACE' : 'INTERNAL'}`, surfaceWireframe);
-            drawButton(globalMenuCtx, 50, 400, 412, 60, 'EXPORT TO .OBJ', false);
+            
+            drawButton(globalMenuCtx, 40, 70, 200, 50, `V-Lock: ${isVerticalLock ? 'ON' : 'OFF'}`, isVerticalLock);
+            drawButton(globalMenuCtx, 272, 70, 200, 50, `Clear Inside: ${clearInterior ? 'ON' : 'OFF'}`, clearInterior);
+
+            drawButton(globalMenuCtx, 40, 140, 200, 50, `Mirror X: ${mirrorX ? 'ON' : 'OFF'}`, mirrorX);
+            drawButton(globalMenuCtx, 272, 140, 200, 50, `Mirror Z: ${mirrorZ ? 'ON' : 'OFF'}`, mirrorZ);
+
+            drawButton(globalMenuCtx, 40, 210, 200, 50, `Divs: INTERNAL`, gridMode === 'internal');
+            drawButton(globalMenuCtx, 272, 210, 200, 50, `Divs: SURFACE`, gridMode === 'surface');
+
+            drawButton(globalMenuCtx, 40, 280, 200, 50, 'Export: BOXES', exportMode === 'boxes');
+            drawButton(globalMenuCtx, 272, 280, 200, 50, 'Export: MESH', exportMode === 'mesh');
+            
+            drawButton(globalMenuCtx, 40, 360, 432, 70, 'EXPORT TO .OBJ', false);
             globalMenuTexture.needsUpdate = true;
         }
 
         function handleGlobalMenuClick(cx, cy) {
-            if (cy >= 80 && cy <= 140) { if (cx >= 50 && cx <= 250) isVerticalLock = !isVerticalLock; if (cx >= 262 && cx <= 462) clearInternal = !clearInternal; }
-            if (cy >= 160 && cy <= 220) { if (cx >= 50 && cx <= 250) mirrorX = !mirrorX; if (cx >= 262 && cx <= 462) mirrorZ = !mirrorZ; }
-            if (cy >= 240 && cy <= 300) { if (cx >= 50 && cx <= 250) exportMode = 'boxes'; if (cx >= 262 && cx <= 462) exportMode = 'mesh'; }
-            if (cy >= 320 && cy <= 380 && cx >= 50 && cx <= 462) surfaceWireframe = !surfaceWireframe;
-            if (cy >= 400 && cy <= 460 && cx >= 50 && cx <= 462) exportToOBJ();
+            if (cy >= 70 && cy <= 120) {
+                if (cx >= 40 && cx <= 240) isVerticalLock = !isVerticalLock;
+                if (cx >= 272 && cx <= 472) clearInterior = !clearInterior;
+            }
+            if (cy >= 140 && cy <= 190) {
+                if (cx >= 40 && cx <= 240) mirrorX = !mirrorX;
+                if (cx >= 272 && cx <= 472) mirrorZ = !mirrorZ;
+            }
+            if (cy >= 210 && cy <= 260) {
+                if (cx >= 40 && cx <= 240) gridMode = 'internal';
+                if (cx >= 272 && cx <= 472) gridMode = 'surface';
+            }
+            if (cy >= 280 && cy <= 330) {
+                if (cx >= 40 && cx <= 240) exportMode = 'boxes';
+                if (cx >= 272 && cx <= 472) exportMode = 'mesh';
+            }
+            if (cy >= 360 && cy <= 430 && cx >= 40 && cx <= 472) exportToOBJ();
             globalMenuNeedsUpdate = true;
         }
 
@@ -943,15 +946,12 @@
         }
 
         // --- Core Tool Algorithms ---
-        function getMat(slotIdx) { return palette[slotIdx].mat; }
-        
-        function getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, slotIdx) {
-            const slot = palette[slotIdx];
-            if (slot.mode === 'solid') return slot.c1;
-            else if (slot.mode === 'grad_h') { let t = 0; if (maxX > minX) t = (gx - minX) / (maxX - minX); return tempColorForDraw.copy(slot.c1).lerp(slot.c2, t); } 
-            else if (slot.mode === 'grad_v') { let t = 0; if (maxY > minY) t = (gy - minY) / (maxY - minY); return tempColorForDraw.copy(slot.c1).lerp(slot.c2, t); } 
-            else if (slot.mode === 'shift') { shiftProgress += 0.001 * shiftDir; if (shiftProgress >= 1) { shiftProgress = 1; shiftDir = -1; } if (shiftProgress <= 0) { shiftProgress = 0; shiftDir = 1; } return tempColorForDraw.copy(slot.c1).lerp(slot.c2, shiftProgress); }
-            return slot.c1;
+        function getDrawColor(gx, gy, gz, minX, maxX, minY, maxY) {
+            if (colorMode === 'solid') return brushColor;
+            else if (colorMode === 'grad_h') { let t = 0; if (maxX > minX) t = (gx - minX) / (maxX - minX); return tempColorForDraw.copy(brushColor).lerp(brushColor2, t); } 
+            else if (colorMode === 'grad_v') { let t = 0; if (maxY > minY) t = (gy - minY) / (maxY - minY); return tempColorForDraw.copy(brushColor).lerp(brushColor2, t); } 
+            else if (colorMode === 'shift') { shiftProgress += 0.001 * shiftDir; if (shiftProgress >= 1) { shiftProgress = 1; shiftDir = -1; } if (shiftProgress <= 0) { shiftProgress = 0; shiftDir = 1; } return tempColorForDraw.copy(brushColor).lerp(brushColor2, shiftProgress); }
+            return brushColor;
         }
 
         function getVoxelMatAndColor(gx, gy, gz, outColor) {
@@ -972,7 +972,7 @@
             if (isPainting) {
                 if (!chunk) { chunk = new Chunk(cx, cy, cz); chunks.set(chunkKey, chunk); }
                 tempPos.set(gx * VOXEL_SIZE, gy * VOXEL_SIZE, gz * VOXEL_SIZE);
-                chunk.addVoxel(lx, ly, lz, tempPos, color, matOverride);
+                chunk.addVoxel(lx, ly, lz, tempPos, color, matOverride !== -1 ? matOverride : activeMaterialType);
             } else if (chunk) chunk.removeVoxel(lx, ly, lz);
         }
 
@@ -995,11 +995,11 @@
             if (mirrorX && mirrorZ && gx !== 0 && gz !== 0) setVoxelCore(-gx, gy, -gz, isPainting, color, matOverride);
         }
 
-        function recolorVoxelSet(gx, gy, gz, color, matOverride) {
-            recolorVoxel(gx, gy, gz, color, matOverride);
-            if (mirrorX && gx !== 0) recolorVoxel(-gx, gy, gz, color, matOverride);
-            if (mirrorZ && gz !== 0) recolorVoxel(gx, gy, -gz, color, matOverride);
-            if (mirrorX && mirrorZ && gx !== 0 && gz !== 0) recolorVoxel(-gx, gy, -gz, color, matOverride);
+        function recolorVoxelSet(gx, gy, gz, color) {
+            recolorVoxel(gx, gy, gz, color, activeMaterialType);
+            if (mirrorX && gx !== 0) recolorVoxel(-gx, gy, gz, color, activeMaterialType);
+            if (mirrorZ && gz !== 0) recolorVoxel(gx, gy, -gz, color, activeMaterialType);
+            if (mirrorX && mirrorZ && gx !== 0 && gz !== 0) recolorVoxel(-gx, gy, -gz, color, activeMaterialType);
         }
 
         // --- Select Tool Functions ---
@@ -1065,7 +1065,7 @@
             transformMode = 'move'; numCopies = 1; selectionRotX = 0; selectionRotY = 0; selectionRotZ = 0;
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
             for(let v of baseSelection) {
-                setVoxelCore(v.x, v.y, v.z, false, null, -1); 
+                setVoxelCore(v.x, v.y, v.z, false, null); 
                 minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y); minZ = Math.min(minZ, v.z); maxZ = Math.max(maxZ, v.z);
             }
             hasSelection = true; selectionOffset.set(0,0,0); selectionGroup.position.set(0,0,0); selectionCenter.set( (minX + maxX)/2, (minY + maxY)/2, (minZ + maxZ)/2 );
@@ -1131,7 +1131,7 @@
             const minX = centerGx - r; const maxX = centerGx + r; const minY = centerGy - r; const maxY = centerGy + r;
             for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
                 if (brushShape === 'sphere' && (dx*dx + dy*dy + dz*dz > rSq)) continue; 
-                setVoxel(centerGx + dx, centerGy + dy, centerGz + dz, isPainting, getDrawColor(centerGx + dx, centerGy + dy, centerGz + dz, minX, maxX, minY, maxY, 0), getMat(0));
+                setVoxel(centerGx + dx, centerGy + dy, centerGz + dz, isPainting, getDrawColor(centerGx + dx, centerGy + dy, centerGz + dz, minX, maxX, minY, maxY));
             }
             leftMenuNeedsUpdate = true;
         }
@@ -1142,20 +1142,23 @@
             const minX = centerGx - r; const maxX = centerGx + r; const minY = centerGy - r; const maxY = centerGy + r;
             for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
                 if (brushShape === 'sphere' && (dx*dx + dy*dy + dz*dz > rSq)) continue; 
-                recolorVoxelSet(centerGx + dx, centerGy + dy, centerGz + dz, getDrawColor(centerGx + dx, centerGy + dy, centerGz + dz, minX, maxX, minY, maxY, 0), getMat(0));
+                recolorVoxelSet(centerGx + dx, centerGy + dy, centerGz + dz, getDrawColor(centerGx + dx, centerGy + dy, centerGz + dz, minX, maxX, minY, maxY));
             }
         }
 
-        function drawLineVoxels(startPos, endPos, isPainting, slotIdx = 0) {
+        function drawLineVoxels(startPos, endPos, isPainting) {
             const steps = Math.min(300, Math.max(1, Math.ceil(startPos.distanceTo(endPos) / (VOXEL_SIZE * 0.25)))); 
             for (let i = 0; i <= steps; i++) {
                 tempPos.lerpVectors(startPos, endPos, i / steps); tempPos.set(Math.round(tempPos.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(tempPos.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(tempPos.z / VOXEL_SIZE) * VOXEL_SIZE);
-                const r = brushSize - 1; const rSq = (r + 0.1) * (r + 0.1); 
-                const centerGx = Math.round(tempPos.x / VOXEL_SIZE); const centerGy = Math.round(tempPos.y / VOXEL_SIZE); const centerGz = Math.round(tempPos.z / VOXEL_SIZE);
-                for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
-                    if (brushShape === 'sphere' && (dx*dx + dy*dy + dz*dz > rSq)) continue; 
-                    setVoxel(centerGx + dx, centerGy + dy, centerGz + dz, isPainting, getDrawColor(centerGx + dx, centerGy + dy, centerGz + dz, centerGx-r, centerGx+r, centerGy-r, centerGy+r, slotIdx), getMat(slotIdx));
-                }
+                placeBrushVoxels(tempPos, isPainting);
+            }
+        }
+
+        function drawPaintLineVoxels(startPos, endPos) {
+            const steps = Math.min(300, Math.max(1, Math.ceil(startPos.distanceTo(endPos) / (VOXEL_SIZE * 0.25)))); 
+            for (let i = 0; i <= steps; i++) {
+                tempPos.lerpVectors(startPos, endPos, i / steps); tempPos.set(Math.round(tempPos.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(tempPos.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(tempPos.z / VOXEL_SIZE) * VOXEL_SIZE);
+                placePaintVoxels(tempPos);
             }
         }
 
@@ -1184,46 +1187,53 @@
             if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
             const w = wireWidth - 1;
 
-            const isDivBox = (val, minV, maxV) => {
-                if (boxDivs <= 1) return false;
-                const step = (maxV - minV) / boxDivs;
-                for (let i = 1; i < boxDivs; i++) {
-                    const center = Math.round(minV + i * step);
-                    const half = (boxDivThick - 1) / 2;
-                    if (val >= Math.ceil(center - half) && val <= Math.floor(center + half + 0.001)) return true;
+            const divX = new Uint8Array(maxX - minX + 1);
+            const divY = new Uint8Array(maxY - minY + 1);
+            const divZ = new Uint8Array(maxZ - minZ + 1);
+
+            if (boxDivs > 1) {
+                const stepX = (maxX - minX) / boxDivs;
+                const stepY = (maxY - minY) / boxDivs;
+                const stepZ = (maxZ - minZ) / boxDivs;
+                const h = (boxDivThick - 1) / 2;
+                
+                for(let i=1; i<boxDivs; i++) {
+                    const cx = Math.round(i * stepX);
+                    for(let v = Math.ceil(cx - h); v <= Math.floor(cx + h + 0.001); v++) if (v >= 0 && v < divX.length) divX[v] = 1;
+                    
+                    const cy = Math.round(i * stepY);
+                    for(let v = Math.ceil(cy - h); v <= Math.floor(cy + h + 0.001); v++) if (v >= 0 && v < divY.length) divY[v] = 1;
+                    
+                    const cz = Math.round(i * stepZ);
+                    for(let v = Math.ceil(cz - h); v <= Math.floor(cz + h + 0.001); v++) if (v >= 0 && v < divZ.length) divZ[v] = 1;
                 }
-                return false;
-            };
+            }
 
             for(let gx = minX; gx <= maxX; gx++) for(let gy = minY; gy <= maxY; gy++) for(let gz = minZ; gz <= maxZ; gz++) {
-                const isSfX = gx <= minX + w || gx >= maxX - w;
-                const isSfY = gy <= minY + w || gy >= maxY - w;
-                const isSfZ = gz <= minZ + w || gz >= maxZ - w;
-                const isSurface = isSfX || isSfY || isSfZ;
+                const c = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY);
+                const isFace = (gx === minX || gx === maxX || gy === minY || gy === maxY || gz === minZ || gz === maxZ);
+                const isEdge = ((gx >= minX && gx <= minX + w) || (gx <= maxX && gx >= maxX - w) ? 1:0) + ((gy >= minY && gy <= minY + w) || (gy <= maxY && gy >= maxY - w) ? 1:0) + ((gz >= minZ && gz <= minZ + w) || (gz <= maxZ && gz >= maxZ - w) ? 1:0) >= 2;
 
-                const isDx = isDivBox(gx, minX, maxX);
-                const isDy = isDivBox(gy, minY, maxY);
-                const isDz = isDivBox(gz, minZ, maxZ);
+                let isDivVoxel = false;
+                if (boxDivs > 1) {
+                    isDivVoxel = divX[gx - minX] === 1 || divY[gy - minY] === 1 || divZ[gz - minZ] === 1;
+                    if (gridMode === 'surface' && !isFace) isDivVoxel = false;
+                }
 
-                const px = isSfX || isDx;
-                const py = isSfY || isDy;
-                const pz = isSfZ || isDz;
+                if (clearInterior && isPainting && !isFace && (boxMode === 'shell' || boxMode === 'wireframe')) {
+                    if (!(isDivVoxel && gridMode === 'internal')) {
+                        setVoxel(gx, gy, gz, false, null);
+                    }
+                }
 
                 if (boxMode === 'wireframe') {
-                    let isWire = ((px?1:0) + (py?1:0) + (pz?1:0)) >= 2;
-                    if (surfaceWireframe && !isSurface) isWire = false;
-
-                    if (isWire) setVoxel(gx, gy, gz, isPainting, getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0), getMat(0));
-                    else if (wireFill && isSurface) setVoxel(gx, gy, gz, isPainting, getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,1), getMat(1));
-                    else if (clearInternal) setVoxel(gx, gy, gz, false, null, -1);
+                    if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, isDivVoxel ? (activeColorSlot === 1 ? brushColor2 : brushColor) : c);
+                    else if (wireFill && isFace) setVoxel(gx, gy, gz, isPainting, activeColorSlot === 1 ? brushColor2 : brushColor);
                 } else if (boxMode === 'shell') {
-                    if (isSurface) {
-                        let colSlot = (isDx || isDy || isDz) ? 1 : 0;
-                        setVoxel(gx, gy, gz, isPainting, getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,colSlot), getMat(colSlot));
-                    } else if (clearInternal) setVoxel(gx, gy, gz, false, null, -1);
+                    if (isFace || isDivVoxel) setVoxel(gx, gy, gz, isPainting, isDivVoxel ? (activeColorSlot === 1 ? brushColor2 : brushColor) : c);
                 } else {
-                    let colSlot = (isDx || isDy || isDz) ? 1 : 0;
-                    setVoxel(gx, gy, gz, isPainting, getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,colSlot), getMat(colSlot));
+                    if (isDivVoxel) setVoxel(gx, gy, gz, isPainting, activeColorSlot === 1 ? brushColor2 : brushColor);
+                    else setVoxel(gx, gy, gz, isPainting, c);
                 }
             }
             leftMenuNeedsUpdate = true;
@@ -1238,11 +1248,17 @@
             const isInside = (x, y, z) => { const nx = rx > 0 ? (x - cx) / rx : 0; const ny = ry > 0 ? (y - cy) / ry : 0; const nz = rz > 0 ? (z - cz) / rz : 0; return (nx * nx + ny * ny + nz * nz) <= 1.05; };
             for(let gx = minX; gx <= maxX; gx++) for(let gy = minY; gy <= maxY; gy++) for(let gz = minZ; gz <= maxZ; gz++) {
                 if (isInside(gx, gy, gz)) {
+                    const isSurface = (!isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) || !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) || !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1));
+                    
+                    if (clearInterior && isPainting && sphereMode === 'shell' && !isSurface) {
+                        setVoxel(gx, gy, gz, false, null);
+                        continue;
+                    }
+
+                    const c = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY);
                     if (sphereMode === 'shell') {
-                        if (!isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) || !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) || !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1)) {
-                            setVoxel(gx, gy, gz, isPainting, getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0), getMat(0));
-                        } else if (clearInternal) setVoxel(gx, gy, gz, false, null, -1);
-                    } else setVoxel(gx, gy, gz, isPainting, getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0), getMat(0));
+                        if (isSurface) setVoxel(gx, gy, gz, isPainting, c);
+                    } else setVoxel(gx, gy, gz, isPainting, c);
                 }
             }
             leftMenuNeedsUpdate = true;
@@ -1311,33 +1327,44 @@
                 return r <= r_limit * (1 - h) + 0.05;
             };
 
-            const isDivT = (gw) => {
-                if (triangleDivs <= 1) return false;
+            const divW = new Uint8Array(ax.maxW - ax.minW + 1);
+            if (triangleDivs > 1) {
                 const step = (ax.maxW - ax.minW) / triangleDivs;
                 for (let i = 1; i < triangleDivs; i++) {
                     const center = Math.round(isFlipped ? ax.maxW - i * step : ax.minW + i * step);
                     const half = (triangleDivThick - 1) / 2;
-                    if (gw >= Math.ceil(center - half) && gw <= Math.floor(center + half + 0.001)) return true;
+                    for(let v = Math.ceil(center - half); v <= Math.floor(center + half + 0.001); v++) {
+                        const idx = v - ax.minW;
+                        if (idx >= 0 && idx < divW.length) divW[idx] = 1;
+                    }
                 }
-                return false;
+            }
+
+            const isDiv = (gw) => {
+                if (triangleDivs <= 1) return false;
+                const idx = gw - ax.minW;
+                return idx >= 0 && idx < divW.length && divW[idx] === 1;
             };
 
-            if (triangleMode === 'wireframe' && !surfaceWireframe) {
-                if (wireFill) {
+            if (triangleMode === 'wireframe') {
+                if (clearInterior && isPainting) {
                     for(let gx = loopMinX; gx <= loopMaxX; gx++) 
                     for(let gy = loopMinY; gy <= loopMaxY; gy++) 
                     for(let gz = loopMinZ; gz <= loopMaxZ; gz++) {
                         if (isInside(gx, gy, gz)) {
-                            let onSf = (!isInside(gx+1,gy,gz) || !isInside(gx-1,gy,gz) || !isInside(gx,gy+1,gz) || !isInside(gx,gy-1,gz) || !isInside(gx,gy,gz+1) || !isInside(gx,gy,gz-1));
-                            if (onSf) setVoxel(gx, gy, gz, isPainting, getDrawColor(gx,gy,gz,loopMinX,loopMaxX,loopMinY,loopMaxY,1), getMat(1));
-                            else if (clearInternal) setVoxel(gx, gy, gz, false, null, -1);
+                            const isSurface = (!isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) || !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) || !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1));
+                            if (!isSurface) setVoxel(gx, gy, gz, false, null);
                         }
                     }
-                } else if (clearInternal) {
+                }
+
+                if (wireFill) {
                     for(let gx = loopMinX; gx <= loopMaxX; gx++) 
                     for(let gy = loopMinY; gy <= loopMaxY; gy++) 
                     for(let gz = loopMinZ; gz <= loopMaxZ; gz++) {
-                        if (isInside(gx,gy,gz)) setVoxel(gx, gy, gz, false, null, -1);
+                        if (isInside(gx, gy, gz) && (!isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) || !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) || !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1))) {
+                            setVoxel(gx, gy, gz, isPainting, activeColorSlot === 1 ? brushColor2 : brushColor);
+                        }
                     }
                 }
 
@@ -1359,27 +1386,27 @@
 
                 const oldBrushSize = brushSize; brushSize = wireWidth;
                 for (let i = 0; i < baseVerts.length; i++) {
-                    drawLineVoxels(baseVerts[i], baseVerts[(i+1)%effN], isPainting, 0);
-                    if (N !== 0 || i % 8 === 0) drawLineVoxels(baseVerts[i], peak, isPainting, 0);
+                    drawLineVoxels(baseVerts[i], baseVerts[(i+1)%effN], isPainting);
+                    if (N !== 0 || i % 8 === 0) drawLineVoxels(baseVerts[i], peak, isPainting);
                 }
 
                 if (triangleDivs > 1) {
                     const step = (ax.maxW - ax.minW) / triangleDivs;
                     for (let d = 1; d < triangleDivs; d++) {
-                        const divW = isFlipped ? ax.maxW - d * step : ax.minW + d * step;
-                        const h = (ax.maxW === ax.minW) ? 0 : Math.abs(divW - baseW) / (ax.maxW - ax.minW);
+                        const divCenter = isFlipped ? ax.maxW - d * step : ax.minW + d * step;
+                        const h = (ax.maxW === ax.minW) ? 0 : Math.abs(divCenter - baseW) / (ax.maxW - ax.minW);
                         const scale = 1 - h;
                         const divVerts = [];
                         for (let i = 0; i < effN; i++) {
                             const phi = i * (2 * Math.PI / effN) - (N === 0 ? 0 : Math.PI / N);
                             const r_v = N === 0 ? 1 : 1 / Math.cos(Math.PI / N);
                             let vx, vy, vz;
-                            if (triangleAxis === 'X') { vx = divW; vy = cY + rY * r_v * Math.cos(phi) * scale; vz = cZ + rZ * r_v * Math.sin(phi) * scale; }
-                            else if (triangleAxis === 'Y') { vx = cX + rX * r_v * Math.cos(phi) * scale; vy = divW; vz = cZ + rZ * r_v * Math.sin(phi) * scale; }
-                            else { vx = cX + rX * r_v * Math.cos(phi) * scale; vy = cY + rY * r_v * Math.sin(phi) * scale; vz = divW; }
+                            if (triangleAxis === 'X') { vx = divCenter; vy = cY + rY * r_v * Math.cos(phi) * scale; vz = cZ + rZ * r_v * Math.sin(phi) * scale; }
+                            else if (triangleAxis === 'Y') { vx = cX + rX * r_v * Math.cos(phi) * scale; vy = divCenter; vz = cZ + rZ * r_v * Math.sin(phi) * scale; }
+                            else { vx = cX + rX * r_v * Math.cos(phi) * scale; vy = cY + rY * r_v * Math.sin(phi) * scale; vz = divCenter; }
                             divVerts.push(new THREE.Vector3(vx * VOXEL_SIZE, vy * VOXEL_SIZE, vz * VOXEL_SIZE));
                         }
-                        for (let i = 0; i < divVerts.length; i++) drawLineVoxels(divVerts[i], divVerts[(i+1)%effN], isPainting, 0);
+                        for (let i = 0; i < divVerts.length; i++) drawLineVoxels(divVerts[i], divVerts[(i+1)%effN], isPainting);
                     }
                 }
                 brushSize = oldBrushSize;
@@ -1387,59 +1414,44 @@
                 return;
             }
 
+            // Solid / Shell logic
             for(let gx = loopMinX; gx <= loopMaxX; gx++) 
             for(let gy = loopMinY; gy <= loopMaxY; gy++) 
             for(let gz = loopMinZ; gz <= loopMaxZ; gz++) {
                 if (isInside(gx, gy, gz)) {
+                    const c = getDrawColor(gx, gy, gz, loopMinX, loopMaxX, loopMinY, loopMaxY);
                     const gw = triangleAxis === 'X' ? gx : (triangleAxis === 'Y' ? gy : gz);
-                    let onSurface = (!isInside(gx+1,gy,gz) || !isInside(gx-1,gy,gz) || !isInside(gx,gy+1,gz) || !isInside(gx,gy-1,gz) || !isInside(gx,gy,gz+1) || !isInside(gx,gy,gz-1));
                     
-                    let isEdge = false;
-                    if (triangleMode === 'wireframe' || !coneCap) {
-                        if (N !== 0) {
-                            const gu = triangleAxis === 'X' ? gy : (triangleAxis === 'Y' ? gx : gx);
-                            const gv = triangleAxis === 'X' ? gz : (triangleAxis === 'Y' ? gz : gy);
-                            const cu = triangleAxis === 'X' ? cY : (triangleAxis === 'Y' ? cX : cX);
-                            const cv = triangleAxis === 'X' ? cZ : (triangleAxis === 'Y' ? cZ : cY);
-                            const ru = triangleAxis === 'X' ? rY : (triangleAxis === 'Y' ? rX : rX);
-                            const rv = triangleAxis === 'X' ? rZ : (triangleAxis === 'Y' ? rZ : rY);
-                            const nu = ru > 0 ? (gu - cu) / ru : 0;
-                            const nv = rv > 0 ? (gv - cv) / rv : 0;
-                            const phi = Math.atan2(nv, nu);
-                            const PI_N = Math.PI / N;
-                            let angle = ((phi + PI_N) % (2*PI_N) + 2*PI_N) % (2*PI_N);
-                            const angDist = Math.min(angle, (2*PI_N) - angle);
-                            const r = Math.sqrt(nu*nu + nv*nv);
-                            const avgR = (ru + rv) / 2;
-                            const realDist = angDist * r * avgR * VOXEL_SIZE;
-                            if (realDist <= (wireWidth * VOXEL_SIZE) / 2) isEdge = true;
+                    let isSurface = (!isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) || !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) || !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1));
+                    
+                    if (triangleMode === 'shell') {
+                        if (isSurface && !coneCap && gw === baseW) {
+                            let isEdge = false;
+                            if (triangleAxis === 'X' && (!isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) || !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1))) isEdge = true;
+                            if (triangleAxis === 'Y' && (!isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) || !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1))) isEdge = true;
+                            if (triangleAxis === 'Z' && (!isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) || !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz))) isEdge = true;
+                            if (!isEdge) isSurface = false; 
                         }
-                        if (Math.abs(gw - baseW) <= wireWidth - 1) isEdge = true;
                     }
 
-                    const isD = isDivT(gw);
+                    let isDivVoxel = isDiv(gw);
+                    if (gridMode === 'surface' && !isSurface) isDivVoxel = false;
 
-                    if (triangleMode === 'wireframe') { 
-                        let isWire = onSurface && (isEdge || isD);
-                        if (isWire) {
-                            setVoxel(gx, gy, gz, isPainting, getDrawColor(gx,gy,gz,loopMinX,loopMaxX,loopMinY,loopMaxY,0), getMat(0));
-                        } else if (wireFill && onSurface) {
-                            setVoxel(gx, gy, gz, isPainting, getDrawColor(gx,gy,gz,loopMinX,loopMaxX,loopMinY,loopMaxY,1), getMat(1));
-                        } else if (clearInternal) setVoxel(gx, gy, gz, false, null, -1);
-                    } else if (triangleMode === 'shell') {
-                        if (onSurface) {
-                            if (!coneCap && gw === baseW && !isEdge) {
-                                if (clearInternal) setVoxel(gx, gy, gz, false, null, -1);
-                            } else {
-                                let colSlot = isD ? 1 : 0;
-                                setVoxel(gx, gy, gz, isPainting, getDrawColor(gx,gy,gz,loopMinX,loopMaxX,loopMinY,loopMaxY,colSlot), getMat(colSlot));
-                            }
-                        } else if (clearInternal) setVoxel(gx, gy, gz, false, null, -1);
-                    } else {
-                        let colSlot = isD ? 1 : 0;
-                        setVoxel(gx, gy, gz, isPainting, getDrawColor(gx,gy,gz,loopMinX,loopMaxX,loopMinY,loopMaxY,colSlot), getMat(colSlot));
+                    if (clearInterior && isPainting && !isSurface && (triangleMode === 'shell' || triangleMode === 'wireframe')) {
+                        if (!(isDivVoxel && gridMode === 'internal')) {
+                            setVoxel(gx, gy, gz, false, null);
+                            continue;
+                        }
                     }
 
+                    if (isDivVoxel) {
+                        setVoxel(gx, gy, gz, isPainting, activeColorSlot === 1 ? brushColor2 : brushColor);
+                        continue;
+                    }
+
+                    if (triangleMode === 'solid' || isSurface) {
+                        setVoxel(gx, gy, gz, isPainting, c);
+                    }
                 }
             }
             leftMenuNeedsUpdate = true;
@@ -1461,21 +1473,22 @@
                 if (flatAxis === 'x') { u = gy; v = gz; minU = minY; maxU = maxY; minV = minZ; maxV = maxZ; } else if (flatAxis === 'y') { u = gx; v = gz; minU = minX; maxU = maxX; minV = minZ; maxV = maxZ; } else { u = gx; v = gy; minU = minX; maxU = maxX; minV = minY; maxV = maxY; }
                 const distU = Math.min(u - minU, maxU - u); const distV = Math.min(v - minV, maxV - v); const minDist = Math.min(distU, distV);
                 
-                let shouldDraw = false; let dColor, dMat;
+                let shouldDraw = false;
+                let drawColor = brushColor;
                 
                 if (minDist < planeOutlineThick) { 
-                    if (planeOutline) { shouldDraw = true; dColor = getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0); dMat = getMat(0); } 
+                    if (planeOutline) { shouldDraw = true; drawColor = brushColor; } 
                 } else {
                     const gSizeU = (maxU - planeOutlineThick) - (minU + planeOutlineThick) + 1; const gSizeV = (maxV - planeOutlineThick) - (minV + planeOutlineThick) + 1;
                     if (gSizeU > 0 && gSizeV > 0) {
                         if (isGridOnAxis(planeDivU, u - (minU + planeOutlineThick), gSizeU, planeGridThick) || isGridOnAxis(planeDivV, v - (minV + planeOutlineThick), gSizeV, planeGridThick)) {
-                            if (planeGrid) { shouldDraw = true; dColor = getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0); dMat = getMat(0); }
+                            if (planeGrid) { shouldDraw = true; drawColor = brushColor; }
                         } else {
-                            if (planeFill) { shouldDraw = true; dColor = getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,1); dMat = getMat(1); }
+                            if (planeFill) { shouldDraw = true; drawColor = brushColor2; }
                         }
                     }
                 }
-                if (shouldDraw) setVoxel(gx, gy, gz, isPainting, dColor, dMat);
+                if (shouldDraw) setVoxel(gx, gy, gz, isPainting, drawColor);
             }
             leftMenuNeedsUpdate = true;
         }
@@ -1500,21 +1513,21 @@
                     else handleLeftMenuClick(cx, cy);
                 } else if (colorMenuHovered && colorMenuMesh.visible) {
                     const cx = Math.floor(colorMenuUV.x * 512); const cy = Math.floor((1 - colorMenuUV.y) * 512);
-                    if (cy >= 160 && cy <= 340 && cx >= 30 && cx <= 482) { isColorPicking = true; isPaletteMagnified = true; updateColorMenuTexture(); } else handleColorMenuClick(cx, cy);
+                    if (cy >= 130 && cy <= 330 && cx >= 30 && cx <= 482) { isColorPicking = true; isPaletteMagnified = true; updateColorMenuTexture(); } else handleColorMenuClick(cx, cy);
                 } else {
                     if (activeTool === 'select') {
                         if (hasSelection) { isDrawing = true; dragStartCtrlPos.copy(rightTargetLocal); dragStartOffset.copy(selectionGroup.position); } 
                         else { if (selectMode === 'box') { isDrawing = true; drawStartPos.copy(rightTargetLocal); isPreviewingBox = true; } else if (selectMode === 'connected') executeSelectConnected(rightTargetLocal); }
                     } else if (activeTool === 'stroke' && strokeMode === 'line') {
-                        if (isPreviewingLineLeft) { drawLineVoxels(lineStartLeft, rightTargetLocal, false, 0); isPreviewingLineLeft = false; lineStartLeft.set(Infinity, Infinity, Infinity); } 
+                        if (isPreviewingLineLeft) { drawLineVoxels(lineStartLeft, rightTargetLocal, false); isPreviewingLineLeft = false; lineStartLeft.set(Infinity, Infinity, Infinity); } 
                         else if (!isPreviewingLineRight) { lineStartRight.copy(rightTargetLocal); isPreviewingLineRight = true; } 
-                        else { drawLineVoxels(lineStartRight, rightTargetLocal, true, 0); lineStartRight.copy(rightTargetLocal); }
+                        else { drawLineVoxels(lineStartRight, rightTargetLocal, true); lineStartRight.copy(rightTargetLocal); }
                     } else {
                         isDrawing = true; drawStartPos.copy(rightTargetLocal); 
                         if (activeTool === 'paint' && paintMode === 'bucket' && hoveredFillCoords.length > 0) {
                             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
                             for (let i = 0; i < hoveredFillCoords.length; i+=3) { const px = hoveredFillCoords[i]; const py = hoveredFillCoords[i+1]; if (px < minX) minX = px; if (px > maxX) maxX = px; if (py < minY) minY = py; if (py > maxY) maxY = py; }
-                            for (let i = 0; i < hoveredFillCoords.length; i+=3) recolorVoxelSet(hoveredFillCoords[i], hoveredFillCoords[i+1], hoveredFillCoords[i+2], getDrawColor(hoveredFillCoords[i], hoveredFillCoords[i+1], hoveredFillCoords[i+2], minX, maxX, minY, maxY, 0), getMat(0));
+                            for (let i = 0; i < hoveredFillCoords.length; i+=3) recolorVoxelSet(hoveredFillCoords[i], hoveredFillCoords[i+1], hoveredFillCoords[i+2], getDrawColor(hoveredFillCoords[i], hoveredFillCoords[i+1], hoveredFillCoords[i+2], minX, maxX, minY, maxY));
                             leftMenuNeedsUpdate = true; lastHoveredVoxel.set(Infinity, Infinity, Infinity); hoveredFillCoords.length = 0; bucketPreviewMesh.visible = false;
                         }
                         if (activeTool === 'box') isPreviewingBox = true; if (activeTool === 'quadsphere') isPreviewingSphere = true; if (activeTool === 'plane') isPreviewingPlane = true;
@@ -1527,9 +1540,9 @@
                 else {
                     if (activeTool === 'select' && hasSelection) applySelection();
                     else if (activeTool === 'stroke' && strokeMode === 'line') {
-                        if (isPreviewingLineRight) { drawLineVoxels(lineStartRight, leftTargetLocal, true, 0); isPreviewingLineRight = false; lineStartRight.set(Infinity, Infinity, Infinity); } 
+                        if (isPreviewingLineRight) { drawLineVoxels(lineStartRight, leftTargetLocal, true); isPreviewingLineRight = false; lineStartRight.set(Infinity, Infinity, Infinity); } 
                         else if (!isPreviewingLineLeft) { lineStartLeft.copy(leftTargetLocal); isPreviewingLineLeft = true; } 
-                        else { drawLineVoxels(lineStartLeft, leftTargetLocal, false, 0); lineStartLeft.copy(leftTargetLocal); }
+                        else { drawLineVoxels(lineStartLeft, leftTargetLocal, false); lineStartLeft.copy(leftTargetLocal); }
                     } else {
                         isErasing = true; drawStartPos.copy(leftTargetLocal);
                         if (activeTool === 'box') isPreviewingBox = true; if (activeTool === 'quadsphere') isPreviewingSphere = true; if (activeTool === 'plane') isPreviewingPlane = true;
@@ -1668,7 +1681,7 @@
                 } else if (isColorPicking && colorMenuHovered) {
                     const cx = Math.floor(colorMenuUV.x * 512); const cy = Math.floor((1 - colorMenuUV.y) * 512);
                     let clampX, clampY;
-                    if (isPaletteMagnified) { clampX = Math.max(20, Math.min(492, cx)); clampY = Math.max(50, Math.min(450, cy)); } else { clampX = Math.max(30, Math.min(482, cx)); clampY = Math.max(160, Math.min(340, cy)); }
+                    if (isPaletteMagnified) { clampX = Math.max(20, Math.min(492, cx)); clampY = Math.max(50, Math.min(450, cy)); } else { clampX = Math.max(30, Math.min(482, cx)); clampY = Math.max(130, Math.min(330, cy)); }
                     pickColorFromCanvas(clampX, clampY);
                 }
 
@@ -1734,7 +1747,7 @@
                     else if (activeTool === 'brush') { if (!rightTargetLocal.equals(lastPaintedPos)) { placeBrushVoxels(rightTargetLocal, true); lastPaintedPos.copy(rightTargetLocal); } }
                     else if (activeTool === 'stroke' && strokeMode === 'continuous') {
                         if (lastPaintedPos.x === Infinity) { placeBrushVoxels(rightTargetLocal, true); lastPaintedPos.copy(rightTargetLocal); }
-                        else if (!rightTargetLocal.equals(lastPaintedPos)) { drawLineVoxels(lastPaintedPos, rightTargetLocal, true, 0); lastPaintedPos.copy(rightTargetLocal); }
+                        else if (!rightTargetLocal.equals(lastPaintedPos)) { drawLineVoxels(lastPaintedPos, rightTargetLocal, true); lastPaintedPos.copy(rightTargetLocal); }
                     }
                     else if (activeTool === 'paint' && paintMode === 'brush') { 
                         if (lastPaintedPos.x === Infinity) { placePaintVoxels(rightTargetLocal); lastPaintedPos.copy(rightTargetLocal); } 
@@ -1751,7 +1764,7 @@
                     if (activeTool === 'brush') { if (!leftTargetLocal.equals(lastErasedPos)) { placeBrushVoxels(leftTargetLocal, false); lastErasedPos.copy(leftTargetLocal); } }
                     else if (activeTool === 'stroke' && strokeMode === 'continuous') {
                         if (lastErasedPos.x === Infinity) { placeBrushVoxels(leftTargetLocal, false); lastErasedPos.copy(leftTargetLocal); }
-                        else if (!leftTargetLocal.equals(lastErasedPos)) { drawLineVoxels(lastErasedPos, leftTargetLocal, false, 0); lastErasedPos.copy(leftTargetLocal); }
+                        else if (!leftTargetLocal.equals(lastErasedPos)) { drawLineVoxels(lastErasedPos, leftTargetLocal, false); lastErasedPos.copy(leftTargetLocal); }
                     }
                     else if (activeTool === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, leftTargetLocal, false);
                     else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, leftTargetLocal, false);
@@ -1778,7 +1791,7 @@
                             }
                         }
                         linePreviewMesh.count = instCount; linePreviewMesh.instanceMatrix.needsUpdate = true;
-                        if (previewLinePainting) linePreviewMat.color.copy(palette[0].c1); else linePreviewMat.color.setHex(0xff0055);
+                        if (previewLinePainting) linePreviewMat.color.copy(activeColorSlot === 1 ? brushColor : brushColor2); else linePreviewMat.color.setHex(0xff0055);
                         linePreviewMesh.visible = true;
                     } else {
                         linePreviewMesh.visible = false;
