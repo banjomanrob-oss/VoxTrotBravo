@@ -1212,25 +1212,45 @@
             for(let gx = minX; gx <= maxX; gx++) for(let gy = minY; gy <= maxY; gy++) for(let gz = minZ; gz <= maxZ; gz++) {
                 const c = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY);
                 const isFace = (gx === minX || gx === maxX || gy === minY || gy === maxY || gz === minZ || gz === maxZ);
-                const isEdge = ((gx >= minX && gx <= minX + w) || (gx <= maxX && gx >= maxX - w) ? 1:0) + ((gy >= minY && gy <= minY + w) || (gy <= maxY && gy >= maxY - w) ? 1:0) + ((gz >= minZ && gz <= minZ + w) || (gz <= maxZ && gz >= maxZ - w) ? 1:0) >= 2;
+                
+                const isOuterX = (gx >= minX && gx <= minX + w) || (gx <= maxX && gx >= maxX - w);
+                const isOuterY = (gy >= minY && gy <= minY + w) || (gy <= maxY && gy >= maxY - w);
+                const isOuterZ = (gz >= minZ && gz <= minZ + w) || (gz <= maxZ && gz >= maxZ - w);
+                
+                let onX = isOuterX;
+                let onY = isOuterY;
+                let onZ = isOuterZ;
+                let isDivCoord = false;
 
-                let isDivVoxel = false;
                 if (boxDivs > 1) {
-                    isDivVoxel = divX[gx - minX] === 1 || divY[gy - minY] === 1 || divZ[gz - minZ] === 1;
-                    if (gridMode === 'surface' && !isFace) isDivVoxel = false;
+                    if (divX[gx - minX] === 1) { onX = true; isDivCoord = true; }
+                    if (divY[gy - minY] === 1) { onY = true; isDivCoord = true; }
+                    if (divZ[gz - minZ] === 1) { onZ = true; isDivCoord = true; }
+                }
+
+                const edgeScore = (onX ? 1 : 0) + (onY ? 1 : 0) + (onZ ? 1 : 0);
+                const isEdge = (isOuterX ? 1 : 0) + (isOuterY ? 1 : 0) + (isOuterZ ? 1 : 0) >= 2;
+                
+                let isDivVoxel = false;
+                if (boxDivs > 1 && edgeScore >= 2 && isDivCoord) {
+                    isDivVoxel = true;
+                    if (gridMode === 'surface' && !isFace) {
+                        isDivVoxel = false;
+                    }
                 }
 
                 if (clearInterior && isPainting && !isFace && (boxMode === 'shell' || boxMode === 'wireframe')) {
                     if (!(isDivVoxel && gridMode === 'internal')) {
                         setVoxel(gx, gy, gz, false, null);
+                        continue;
                     }
                 }
 
                 if (boxMode === 'wireframe') {
-                    if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, isDivVoxel ? (activeColorSlot === 1 ? brushColor2 : brushColor) : c);
+                    if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, isDivVoxel && !isEdge ? (activeColorSlot === 1 ? brushColor2 : brushColor) : c);
                     else if (wireFill && isFace) setVoxel(gx, gy, gz, isPainting, activeColorSlot === 1 ? brushColor2 : brushColor);
                 } else if (boxMode === 'shell') {
-                    if (isFace || isDivVoxel) setVoxel(gx, gy, gz, isPainting, isDivVoxel ? (activeColorSlot === 1 ? brushColor2 : brushColor) : c);
+                    if (isFace || isDivVoxel) setVoxel(gx, gy, gz, isPainting, isDivVoxel && !isFace ? (activeColorSlot === 1 ? brushColor2 : brushColor) : c);
                 } else {
                     if (isDivVoxel) setVoxel(gx, gy, gz, isPainting, activeColorSlot === 1 ? brushColor2 : brushColor);
                     else setVoxel(gx, gy, gz, isPainting, c);
@@ -1299,15 +1319,15 @@
             const loopMinZ = triangleAxis === 'Z' ? minZ : Math.floor(cZ - rZ * max_r);
             const loopMaxZ = triangleAxis === 'Z' ? maxZ : Math.ceil(cZ + rZ * max_r);
 
+            const cu = triangleAxis === 'X' ? cY : (triangleAxis === 'Y' ? cX : cX);
+            const cv = triangleAxis === 'X' ? cZ : (triangleAxis === 'Y' ? cZ : cY);
+            const ru = triangleAxis === 'X' ? rY : (triangleAxis === 'Y' ? rX : rX);
+            const rv = triangleAxis === 'X' ? rZ : (triangleAxis === 'Y' ? rZ : rY);
+
             const isInside = (gx, gy, gz) => {
                 const gw = triangleAxis === 'X' ? gx : (triangleAxis === 'Y' ? gy : gz);
                 const gu = triangleAxis === 'X' ? gy : (triangleAxis === 'Y' ? gx : gx);
                 const gv = triangleAxis === 'X' ? gz : (triangleAxis === 'Y' ? gz : gy);
-
-                const cu = triangleAxis === 'X' ? cY : (triangleAxis === 'Y' ? cX : cX);
-                const cv = triangleAxis === 'X' ? cZ : (triangleAxis === 'Y' ? cZ : cY);
-                const ru = triangleAxis === 'X' ? rY : (triangleAxis === 'Y' ? rX : rX);
-                const rv = triangleAxis === 'X' ? rZ : (triangleAxis === 'Y' ? rZ : rY);
 
                 if (gw < ax.minW || gw > ax.maxW) return false;
                 const h = (ax.maxW === ax.minW) ? 0 : Math.abs(gw - baseW) / (ax.maxW - ax.minW);
@@ -1346,81 +1366,15 @@
                 return idx >= 0 && idx < divW.length && divW[idx] === 1;
             };
 
-            if (triangleMode === 'wireframe') {
-                if (clearInterior && isPainting) {
-                    for(let gx = loopMinX; gx <= loopMaxX; gx++) 
-                    for(let gy = loopMinY; gy <= loopMaxY; gy++) 
-                    for(let gz = loopMinZ; gz <= loopMaxZ; gz++) {
-                        if (isInside(gx, gy, gz)) {
-                            const isSurface = (!isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) || !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) || !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1));
-                            if (!isSurface) setVoxel(gx, gy, gz, false, null);
-                        }
-                    }
-                }
-
-                if (wireFill) {
-                    for(let gx = loopMinX; gx <= loopMaxX; gx++) 
-                    for(let gy = loopMinY; gy <= loopMaxY; gy++) 
-                    for(let gz = loopMinZ; gz <= loopMaxZ; gz++) {
-                        if (isInside(gx, gy, gz) && (!isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) || !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) || !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1))) {
-                            setVoxel(gx, gy, gz, isPainting, activeColorSlot === 1 ? brushColor2 : brushColor);
-                        }
-                    }
-                }
-
-                const baseVerts = [];
-                const effN = (N === 0) ? 32 : N;
-                for (let i = 0; i < effN; i++) {
-                    const phi = i * (2 * Math.PI / effN) - (N === 0 ? 0 : Math.PI / N);
-                    const r_v = N === 0 ? 1 : 1 / Math.cos(Math.PI / N);
-                    let vx, vy, vz;
-                    if (triangleAxis === 'X') { vx = baseW; vy = cY + rY * r_v * Math.cos(phi); vz = cZ + rZ * r_v * Math.sin(phi); }
-                    else if (triangleAxis === 'Y') { vx = cX + rX * r_v * Math.cos(phi); vy = baseW; vz = cZ + rZ * r_v * Math.sin(phi); }
-                    else { vx = cX + rX * r_v * Math.cos(phi); vy = cY + rY * r_v * Math.sin(phi); vz = baseW; }
-                    baseVerts.push(new THREE.Vector3(vx * VOXEL_SIZE, vy * VOXEL_SIZE, vz * VOXEL_SIZE));
-                }
-
-                let pX = cX, pY = cY, pZ = cZ;
-                if (triangleAxis === 'X') pX = peakW; if (triangleAxis === 'Y') pY = peakW; if (triangleAxis === 'Z') pZ = peakW;
-                const peak = new THREE.Vector3(pX * VOXEL_SIZE, pY * VOXEL_SIZE, pZ * VOXEL_SIZE);
-
-                const oldBrushSize = brushSize; brushSize = wireWidth;
-                for (let i = 0; i < baseVerts.length; i++) {
-                    drawLineVoxels(baseVerts[i], baseVerts[(i+1)%effN], isPainting);
-                    if (N !== 0 || i % 8 === 0) drawLineVoxels(baseVerts[i], peak, isPainting);
-                }
-
-                if (triangleDivs > 1) {
-                    const step = (ax.maxW - ax.minW) / triangleDivs;
-                    for (let d = 1; d < triangleDivs; d++) {
-                        const divCenter = isFlipped ? ax.maxW - d * step : ax.minW + d * step;
-                        const h = (ax.maxW === ax.minW) ? 0 : Math.abs(divCenter - baseW) / (ax.maxW - ax.minW);
-                        const scale = 1 - h;
-                        const divVerts = [];
-                        for (let i = 0; i < effN; i++) {
-                            const phi = i * (2 * Math.PI / effN) - (N === 0 ? 0 : Math.PI / N);
-                            const r_v = N === 0 ? 1 : 1 / Math.cos(Math.PI / N);
-                            let vx, vy, vz;
-                            if (triangleAxis === 'X') { vx = divCenter; vy = cY + rY * r_v * Math.cos(phi) * scale; vz = cZ + rZ * r_v * Math.sin(phi) * scale; }
-                            else if (triangleAxis === 'Y') { vx = cX + rX * r_v * Math.cos(phi) * scale; vy = divCenter; vz = cZ + rZ * r_v * Math.sin(phi) * scale; }
-                            else { vx = cX + rX * r_v * Math.cos(phi) * scale; vy = cY + rY * r_v * Math.sin(phi) * scale; vz = divCenter; }
-                            divVerts.push(new THREE.Vector3(vx * VOXEL_SIZE, vy * VOXEL_SIZE, vz * VOXEL_SIZE));
-                        }
-                        for (let i = 0; i < divVerts.length; i++) drawLineVoxels(divVerts[i], divVerts[(i+1)%effN], isPainting);
-                    }
-                }
-                brushSize = oldBrushSize;
-                leftMenuNeedsUpdate = true;
-                return;
-            }
-
-            // Solid / Shell logic
+            // Unified Render Logic
             for(let gx = loopMinX; gx <= loopMaxX; gx++) 
             for(let gy = loopMinY; gy <= loopMaxY; gy++) 
             for(let gz = loopMinZ; gz <= loopMaxZ; gz++) {
                 if (isInside(gx, gy, gz)) {
                     const c = getDrawColor(gx, gy, gz, loopMinX, loopMaxX, loopMinY, loopMaxY);
                     const gw = triangleAxis === 'X' ? gx : (triangleAxis === 'Y' ? gy : gz);
+                    const gu = triangleAxis === 'X' ? gy : (triangleAxis === 'Y' ? gx : gx);
+                    const gv = triangleAxis === 'X' ? gz : (triangleAxis === 'Y' ? gz : gy);
                     
                     let isSurface = (!isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) || !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) || !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1));
                     
@@ -1434,23 +1388,58 @@
                         }
                     }
 
+                    // Tweak 1: Divisions map exclusively to the surface shell
                     let isDivVoxel = isDiv(gw);
-                    if (gridMode === 'surface' && !isSurface) isDivVoxel = false;
+                    if (!isSurface) isDivVoxel = false; 
 
-                    if (clearInterior && isPainting && !isSurface && (triangleMode === 'shell' || triangleMode === 'wireframe')) {
-                        if (!(isDivVoxel && gridMode === 'internal')) {
+                    // Tweak 1: Real-time mathematical wireframe (hollows the interior flawlessly)
+                    if (triangleMode === 'wireframe') {
+                        let isWire = false;
+                        
+                        if (Math.abs(gw - baseW) < wireWidth) isWire = true;
+                        if (isDivVoxel) isWire = true;
+
+                        const N_legs = N === 0 ? 8 : N; 
+                        const nu = ru > 0 ? (gu - cu) / ru : 0;
+                        const nv = rv > 0 ? (gv - cv) / rv : 0;
+                        
+                        let phi = Math.atan2(nv, nu);
+                        if (phi < 0) phi += 2 * Math.PI;
+                        
+                        let onLeg = false;
+                        const r_scaled = Math.sqrt(nu*nu + nv*nv) * ((rX + rY) / 2);
+                        if (r_scaled < wireWidth) {
+                            onLeg = true; 
+                        } else {
+                            for(let i=0; i < N_legs; i++) {
+                                const tp = (i * (2 * Math.PI / N_legs) - (N === 0 ? 0 : Math.PI / N_legs) + 2 * Math.PI) % (2 * Math.PI);
+                                let diff = Math.abs(phi - tp);
+                                if (diff > Math.PI) diff = 2 * Math.PI - diff;
+                                
+                                if (diff * r_scaled <= (wireWidth - 0.2)) {
+                                    onLeg = true; break;
+                                }
+                            }
+                        }
+                        if (onLeg) isWire = true;
+
+                        if (isSurface) {
+                            if (isWire) setVoxel(gx, gy, gz, isPainting, isDivVoxel && !onLeg && Math.abs(gw - baseW) >= wireWidth ? (activeColorSlot === 1 ? brushColor2 : brushColor) : c);
+                            else if (wireFill) setVoxel(gx, gy, gz, isPainting, activeColorSlot === 1 ? brushColor2 : brushColor);
+                        } else if (clearInterior && isPainting) {
+                            setVoxel(gx, gy, gz, false, null);
+                        }
+                    } else {
+                        if (clearInterior && isPainting && !isSurface && triangleMode === 'shell') {
                             setVoxel(gx, gy, gz, false, null);
                             continue;
                         }
-                    }
 
-                    if (isDivVoxel) {
-                        setVoxel(gx, gy, gz, isPainting, activeColorSlot === 1 ? brushColor2 : brushColor);
-                        continue;
-                    }
-
-                    if (triangleMode === 'solid' || isSurface) {
-                        setVoxel(gx, gy, gz, isPainting, c);
+                        if (isDivVoxel) {
+                            setVoxel(gx, gy, gz, isPainting, activeColorSlot === 1 ? brushColor2 : brushColor);
+                        } else if (triangleMode === 'solid' || isSurface) {
+                            setVoxel(gx, gy, gz, isPainting, c);
+                        }
                     }
                 }
             }
