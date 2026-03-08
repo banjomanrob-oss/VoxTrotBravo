@@ -62,7 +62,10 @@
         let brushSize = 1; 
         
         let boxMode = 'shell'; 
-        let boxDivs = 1;
+        let boxGridMode = 'internal';
+        let boxDivX = 1;
+        let boxDivY = 1;
+        let boxDivZ = 1;
         let boxDivThick = 1;
 
         let sphereMode = 'shell';
@@ -70,6 +73,7 @@
         let triangleType = 'cone'; 
         let triangleMode = 'solid';
         let triangleAxis = 'Y';
+        let triangleGridMode = 'internal';
         let triangleDivs = 1;
         let triangleDivThick = 1;
         let coneCap = true;
@@ -126,7 +130,6 @@
         let mirrorX = false;
         let mirrorZ = false;
         let clearInterior = false; 
-        let gridMode = 'internal'; 
         
         let isPreviewingBox = false;
         let isPreviewingSphere = false;
@@ -597,8 +600,14 @@
                     drawButton(leftMenuCtx, 330, 140, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill);
                 }
                 
-                drawButton(leftMenuCtx, 20, 210, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 210, 120, 50, `Divs: ${boxDivs}`, false); drawButton(leftMenuCtx, 210, 210, 50, 50, '+', false);
-                drawButton(leftMenuCtx, 270, 210, 50, 50, '-', false); drawButton(leftMenuCtx, 330, 210, 100, 50, `DThk: ${boxDivThick}`, false); drawButton(leftMenuCtx, 440, 210, 50, 50, '+', false);
+                drawButton(leftMenuCtx, 20, 210, 220, 50, `Divs: ${boxGridMode.toUpperCase()}`, false);
+                drawButton(leftMenuCtx, 250, 210, 50, 50, '-', false); drawButton(leftMenuCtx, 310, 210, 120, 50, `DThk: ${boxDivThick}`, false); drawButton(leftMenuCtx, 440, 210, 50, 50, '+', false);
+
+                drawButton(leftMenuCtx, 20, 280, 40, 50, '-', false); drawButton(leftMenuCtx, 70, 280, 100, 50, `DivX: ${boxDivX}`, false); drawButton(leftMenuCtx, 180, 280, 40, 50, '+', false);
+                drawButton(leftMenuCtx, 250, 280, 40, 50, '-', false); drawButton(leftMenuCtx, 300, 280, 100, 50, `DivY: ${boxDivY}`, false); drawButton(leftMenuCtx, 410, 280, 40, 50, '+', false);
+
+                drawButton(leftMenuCtx, 20, 350, 40, 50, '-', false); drawButton(leftMenuCtx, 70, 350, 100, 50, `DivZ: ${boxDivZ}`, false); drawButton(leftMenuCtx, 180, 350, 40, 50, '+', false);
+
             } else if (activeTool === 'quadsphere') {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'SOLID', sphereMode === 'solid'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'SHELL', sphereMode === 'shell');
             } else if (activeTool === 'triangle') {
@@ -619,6 +628,8 @@
                 
                 drawButton(leftMenuCtx, 20, 360, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 360, 120, 50, `Divs: ${triangleDivs}`, false); drawButton(leftMenuCtx, 210, 360, 50, 50, '+', false);
                 drawButton(leftMenuCtx, 270, 360, 50, 50, '-', false); drawButton(leftMenuCtx, 330, 360, 100, 50, `DThk: ${triangleDivThick}`, false); drawButton(leftMenuCtx, 440, 360, 50, 50, '+', false);
+                
+                drawButton(leftMenuCtx, 20, 420, 220, 50, `Divs: ${triangleGridMode.toUpperCase()}`, false);
             } else if (activeTool === 'plane') {
                 drawButton(leftMenuCtx, 30, 70, 150, 50, `OUTLINE: ${planeOutline?'ON':'OFF'}`, planeOutline); drawButton(leftMenuCtx, 190, 70, 50, 50, '-', false); drawButton(leftMenuCtx, 250, 70, 160, 50, `O-Thick: ${planeOutlineThick}`, false); drawButton(leftMenuCtx, 420, 70, 50, 50, '+', false);
                 drawButton(leftMenuCtx, 30, 140, 100, 50, `FILL: ${planeFill?'ON':'OFF'}`, planeFill); drawButton(leftMenuCtx, 140, 140, 100, 50, `GRID: ${planeGrid?'ON':'OFF'}`, planeGrid); drawButton(leftMenuCtx, 250, 140, 40, 50, '-', false); drawButton(leftMenuCtx, 300, 140, 120, 50, `G-Thick: ${planeGridThick}`, false); drawButton(leftMenuCtx, 430, 140, 40, 50, '+', false);
@@ -673,6 +684,8 @@
                 } else if (cy >= 360 && cy <= 410) {
                     if (cx >= 20 && cx <= 70) triangleDivs = Math.max(1, triangleDivs - 1); if (cx >= 210 && cx <= 260) triangleDivs = Math.min(20, triangleDivs + 1);
                     if (cx >= 270 && cx <= 320) triangleDivThick = Math.max(1, triangleDivThick - 1); if (cx >= 440 && cx <= 490) triangleDivThick = Math.min(10, triangleDivThick + 1);
+                } else if (cy >= 420 && cy <= 470) {
+                    if (cx >= 20 && cx <= 240) triangleGridMode = triangleGridMode === 'internal' ? 'surface' : 'internal';
                 }
             } else if (cy >= 70 && cy <= 120) {
                 if (activeTool === 'brush') { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; } 
@@ -696,8 +709,13 @@
                     if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
                     if (cx >= 330 && cx <= 490) wireFill = !wireFill;
                 } else if (cy >= 210 && cy <= 260) {
-                    if (cx >= 20 && cx <= 70) boxDivs = Math.max(1, boxDivs - 1); if (cx >= 210 && cx <= 260) boxDivs = Math.min(20, boxDivs + 1);
-                    if (cx >= 270 && cx <= 320) boxDivThick = Math.max(1, boxDivThick - 1); if (cx >= 440 && cx <= 490) boxDivThick = Math.min(10, boxDivThick + 1);
+                    if (cx >= 20 && cx <= 240) boxGridMode = boxGridMode === 'internal' ? 'surface' : 'internal';
+                    if (cx >= 250 && cx <= 300) boxDivThick = Math.max(1, boxDivThick - 1); if (cx >= 440 && cx <= 490) boxDivThick = Math.min(10, boxDivThick + 1);
+                } else if (cy >= 280 && cy <= 330) {
+                    if (cx >= 20 && cx <= 60) boxDivX = Math.max(1, boxDivX - 1); if (cx >= 180 && cx <= 220) boxDivX = Math.min(20, boxDivX + 1);
+                    if (cx >= 250 && cx <= 290) boxDivY = Math.max(1, boxDivY - 1); if (cx >= 410 && cx <= 450) boxDivY = Math.min(20, boxDivY + 1);
+                } else if (cy >= 350 && cy <= 400) {
+                    if (cx >= 20 && cx <= 60) boxDivZ = Math.max(1, boxDivZ - 1); if (cx >= 180 && cx <= 220) boxDivZ = Math.min(20, boxDivZ + 1);
                 }
             }
             updateCursors();
@@ -897,13 +915,10 @@
             drawButton(globalMenuCtx, 40, 140, 200, 50, `Mirror X: ${mirrorX ? 'ON' : 'OFF'}`, mirrorX);
             drawButton(globalMenuCtx, 272, 140, 200, 50, `Mirror Z: ${mirrorZ ? 'ON' : 'OFF'}`, mirrorZ);
 
-            drawButton(globalMenuCtx, 40, 210, 200, 50, `Divs: INTERNAL`, gridMode === 'internal');
-            drawButton(globalMenuCtx, 272, 210, 200, 50, `Divs: SURFACE`, gridMode === 'surface');
-
-            drawButton(globalMenuCtx, 40, 280, 200, 50, 'Export: BOXES', exportMode === 'boxes');
-            drawButton(globalMenuCtx, 272, 280, 200, 50, 'Export: MESH', exportMode === 'mesh');
+            drawButton(globalMenuCtx, 40, 210, 200, 50, 'Export: BOXES', exportMode === 'boxes');
+            drawButton(globalMenuCtx, 272, 210, 200, 50, 'Export: MESH', exportMode === 'mesh');
             
-            drawButton(globalMenuCtx, 40, 360, 432, 70, 'EXPORT TO .OBJ', false);
+            drawButton(globalMenuCtx, 40, 290, 432, 70, 'EXPORT TO .OBJ', false);
             globalMenuTexture.needsUpdate = true;
         }
 
@@ -917,14 +932,10 @@
                 if (cx >= 272 && cx <= 472) mirrorZ = !mirrorZ;
             }
             if (cy >= 210 && cy <= 260) {
-                if (cx >= 40 && cx <= 240) gridMode = 'internal';
-                if (cx >= 272 && cx <= 472) gridMode = 'surface';
-            }
-            if (cy >= 280 && cy <= 330) {
                 if (cx >= 40 && cx <= 240) exportMode = 'boxes';
                 if (cx >= 272 && cx <= 472) exportMode = 'mesh';
             }
-            if (cy >= 360 && cy <= 430 && cx >= 40 && cx <= 472) exportToOBJ();
+            if (cy >= 290 && cy <= 360 && cx >= 40 && cx <= 472) exportToOBJ();
             globalMenuNeedsUpdate = true;
         }
 
@@ -1249,19 +1260,28 @@
             const divY = new Uint8Array(maxY - minY + 1);
             const divZ = new Uint8Array(maxZ - minZ + 1);
 
-            if (boxDivs > 1) {
-                const stepX = (maxX - minX) / boxDivs;
-                const stepY = (maxY - minY) / boxDivs;
-                const stepZ = (maxZ - minZ) / boxDivs;
+            if (boxDivX > 1) {
+                const stepX = (maxX - minX) / boxDivX;
                 const h = (boxDivThick - 1) / 2;
-                
-                for(let i=1; i<boxDivs; i++) {
+                for(let i=1; i<boxDivX; i++) {
                     const cx = Math.round(i * stepX);
                     for(let v = Math.ceil(cx - h); v <= Math.floor(cx + h + 0.001); v++) if (v >= 0 && v < divX.length) divX[v] = 1;
-                    
+                }
+            }
+
+            if (boxDivY > 1) {
+                const stepY = (maxY - minY) / boxDivY;
+                const h = (boxDivThick - 1) / 2;
+                for(let i=1; i<boxDivY; i++) {
                     const cy = Math.round(i * stepY);
                     for(let v = Math.ceil(cy - h); v <= Math.floor(cy + h + 0.001); v++) if (v >= 0 && v < divY.length) divY[v] = 1;
-                    
+                }
+            }
+
+            if (boxDivZ > 1) {
+                const stepZ = (maxZ - minZ) / boxDivZ;
+                const h = (boxDivThick - 1) / 2;
+                for(let i=1; i<boxDivZ; i++) {
                     const cz = Math.round(i * stepZ);
                     for(let v = Math.ceil(cz - h); v <= Math.floor(cz + h + 0.001); v++) if (v >= 0 && v < divZ.length) divZ[v] = 1;
                 }
@@ -1281,25 +1301,23 @@
                 let onZ = isOuterZ;
                 let isDivCoord = false;
 
-                if (boxDivs > 1) {
-                    if (divX[gx - minX] === 1) { onX = true; isDivCoord = true; }
-                    if (divY[gy - minY] === 1) { onY = true; isDivCoord = true; }
-                    if (divZ[gz - minZ] === 1) { onZ = true; isDivCoord = true; }
-                }
+                if (boxDivX > 1 && divX[gx - minX] === 1) { onX = true; isDivCoord = true; }
+                if (boxDivY > 1 && divY[gy - minY] === 1) { onY = true; isDivCoord = true; }
+                if (boxDivZ > 1 && divZ[gz - minZ] === 1) { onZ = true; isDivCoord = true; }
 
                 const edgeScore = (onX ? 1 : 0) + (onY ? 1 : 0) + (onZ ? 1 : 0);
                 const isEdge = (isOuterX ? 1 : 0) + (isOuterY ? 1 : 0) + (isOuterZ ? 1 : 0) >= 2;
                 
                 let isDivVoxel = false;
-                if (boxDivs > 1 && edgeScore >= 2 && isDivCoord) {
+                if ((boxDivX > 1 || boxDivY > 1 || boxDivZ > 1) && edgeScore >= 2 && isDivCoord) {
                     isDivVoxel = true;
-                    if (gridMode === 'surface' && !isFace) {
+                    if (boxGridMode === 'surface' && !isFace) {
                         isDivVoxel = false;
                     }
                 }
 
                 if (clearInterior && isPainting && !isFace && (boxMode === 'shell' || boxMode === 'wireframe')) {
-                    if (!(isDivVoxel && gridMode === 'internal')) {
+                    if (!(isDivVoxel && boxGridMode === 'internal')) {
                         setVoxel(gx, gy, gz, false, null);
                         continue;
                     }
@@ -1449,7 +1467,7 @@
                     }
 
                     let isDivVoxel = isDiv(gw);
-                    if (gridMode === 'surface' && !isSurface) isDivVoxel = false; 
+                    if (triangleGridMode === 'surface' && !isSurface) isDivVoxel = false; 
                     
                     let isEdge = false;
                     if (Math.abs(gw - baseW) < wireWidth) isEdge = true;
@@ -1481,7 +1499,7 @@
                             if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
                             else if (wireFill) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
                         } else {
-                            if (isDivVoxel && gridMode === 'internal') {
+                            if (isDivVoxel && triangleGridMode === 'internal') {
                                 setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
                             } else if (clearInterior && isPainting) {
                                 setVoxel(gx, gy, gz, false, null);
@@ -1489,7 +1507,7 @@
                         }
                     } else {
                         if (clearInterior && isPainting && !isSurface && triangleMode === 'shell') {
-                            if (!(isDivVoxel && gridMode === 'internal')) {
+                            if (!(isDivVoxel && triangleGridMode === 'internal')) {
                                 setVoxel(gx, gy, gz, false, null);
                                 continue;
                             }
