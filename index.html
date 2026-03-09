@@ -124,7 +124,7 @@
         
         let shiftProgress = 0;
         let shiftDir = 1;
-        const tempColorForDraw = [new THREE.Color(), new THREE.Color()]; 
+        const tempColorForDraw = [new THREE.Color(), new THREE.Color()]; // Array helps prevent reference overwrites inside tools loops
         
         let isVerticalLock = true;
         let mirrorX = false;
@@ -166,6 +166,136 @@
         const rightPointerPos = new THREE.Vector3();
         const leftPointerPos = new THREE.Vector3();
 
+        // --- WebGPU Compute Engine (Hybrid Architecture) ---
+        // This offloads heavy nested loops (like massive spheres) from the CPU to the GPU.
+        // It maintains full VR compatibility because WebGL handles rendering, while WebGPU handles math.
+        class VoxelComputeEngine {
+            constructor() {
+                this.device = null;
+                this.pipelineSphere = null;
+                this.ready = false;
+            }
+
+            async init() {
+                if (!navigator.gpu) return;
+                try {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (!adapter) return;
+                    this.device = await adapter.requestDevice();
+
+                    const shader = `
+                        struct Params {
+                            minX: f32, maxX: f32, minY: f32, maxY: f32,
+                            minZ: f32, maxZ: f32, cx: f32, cy: f32,
+                            cz: f32, rx: f32, ry: f32, rz: f32,
+                            mode: f32, clearInterior: f32, pad1: f32, pad2: f32
+                        };
+                        @group(0) @binding(0) var<uniform> params: Params;
+                        @group(0) @binding(1) var<storage, read_write> result: array<u32>;
+
+                        @compute @workgroup_size(8, 8, 8)
+                        fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+                            let gx = f32(global_id.x) + params.minX;
+                            let gy = f32(global_id.y) + params.minY;
+                            let gz = f32(global_id.z) + params.minZ;
+
+                            if (gx > params.maxX || gy > params.maxY || gz > params.maxZ) { return; }
+
+                            let nx = select(0.0, (gx - params.cx) / params.rx, params.rx > 0.0);
+                            let ny = select(0.0, (gy - params.cy) / params.ry, params.ry > 0.0);
+                            let nz = select(0.0, (gz - params.cz) / params.rz, params.rz > 0.0);
+
+                            let dx = u32(gx - params.minX);
+                            let dy = u32(gy - params.minY);
+                            let dz = u32(gz - params.minZ);
+                            let width = u32(params.maxX - params.minX + 1.0);
+                            let height = u32(params.maxY - params.minY + 1.0);
+                            let idx = dx + (dy * width) + (dz * width * height);
+
+                            if ((nx*nx + ny*ny + nz*nz) <= 1.05) {
+                                var isSurface = false;
+                                if (params.mode == 1.0) { 
+                                    // Shell Mode Surface Detection
+                                    let nx1 = select(0.0, ((gx+1.0) - params.cx) / params.rx, params.rx > 0.0);
+                                    let nx2 = select(0.0, ((gx-1.0) - params.cx) / params.rx, params.rx > 0.0);
+                                    let ny1 = select(0.0, ((gy+1.0) - params.cy) / params.ry, params.ry > 0.0);
+                                    let ny2 = select(0.0, ((gy-1.0) - params.cy) / params.ry, params.ry > 0.0);
+                                    let nz1 = select(0.0, ((gz+1.0) - params.cz) / params.rz, params.rz > 0.0);
+                                    let nz2 = select(0.0, ((gz-1.0) - params.cz) / params.rz, params.rz > 0.0);
+
+                                    if (nx1*nx1 + ny*ny + nz*nz > 1.05 || nx2*nx2 + ny*ny + nz*nz > 1.05 ||
+                                        nx*nx + ny1*ny1 + nz*nz > 1.05 || nx*nx + ny2*ny2 + nz*nz > 1.05 ||
+                                        nx*nx + ny*ny + nz1*nz1 > 1.05 || nx*nx + ny*ny + nz2*nz2 > 1.05) {
+                                        isSurface = true;
+                                    }
+
+                                    if (isSurface) {
+                                        result[idx] = 1u; // Add voxel
+                                    } else if (params.clearInterior == 1.0) {
+                                        result[idx] = 2u; // Clear voxel
+                                    } else {
+                                        result[idx] = 0u; // Do nothing
+                                    }
+                                } else {
+                                    result[idx] = 1u; // Solid Mode
+                                }
+                            } else {
+                                result[idx] = 0u;
+                            }
+                        }
+                    `;
+                    const module = this.device.createShaderModule({ code: shader });
+                    this.pipelineSphere = this.device.createComputePipeline({
+                        layout: 'auto',
+                        compute: { module, entryPoint: 'main' }
+                    });
+                    this.ready = true;
+                    console.log("WebGPU Compute Acceleration Ready");
+                } catch(e) { console.warn("WebGPU initialization failed. Falling back to CPU.", e); }
+            }
+
+            async computeSphere(minX, maxX, minY, maxY, minZ, maxZ, cx, cy, cz, rx, ry, rz, mode, clearInterior) {
+                if (!this.ready) return null;
+                const w = maxX - minX + 1; const h = maxY - minY + 1; const d = maxZ - minZ + 1;
+                const numVoxels = w * h * d;
+
+                const paramsData = new Float32Array([minX, maxX, minY, maxY, minZ, maxZ, cx, cy, cz, rx, ry, rz, mode, clearInterior, 0, 0]);
+                const paramsBuffer = this.device.createBuffer({ size: paramsData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+                this.device.queue.writeBuffer(paramsBuffer, 0, paramsData);
+
+                const resultBufferSize = numVoxels * 4; 
+                const resultBuffer = this.device.createBuffer({ size: resultBufferSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+                const readBuffer = this.device.createBuffer({ size: resultBufferSize, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+
+                const bindGroup = this.device.createBindGroup({
+                    layout: this.pipelineSphere.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: { buffer: paramsBuffer } },
+                        { binding: 1, resource: { buffer: resultBuffer } }
+                    ]
+                });
+
+                const commandEncoder = this.device.createCommandEncoder();
+                const passEncoder = commandEncoder.beginComputePass();
+                passEncoder.setPipeline(this.pipelineSphere);
+                passEncoder.setBindGroup(0, bindGroup);
+                passEncoder.dispatchWorkgroups(Math.ceil(w/8), Math.ceil(h/8), Math.ceil(d/8));
+                passEncoder.end();
+
+                commandEncoder.copyBufferToBuffer(resultBuffer, 0, readBuffer, 0, resultBufferSize);
+                this.device.queue.submit([commandEncoder.finish()]);
+
+                await readBuffer.mapAsync(GPUMapMode.READ);
+                const arrayBuffer = readBuffer.getMappedRange();
+                const data = new Uint32Array(arrayBuffer).slice(); // copy to free map lock
+                readBuffer.unmap();
+                return data;
+            }
+        }
+        
+        const computeEngine = new VoxelComputeEngine();
+        computeEngine.init();
+
         // --- Scene Setup ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a2e);
@@ -176,7 +306,7 @@
         const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.xr.enabled = true;
+        renderer.xr.enabled = true; // WebXR relies on WebGLRenderer
 
         document.body.appendChild(renderer.domElement);
         document.body.appendChild(VRButton.createButton(renderer));
@@ -197,7 +327,7 @@
         gridHelper.updateMatrix();
         worldGroup.add(gridHelper);
 
-        // --- Material System & Chunk Engine (OPTIMIZED) ---
+        // --- Material System & Chunk Engine ---
         const voxelGeometry = new THREE.BoxGeometry(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
         
         const matSolid = new THREE.MeshLambertMaterial(); 
@@ -226,24 +356,14 @@
                 this.voxelToIndex = new Uint16Array(CHUNK_VOL);
                 this.voxelToIndex.fill(65535); 
                 this.indexToLocal = new Uint16Array(CHUNK_VOL); 
-                
-                // OPTIMIZATION B: updateRange Tracking
                 this.needsUpdate = false;
-                this.dirtyMin = Infinity;
-                this.dirtyMax = -1;
-            }
-
-            markDirty(index) {
-                if (index < this.dirtyMin) this.dirtyMin = index;
-                if (index > this.dirtyMax) this.dirtyMax = index;
-                this.needsUpdate = true;
             }
 
             addVoxel(localIdx, worldPos, color) {
                 if (this.voxelToIndex[localIdx] !== 65535) {
                     const instIdx = this.voxelToIndex[localIdx];
                     this.mesh.setColorAt(instIdx, color);
-                    this.markDirty(instIdx);
+                    this.needsUpdate = true;
                 } else {
                     const instIdx = this.mesh.count;
                     this.voxelToIndex[localIdx] = instIdx;
@@ -253,7 +373,7 @@
                     this.mesh.setColorAt(instIdx, color);
                     this.mesh.count++;
                     totalActiveVoxels++;
-                    this.markDirty(instIdx);
+                    this.needsUpdate = true;
                 }
             }
 
@@ -270,7 +390,6 @@
                         this.mesh.setColorAt(instIdxToRemove, tempColor);
                         this.voxelToIndex[lastLocalIdx] = instIdxToRemove;
                         this.indexToLocal[instIdxToRemove] = lastLocalIdx;
-                        this.markDirty(instIdxToRemove);
                     }
 
                     this.voxelToIndex[localIdx] = 65535;
@@ -282,29 +401,8 @@
 
             updateBuffers() {
                 if (this.needsUpdate) {
-                    // OPTIMIZATION B: Apply updateRange to avoid massive re-uploads
-                    if (this.dirtyMin <= this.dirtyMax) {
-                        const offsetMat = this.dirtyMin * 16;
-                        const countMat = (this.dirtyMax - this.dirtyMin + 1) * 16;
-                        this.mesh.instanceMatrix.updateRange.offset = offsetMat;
-                        this.mesh.instanceMatrix.updateRange.count = countMat;
-                        this.mesh.instanceMatrix.needsUpdate = true;
-
-                        const offsetCol = this.dirtyMin * 3;
-                        const countCol = (this.dirtyMax - this.dirtyMin + 1) * 3;
-                        this.mesh.instanceColor.updateRange.offset = offsetCol;
-                        this.mesh.instanceColor.updateRange.count = countCol;
-                        this.mesh.instanceColor.needsUpdate = true;
-                    } else {
-                        // Fallback full update if bounds are abnormal
-                        this.mesh.instanceMatrix.updateRange.count = -1;
-                        this.mesh.instanceColor.updateRange.count = -1;
-                        this.mesh.instanceMatrix.needsUpdate = true;
-                        this.mesh.instanceColor.needsUpdate = true;
-                    }
-
-                    this.dirtyMin = Infinity;
-                    this.dirtyMax = -1;
+                    this.mesh.instanceMatrix.needsUpdate = true;
+                    this.mesh.instanceColor.needsUpdate = true;
                     this.needsUpdate = false;
                     this.mesh.visible = this.mesh.count > 0;
                 }
@@ -317,9 +415,6 @@
                 this.layers = new Array(3).fill(null);
                 this.voxelMatMap = new Int8Array(CHUNK_VOL);
                 this.voxelMatMap.fill(-1);
-                
-                // OPTIMIZATION A (Decoupled RAM Storage for Math & Export Integrity)
-                this.voxelColors = new Uint8Array(CHUNK_VOL * 3); 
             }
 
             addVoxel(lx, ly, lz, worldPos, color, matType) {
@@ -332,12 +427,6 @@
                     this.layers[matType] = new ChunkLayer(this.cx, this.cy, this.cz, voxelMaterials[matType]);
                 }
                 this.voxelMatMap[localIdx] = matType;
-                
-                // Write to RAM to bypass GPU bottleneck during logic checks
-                this.voxelColors[localIdx * 3] = Math.round(color.r * 255);
-                this.voxelColors[localIdx * 3 + 1] = Math.round(color.g * 255);
-                this.voxelColors[localIdx * 3 + 2] = Math.round(color.b * 255);
-
                 this.layers[matType].addVoxel(localIdx, worldPos, color);
             }
 
@@ -983,8 +1072,7 @@
         let leftMenuNeedsUpdate = true; let rightMenuNeedsUpdate = true; let colorMenuNeedsUpdate = true; let globalMenuNeedsUpdate = true; let lastMenuUpdateTime = 0;
         updateLeftMenuTexture(); updateRightMenuTexture(); updateColorMenuTexture(); updateGlobalMenuTexture();
 
-        // --- Export Pipeline (OPTIMIZED & DECOUPLED FROM RENDERING) ---
-        // This guarantees Blender compatibility stays 100% intact even if we change the GPU render pipeline
+        // --- Export Pipeline ---
         function exportToOBJ() {
             const isMesh = exportMode === 'mesh';
             const blobParts = ["# VoxTrotBravo Export\n", "mtllib voxel_materials.mtl\n"];
@@ -1007,39 +1095,33 @@
                 return chunk.voxelMatMap[localIdx] !== -1;
             }
             
-            const pos = new THREE.Vector3(); 
+            const mat4 = new THREE.Matrix4(); const pos = new THREE.Vector3(); const col = new THREE.Color();
             const vertsArray = []; const facesArrays = [[], [], []]; const matNames = ["Voxel_Solid", "Voxel_Glass", "Voxel_Emission"];
 
-            // Loop explicitly via RAM decoupled values to ensure output structure identical to original code
             for (let matIdx = 0; matIdx < 3; matIdx++) {
                 chunks.forEach(chunk => {
-                    for (let localIdx = 0; localIdx < CHUNK_VOL; localIdx++) {
-                        if (chunk.voxelMatMap[localIdx] === matIdx) {
-                            const lx = localIdx % CHUNK_SIZE; const ly = Math.floor(localIdx / CHUNK_SIZE) % CHUNK_SIZE; const lz = Math.floor(localIdx / (CHUNK_SIZE * CHUNK_SIZE));
-                            const gx = (chunk.cx * CHUNK_SIZE) + lx; const gy = (chunk.cy * CHUNK_SIZE) + ly; const gz = (chunk.cz * CHUNK_SIZE) + lz;
+                    const layer = chunk.layers[matIdx];
+                    if (!layer || layer.mesh.count === 0) return;
+                    for (let i = 0; i < layer.mesh.count; i++) {
+                        const localIdx = layer.indexToLocal[i]; if (localIdx === 65535) continue;
+                        const lx = localIdx % CHUNK_SIZE; const ly = Math.floor(localIdx / CHUNK_SIZE) % CHUNK_SIZE; const lz = Math.floor(localIdx / (CHUNK_SIZE * CHUNK_SIZE));
+                        const gx = (chunk.cx * CHUNK_SIZE) + lx; const gy = (chunk.cy * CHUNK_SIZE) + ly; const gz = (chunk.cz * CHUNK_SIZE) + lz;
 
-                            // Calculate transformed position natively to decouple from InstancedMesh GPU buffer dependencies
-                            tempMatrix.makeTranslation(gx * VOXEL_SIZE, gy * VOXEL_SIZE, gz * VOXEL_SIZE);
-                            tempMatrix.premultiply(worldGroup.matrixWorld);
-
-                            // Read color from our new decoupled RAM byte array (Fastest)
-                            const r = (chunk.voxelColors[localIdx * 3] / 255).toFixed(4); 
-                            const g = (chunk.voxelColors[localIdx * 3 + 1] / 255).toFixed(4); 
-                            const b = (chunk.voxelColors[localIdx * 3 + 2] / 255).toFixed(4);
-                            
-                            dirs.forEach(dir => {
-                                if (!hasVoxel(gx + dir.d[0], gy + dir.d[1], gz + dir.d[2])) {
-                                    dir.v.forEach(vert => {
-                                        pos.copy(vert).applyMatrix4(tempMatrix);
-                                        vertsArray.push(`v ${pos.x.toFixed(4)} ${pos.y.toFixed(4)} ${pos.z.toFixed(4)} ${r} ${g} ${b}\n`);
-                                    });
-                                    if (isMesh) {
-                                        facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2}\n`); facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+2} ${vertexOffset+3}\n`);
-                                    } else facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2} ${vertexOffset+3}\n`);
-                                    vertexOffset += 4;
-                                }
-                            });
-                        }
+                        layer.mesh.getMatrixAt(i, mat4); layer.mesh.getColorAt(i, col);
+                        const r = col.r.toFixed(4); const g = col.g.toFixed(4); const b = col.b.toFixed(4);
+                        
+                        dirs.forEach(dir => {
+                            if (!hasVoxel(gx + dir.d[0], gy + dir.d[1], gz + dir.d[2])) {
+                                dir.v.forEach(vert => {
+                                    pos.copy(vert).applyMatrix4(mat4).applyMatrix4(worldGroup.matrixWorld);
+                                    vertsArray.push(`v ${pos.x.toFixed(4)} ${pos.y.toFixed(4)} ${pos.z.toFixed(4)} ${r} ${g} ${b}\n`);
+                                });
+                                if (isMesh) {
+                                    facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2}\n`); facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+2} ${vertexOffset+3}\n`);
+                                } else facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2} ${vertexOffset+3}\n`);
+                                vertexOffset += 4;
+                            }
+                        });
                     }
                 });
             }
@@ -1070,20 +1152,13 @@
             return cA;
         }
 
-        // OPTIMIZATION A: Read RAM directly instead of waiting on GPU InstanceBuffer attributes!
         function getVoxelMatAndColor(gx, gy, gz, outColor) {
             const cx = Math.floor(gx / CHUNK_SIZE); const cy = Math.floor(gy / CHUNK_SIZE); const cz = Math.floor(gz / CHUNK_SIZE);
             const chunkKey = (cx + 65536) + ((cy + 65536) * 131072) + ((cz + 65536) * 17179869184);
             const chunk = chunks.get(chunkKey); if (!chunk) return -1;
             const localIdx = (gx - (cx * CHUNK_SIZE)) + ((gy - (cy * CHUNK_SIZE)) * CHUNK_SIZE) + ((gz - (cz * CHUNK_SIZE)) * CHUNK_SIZE * CHUNK_SIZE);
             const matType = chunk.voxelMatMap[localIdx];
-            if (matType !== -1 && outColor) { 
-                outColor.setRGB(
-                    chunk.voxelColors[localIdx * 3] / 255,
-                    chunk.voxelColors[localIdx * 3 + 1] / 255,
-                    chunk.voxelColors[localIdx * 3 + 2] / 255
-                );
-            }
+            if (matType !== -1 && outColor) { const layer = chunk.layers[matType]; const instIdx = layer.voxelToIndex[localIdx]; if (instIdx !== 65535) layer.mesh.getColorAt(instIdx, outColor); }
             return matType;
         }
         
@@ -1392,12 +1467,41 @@
             leftMenuNeedsUpdate = true;
         }
 
-        function executeQuadSphereTool(startPos, endPos, isPainting) {
+        async function executeQuadSphereTool(startPos, endPos, isPainting) {
             const minX = Math.min(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE)); const maxX = Math.max(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE));
             const minY = Math.min(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE)); const maxY = Math.max(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE));
             const minZ = Math.min(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE)); const maxZ = Math.max(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE));
             if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
-            const cx = (minX + maxX) / 2; const cy = (minY + maxY) / 2; const cz = (minZ + maxZ) / 2; const rx = (maxX - minX) / 2; const ry = (maxY - minY) / 2; const rz = (maxZ - minZ) / 2;
+            const cx = (minX + maxX) / 2; const cy = (minY + maxY) / 2; const cz = (minZ + maxZ) / 2; 
+            const rx = (maxX - minX) / 2; const ry = (maxY - minY) / 2; const rz = (maxZ - minZ) / 2;
+
+            const volume = (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
+
+            // WebGPU Acceleration Path
+            if (computeEngine.ready && volume > 25000) { 
+                const data = await computeEngine.computeSphere(minX, maxX, minY, maxY, minZ, maxZ, cx, cy, cz, rx, ry, rz, sphereMode === 'shell' ? 1 : 0, clearInterior && isPainting ? 1 : 0);
+                if (data) {
+                    const w = maxX - minX + 1; const h = maxY - minY + 1; const d = maxZ - minZ + 1;
+                    for(let gx = minX; gx <= maxX; gx++) {
+                        for(let gy = minY; gy <= maxY; gy++) {
+                            for(let gz = minZ; gz <= maxZ; gz++) {
+                                const dx = gx - minX; const dy = gy - minY; const dz = gz - minZ;
+                                const idx = dx + (dy * w) + (dz * w * h);
+                                if (data[idx] === 1) {
+                                    const cMain = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
+                                    setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                                } else if (data[idx] === 2) {
+                                    setVoxel(gx, gy, gz, false, null);
+                                }
+                            }
+                        }
+                    }
+                    leftMenuNeedsUpdate = true;
+                    return; // Early exit, WebGPU handled the volume logic
+                }
+            }
+
+            // Fallback CPU Path (runs perfectly smooth for smaller brushes)
             const isInside = (x, y, z) => { const nx = rx > 0 ? (x - cx) / rx : 0; const ny = ry > 0 ? (y - cy) / ry : 0; const nz = rz > 0 ? (z - cz) / rz : 0; return (nx * nx + ny * ny + nz * nz) <= 1.05; };
             for(let gx = minX; gx <= maxX; gx++) for(let gy = minY; gy <= maxY; gy++) for(let gz = minZ; gz <= maxZ; gz++) {
                 if (isInside(gx, gy, gz)) {
@@ -1745,6 +1849,7 @@
 
         // --- Main Animation Loop ---
         renderer.setAnimationLoop(() => {
+            // Constant stable increment for Color-Shift behavior regardless of logic frame rates
             shiftProgress += 0.005 * shiftDir;
             if (shiftProgress >= 1) { shiftProgress = 1; shiftDir = -1; }
             if (shiftProgress <= 0) { shiftProgress = 0; shiftDir = 1; }
