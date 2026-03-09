@@ -1029,7 +1029,8 @@
         // Prevents memory crashes with fast chunk flushing.
         function exportToOBJ() {
             const isMesh = exportMode === 'mesh';
-            const blobParts = ["# VoxTrotBravo Optimized Export\nmtllib voxel_materials.mtl\n"];
+            const vertBlobParts = ["# VoxTrotBravo Optimized Vertices\n"];
+            const faceBlobParts = ["\n# VoxTrotBravo Faces\nmtllib voxel_materials.mtl\n"];
             const hs = VOXEL_SIZE / 2;
             const faceVerts = {
                 px: [new THREE.Vector3( hs, -hs,  hs), new THREE.Vector3( hs, -hs, -hs), new THREE.Vector3( hs,  hs, -hs), new THREE.Vector3( hs,  hs,  hs)],
@@ -1064,7 +1065,7 @@
             const dirLen = dirs.length;
 
             for (let matIdx = 0; matIdx < 3; matIdx++) {
-                blobParts.push(`\ng ${matNames[matIdx]}\nusemtl ${matNames[matIdx]}\n`);
+                faceAcc.push(`\ng ${matNames[matIdx]}\nusemtl ${matNames[matIdx]}\n`);
                 
                 chunks.forEach(chunk => {
                     const layer = chunk.layers[matIdx];
@@ -1115,19 +1116,20 @@
                                 }
                                 
                                 // Memory Flush Limiters: 30k elements per chunk guarantees stability
-                                if (vertAcc.length >= 30000) { blobParts.push(vertAcc.join("")); vertAcc = []; }
-                                if (faceAcc.length >= 30000) { blobParts.push(faceAcc.join("")); faceAcc = []; }
+                                if (vertAcc.length >= 30000) { vertBlobParts.push(vertAcc.join("")); vertAcc = []; }
+                                if (faceAcc.length >= 30000) { faceBlobParts.push(faceAcc.join("")); faceAcc = []; }
                             }
                         }
                     }
                 });
-                
-                // Final flush per-material
-                if (vertAcc.length > 0) { blobParts.push(vertAcc.join("")); vertAcc = []; }
-                if (faceAcc.length > 0) { blobParts.push(faceAcc.join("")); faceAcc = []; }
             }
+            
+            // Final flush of any remaining lines
+            if (vertAcc.length > 0) { vertBlobParts.push(vertAcc.join("")); vertAcc = []; }
+            if (faceAcc.length > 0) { faceBlobParts.push(faceAcc.join("")); faceAcc = []; }
 
-            const blob = new Blob(blobParts, { type: 'text/plain' }); 
+            // Construct Blob by writing ALL vertices first, then ALL faces
+            const blob = new Blob([...vertBlobParts, ...faceBlobParts], { type: 'text/plain' }); 
             const url = URL.createObjectURL(blob); 
             const a = document.createElement('a');
             a.style.display = 'none'; 
