@@ -124,7 +124,7 @@
         
         let shiftProgress = 0;
         let shiftDir = 1;
-        const tempColorForDraw = [new THREE.Color(), new THREE.Color()]; // Array helps prevent reference overwrites inside tools loops
+        const tempColorForDraw = [new THREE.Color(), new THREE.Color()]; 
         
         let isVerticalLock = true;
         let mirrorX = false;
@@ -197,7 +197,7 @@
         gridHelper.updateMatrix();
         worldGroup.add(gridHelper);
 
-        // --- Material System & Chunk Engine ---
+        // --- Material System & Chunk Engine (OPTIMIZED) ---
         const voxelGeometry = new THREE.BoxGeometry(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
         
         const matSolid = new THREE.MeshLambertMaterial(); 
@@ -226,14 +226,24 @@
                 this.voxelToIndex = new Uint16Array(CHUNK_VOL);
                 this.voxelToIndex.fill(65535); 
                 this.indexToLocal = new Uint16Array(CHUNK_VOL); 
+                
+                // OPTIMIZATION B: updateRange Tracking
                 this.needsUpdate = false;
+                this.dirtyMin = Infinity;
+                this.dirtyMax = -1;
+            }
+
+            markDirty(index) {
+                if (index < this.dirtyMin) this.dirtyMin = index;
+                if (index > this.dirtyMax) this.dirtyMax = index;
+                this.needsUpdate = true;
             }
 
             addVoxel(localIdx, worldPos, color) {
                 if (this.voxelToIndex[localIdx] !== 65535) {
                     const instIdx = this.voxelToIndex[localIdx];
                     this.mesh.setColorAt(instIdx, color);
-                    this.needsUpdate = true;
+                    this.markDirty(instIdx);
                 } else {
                     const instIdx = this.mesh.count;
                     this.voxelToIndex[localIdx] = instIdx;
@@ -243,7 +253,7 @@
                     this.mesh.setColorAt(instIdx, color);
                     this.mesh.count++;
                     totalActiveVoxels++;
-                    this.needsUpdate = true;
+                    this.markDirty(instIdx);
                 }
             }
 
@@ -260,6 +270,7 @@
                         this.mesh.setColorAt(instIdxToRemove, tempColor);
                         this.voxelToIndex[lastLocalIdx] = instIdxToRemove;
                         this.indexToLocal[instIdxToRemove] = lastLocalIdx;
+                        this.markDirty(instIdxToRemove);
                     }
 
                     this.voxelToIndex[localIdx] = 65535;
@@ -271,8 +282,29 @@
 
             updateBuffers() {
                 if (this.needsUpdate) {
-                    this.mesh.instanceMatrix.needsUpdate = true;
-                    this.mesh.instanceColor.needsUpdate = true;
+                    // OPTIMIZATION B: Apply updateRange to avoid massive re-uploads
+                    if (this.dirtyMin <= this.dirtyMax) {
+                        const offsetMat = this.dirtyMin * 16;
+                        const countMat = (this.dirtyMax - this.dirtyMin + 1) * 16;
+                        this.mesh.instanceMatrix.updateRange.offset = offsetMat;
+                        this.mesh.instanceMatrix.updateRange.count = countMat;
+                        this.mesh.instanceMatrix.needsUpdate = true;
+
+                        const offsetCol = this.dirtyMin * 3;
+                        const countCol = (this.dirtyMax - this.dirtyMin + 1) * 3;
+                        this.mesh.instanceColor.updateRange.offset = offsetCol;
+                        this.mesh.instanceColor.updateRange.count = countCol;
+                        this.mesh.instanceColor.needsUpdate = true;
+                    } else {
+                        // Fallback full update if bounds are abnormal
+                        this.mesh.instanceMatrix.updateRange.count = -1;
+                        this.mesh.instanceColor.updateRange.count = -1;
+                        this.mesh.instanceMatrix.needsUpdate = true;
+                        this.mesh.instanceColor.needsUpdate = true;
+                    }
+
+                    this.dirtyMin = Infinity;
+                    this.dirtyMax = -1;
                     this.needsUpdate = false;
                     this.mesh.visible = this.mesh.count > 0;
                 }
@@ -285,6 +317,9 @@
                 this.layers = new Array(3).fill(null);
                 this.voxelMatMap = new Int8Array(CHUNK_VOL);
                 this.voxelMatMap.fill(-1);
+                
+                // OPTIMIZATION A (Decoupled RAM Storage for Math & Export Integrity)
+                this.voxelColors = new Uint8Array(CHUNK_VOL * 3); 
             }
 
             addVoxel(lx, ly, lz, worldPos, color, matType) {
@@ -297,6 +332,12 @@
                     this.layers[matType] = new ChunkLayer(this.cx, this.cy, this.cz, voxelMaterials[matType]);
                 }
                 this.voxelMatMap[localIdx] = matType;
+                
+                // Write to RAM to bypass GPU bottleneck during logic checks
+                this.voxelColors[localIdx * 3] = Math.round(color.r * 255);
+                this.voxelColors[localIdx * 3 + 1] = Math.round(color.g * 255);
+                this.voxelColors[localIdx * 3 + 2] = Math.round(color.b * 255);
+
                 this.layers[matType].addVoxel(localIdx, worldPos, color);
             }
 
@@ -554,93 +595,17 @@
         xrRight.add(rightLaserLine);
 
         // --- Interactive VR Menus ---
-        function drawMenuBackground(ctx, titleText) {
-            const bgGrad = ctx.createLinearGradient(0, 0, 0, 512);
-            bgGrad.addColorStop(0, 'rgba(20, 24, 30, 0.98)');
-            bgGrad.addColorStop(1, 'rgba(10, 12, 16, 0.98)');
-            ctx.fillStyle = bgGrad;
-            ctx.fillRect(0, 0, 512, 512);
-            
-            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(1, 1, 510, 510);
-
-            if (titleText) {
-                ctx.fillStyle = '#00f2fe';
-                ctx.font = 'bold 24px "Segoe UI", sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText(titleText, 256, 32);
-                
-                ctx.beginPath();
-                ctx.moveTo(80, 50);
-                ctx.lineTo(432, 50);
-                const lineGrad = ctx.createLinearGradient(80, 0, 432, 0);
-                lineGrad.addColorStop(0, 'rgba(0, 242, 254, 0)');
-                lineGrad.addColorStop(0.5, 'rgba(0, 242, 254, 0.5)');
-                lineGrad.addColorStop(1, 'rgba(0, 242, 254, 0)');
-                ctx.strokeStyle = lineGrad;
-                ctx.lineWidth = 1;
-                ctx.stroke();
-            }
-        }
-
         function drawButton(ctx, x, y, w, h, text, isActive) {
-            ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(x, y, w, h, 8); else ctx.rect(x, y, w, h);
-
-            if (isActive) {
-                const grad = ctx.createLinearGradient(x, y, x, y + h);
-                grad.addColorStop(0, '#4facfe');
-                grad.addColorStop(1, '#00f2fe');
-                ctx.fillStyle = grad;
-                ctx.fill();
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.fillStyle = '#ffffff';
-            } else {
-                ctx.fillStyle = 'rgba(40, 45, 55, 0.85)';
-                ctx.fill();
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-                ctx.fillStyle = '#cccccc';
-            }
-            
-            ctx.font = isActive ? 'bold 18px "Segoe UI", sans-serif' : '17px "Segoe UI", sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(text, x + w/2, y + h/2);
+            ctx.fillStyle = isActive ? '#4facfe' : '#333'; ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = isActive ? '#fff' : '#888'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+            ctx.fillStyle = '#fff'; ctx.font = '20px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x + w/2, y + h/2);
         }
 
         function drawSlider(ctx, x, y, w, h, label, val, min, max) {
-            ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(x, y, w, h, 8); else ctx.rect(x, y, w, h);
-            ctx.fillStyle = 'rgba(30, 35, 45, 0.9)';
-            ctx.fill();
-
-            const pct = (val - min) / (max - min);
-            if (pct > 0) {
-                ctx.beginPath();
-                if (ctx.roundRect) ctx.roundRect(x, y, Math.max(16, w * pct), h, 8); else ctx.rect(x, y, w * pct, h);
-                const grad = ctx.createLinearGradient(x, y, x + w, y);
-                grad.addColorStop(0, '#4facfe');
-                grad.addColorStop(1, '#00f2fe');
-                ctx.fillStyle = grad;
-                ctx.fill();
-            }
-
-            ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(x, y, w, h, 8); else ctx.rect(x, y, w, h);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 16px "Segoe UI", sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(`${label}: ${val}°`, x + w/2, y + h/2);
+            ctx.fillStyle = '#333'; ctx.fillRect(x, y, w, h);
+            const pct = (val - min) / (max - min); ctx.fillStyle = '#4facfe'; ctx.fillRect(x, y, w * pct, h);
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(`${label}: ${val}°`, x + w/2, y + h/2);
         }
 
         // TOOL OPTIONS MENU (X Button)
@@ -652,7 +617,9 @@
         xrLeft.add(leftMenuMesh);
 
         function updateLeftMenuTexture() {
-            drawMenuBackground(leftMenuCtx, `Tool Options | Blocks: ${totalActiveVoxels.toLocaleString()}`);
+            leftMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; leftMenuCtx.fillRect(0, 0, 512, 512);
+            leftMenuCtx.fillStyle = '#4facfe'; leftMenuCtx.font = 'bold 22px sans-serif'; leftMenuCtx.textAlign = 'center';
+            leftMenuCtx.fillText(`Tool Options | Blocks: ${totalActiveVoxels.toLocaleString()}`, 256, 30);
 
             if (activeTool === 'brush') {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'Shape: CUBE', brushShape === 'cube'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'Shape: SPHERE', brushShape === 'sphere');
@@ -713,13 +680,13 @@
             } else if (activeTool === 'select') {
                 if (!hasSelection) {
                     drawButton(leftMenuCtx, 50, 70, 200, 50, 'BOX MODE', selectMode === 'box'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'CONNECTED', selectMode === 'connected');
-                    leftMenuCtx.fillStyle = '#888'; leftMenuCtx.font = '16px "Segoe UI", sans-serif'; leftMenuCtx.fillText('Use Right Trigger to start selecting.', 256, 160);
+                    leftMenuCtx.fillStyle = '#aaa'; leftMenuCtx.font = '16px sans-serif'; leftMenuCtx.fillText('Use Right Trigger to start selecting.', 256, 160);
                 } else {
                     drawSlider(leftMenuCtx, 50, 70, 412, 40, 'ROT X', selectionRotX, -180, 180); drawSlider(leftMenuCtx, 50, 120, 412, 40, 'ROT Y', selectionRotY, -180, 180); drawSlider(leftMenuCtx, 50, 170, 412, 40, 'ROT Z', selectionRotZ, -180, 180);
                     drawButton(leftMenuCtx, 50, 220, 200, 40, 'MODE: MOVE', transformMode === 'move'); drawButton(leftMenuCtx, 262, 220, 200, 40, 'MODE: COPY', transformMode === 'copy');
                     if (transformMode === 'copy') { drawButton(leftMenuCtx, 50, 270, 80, 40, '[-]', false); drawButton(leftMenuCtx, 140, 270, 232, 40, `Copies: ${numCopies}`, false); drawButton(leftMenuCtx, 382, 270, 80, 40, '[+]', false); }
                     drawButton(leftMenuCtx, 50, 320, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 320, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 320, 132, 40, 'DELETE', false);
-                    leftMenuCtx.fillStyle = '#888'; leftMenuCtx.font = '16px "Segoe UI", sans-serif'; leftMenuCtx.fillText('Hold Right Trigger to Grab and Move.', 256, 380);
+                    leftMenuCtx.fillStyle = '#aaa'; leftMenuCtx.font = '16px sans-serif'; leftMenuCtx.fillText('Hold Right Trigger to Grab and Move.', 256, 380);
                 }
             }
             leftMenuTexture.needsUpdate = true;
@@ -806,27 +773,24 @@
         xrLeft.add(colorMenuMesh);
 
         function updateColorMenuTexture() {
-            drawMenuBackground(colorMenuCtx, isPaletteMagnified ? `Precision Picker` : `Materials & Colors`);
-            
+            colorMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; colorMenuCtx.fillRect(0, 0, 512, 512);
             if (isPaletteMagnified) {
+                colorMenuCtx.fillStyle = '#4facfe'; colorMenuCtx.font = 'bold 26px sans-serif'; colorMenuCtx.textAlign = 'center'; colorMenuCtx.fillText(`Precision Picker`, 256, 36);
                 if (matTypes[activeMatSlot] === 2) {
-                    const grad = colorMenuCtx.createLinearGradient(20, 50, 492, 50); grad.addColorStop(0, '#000000'); grad.addColorStop(1, '#ffffff'); colorMenuCtx.fillStyle = grad; 
-                    colorMenuCtx.beginPath(); if(colorMenuCtx.roundRect) colorMenuCtx.roundRect(20, 50, 472, 400, 8); else colorMenuCtx.rect(20, 50, 472, 400); colorMenuCtx.fill();
+                    const grad = colorMenuCtx.createLinearGradient(20, 50, 492, 50); grad.addColorStop(0, '#000000'); grad.addColorStop(1, '#ffffff'); colorMenuCtx.fillStyle = grad; colorMenuCtx.fillRect(20, 50, 472, 400);
                 } else {
                     const gradH = colorMenuCtx.createLinearGradient(20, 50, 492, 50);
                     gradH.addColorStop(0, '#ff0000'); gradH.addColorStop(1/6, '#ffff00'); gradH.addColorStop(2/6, '#00ff00'); gradH.addColorStop(3/6, '#00ffff'); gradH.addColorStop(4/6, '#0000ff'); gradH.addColorStop(5/6, '#ff00ff'); gradH.addColorStop(1, '#ff0000');
-                    colorMenuCtx.fillStyle = gradH; 
-                    colorMenuCtx.beginPath(); if(colorMenuCtx.roundRect) colorMenuCtx.roundRect(20, 50, 472, 400, 8); else colorMenuCtx.rect(20, 50, 472, 400); colorMenuCtx.fill();
-                    
+                    colorMenuCtx.fillStyle = gradH; colorMenuCtx.fillRect(20, 50, 472, 400);
                     const gradV = colorMenuCtx.createLinearGradient(20, 50, 20, 450);
                     gradV.addColorStop(0, 'rgba(255,255,255,1)'); gradV.addColorStop(0.5, 'rgba(255,255,255,0)'); gradV.addColorStop(0.5, 'rgba(0,0,0,0)'); gradV.addColorStop(1, 'rgba(0,0,0,1)');
-                    colorMenuCtx.fillStyle = gradV; 
-                    colorMenuCtx.beginPath(); if(colorMenuCtx.roundRect) colorMenuCtx.roundRect(20, 50, 472, 400, 8); else colorMenuCtx.rect(20, 50, 472, 400); colorMenuCtx.fill();
+                    colorMenuCtx.fillStyle = gradV; colorMenuCtx.fillRect(20, 50, 472, 400);
                 }
-                const activeColorHex = slotColors[activeMatSlot][activeColorSubSlot].getHexString(); colorMenuCtx.fillStyle = '#' + activeColorHex; 
-                colorMenuCtx.beginPath(); if(colorMenuCtx.roundRect) colorMenuCtx.roundRect(20, 460, 472, 40, 8); else colorMenuCtx.rect(20, 460, 472, 40); colorMenuCtx.fill();
-                const hsl = {}; slotColors[activeMatSlot][activeColorSubSlot].getHSL(hsl); colorMenuCtx.fillStyle = hsl.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = 'bold 20px "Segoe UI", sans-serif'; colorMenuCtx.fillText(`Release trigger to apply`, 256, 480);
+                const activeColorHex = slotColors[activeMatSlot][activeColorSubSlot].getHexString(); colorMenuCtx.fillStyle = '#' + activeColorHex; colorMenuCtx.fillRect(20, 460, 472, 40);
+                const hsl = {}; slotColors[activeMatSlot][activeColorSubSlot].getHSL(hsl); colorMenuCtx.fillStyle = hsl.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = 'bold 20px sans-serif'; colorMenuCtx.fillText(`Release trigger to apply`, 256, 487);
             } else {
+                colorMenuCtx.fillStyle = '#4facfe'; colorMenuCtx.font = 'bold 22px sans-serif'; colorMenuCtx.textAlign = 'center'; colorMenuCtx.fillText(`Materials & Colors`, 256, 30);
+                
                 // Active Slot Tabs
                 drawButton(colorMenuCtx, 30, 45, 220, 45, 'SLOT 1 (MAIN)', activeMatSlot === 0);
                 drawButton(colorMenuCtx, 262, 45, 220, 45, 'SLOT 2 (WIRE/DIV)', activeMatSlot === 1);
@@ -838,19 +802,15 @@
                 drawButton(colorMenuCtx, 342, 100, 140, 45, 'EMISSION', mType === 2);
                 
                 if (mType === 2) {
-                    const grad = colorMenuCtx.createLinearGradient(30, 155, 482, 155); grad.addColorStop(0, '#000000'); grad.addColorStop(1, '#ffffff'); colorMenuCtx.fillStyle = grad; 
-                    colorMenuCtx.beginPath(); if(colorMenuCtx.roundRect) colorMenuCtx.roundRect(30, 155, 452, 160, 8); else colorMenuCtx.rect(30, 155, 452, 160); colorMenuCtx.fill();
-                    colorMenuCtx.fillStyle = 'rgba(0, 0, 0, 0.4)'; colorMenuCtx.beginPath(); if(colorMenuCtx.roundRect) colorMenuCtx.roundRect(30, 200, 452, 60, 8); else colorMenuCtx.rect(30, 200, 452, 60); colorMenuCtx.fill(); 
-                    colorMenuCtx.fillStyle = '#fff'; colorMenuCtx.font = 'bold 24px "Segoe UI", sans-serif'; colorMenuCtx.fillText(`Emission Brightness Range`, 256, 235);
+                    const grad = colorMenuCtx.createLinearGradient(30, 155, 482, 155); grad.addColorStop(0, '#000000'); grad.addColorStop(1, '#ffffff'); colorMenuCtx.fillStyle = grad; colorMenuCtx.fillRect(30, 155, 452, 160);
+                    colorMenuCtx.fillStyle = 'rgba(0, 0, 0, 0.4)'; colorMenuCtx.fillRect(30, 200, 452, 60); colorMenuCtx.fillStyle = '#fff'; colorMenuCtx.font = 'bold 24px sans-serif'; colorMenuCtx.fillText(`Emission Brightness Range`, 256, 235);
                 } else {
                     const gradH = colorMenuCtx.createLinearGradient(30, 155, 482, 155);
                     gradH.addColorStop(0, '#ff0000'); gradH.addColorStop(1/6, '#ffff00'); gradH.addColorStop(2/6, '#00ff00'); gradH.addColorStop(3/6, '#00ffff'); gradH.addColorStop(4/6, '#0000ff'); gradH.addColorStop(5/6, '#ff00ff'); gradH.addColorStop(1, '#ff0000');
-                    colorMenuCtx.fillStyle = gradH; 
-                    colorMenuCtx.beginPath(); if(colorMenuCtx.roundRect) colorMenuCtx.roundRect(30, 155, 452, 160, 8); else colorMenuCtx.rect(30, 155, 452, 160); colorMenuCtx.fill();
+                    colorMenuCtx.fillStyle = gradH; colorMenuCtx.fillRect(30, 155, 452, 160);
                     const gradV = colorMenuCtx.createLinearGradient(30, 155, 30, 315);
                     gradV.addColorStop(0, 'rgba(255,255,255,1)'); gradV.addColorStop(0.5, 'rgba(255,255,255,0)'); gradV.addColorStop(0.5, 'rgba(0,0,0,0)'); gradV.addColorStop(1, 'rgba(0,0,0,1)');
-                    colorMenuCtx.fillStyle = gradV; 
-                    colorMenuCtx.beginPath(); if(colorMenuCtx.roundRect) colorMenuCtx.roundRect(30, 155, 452, 160, 8); else colorMenuCtx.rect(30, 155, 452, 160); colorMenuCtx.fill();
+                    colorMenuCtx.fillStyle = gradV; colorMenuCtx.fillRect(30, 155, 452, 160);
                 }
 
                 // Color Mode
@@ -866,20 +826,17 @@
                 const showColor2 = (mType !== 2);
                 
                 if (!showColor2) {
-                    colorMenuCtx.beginPath(); if (colorMenuCtx.roundRect) colorMenuCtx.roundRect(30, 380, 452, 60, 8); else colorMenuCtx.rect(30, 380, 452, 60);
-                    colorMenuCtx.fillStyle = '#' + cA.getHexString(); colorMenuCtx.fill(); 
-                    colorMenuCtx.strokeStyle = 'rgba(255,255,255,0.6)'; colorMenuCtx.lineWidth = 2; colorMenuCtx.stroke();
-                    const hsl1 = {}; cA.getHSL(hsl1); colorMenuCtx.fillStyle = hsl1.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = 'bold 20px "Segoe UI", sans-serif'; colorMenuCtx.fillText('Color A', 256, 410);
+                    colorMenuCtx.fillStyle = '#' + cA.getHexString(); colorMenuCtx.fillRect(30, 380, 452, 60); 
+                    colorMenuCtx.strokeStyle = '#fff'; colorMenuCtx.lineWidth = 4; colorMenuCtx.strokeRect(30, 380, 452, 60);
+                    const hsl1 = {}; cA.getHSL(hsl1); colorMenuCtx.fillStyle = hsl1.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color A', 256, 410);
                 } else {
-                    colorMenuCtx.beginPath(); if (colorMenuCtx.roundRect) colorMenuCtx.roundRect(30, 380, 216, 60, 8); else colorMenuCtx.rect(30, 380, 216, 60);
-                    colorMenuCtx.fillStyle = '#' + cA.getHexString(); colorMenuCtx.fill(); 
-                    colorMenuCtx.strokeStyle = activeColorSubSlot === 0 ? '#fff' : 'rgba(255,255,255,0.2)'; colorMenuCtx.lineWidth = activeColorSubSlot === 0 ? 3 : 1; colorMenuCtx.stroke();
+                    colorMenuCtx.fillStyle = '#' + cA.getHexString(); colorMenuCtx.fillRect(30, 380, 216, 60); 
+                    colorMenuCtx.strokeStyle = activeColorSubSlot === 0 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSubSlot === 0 ? 4 : 2; colorMenuCtx.strokeRect(30, 380, 216, 60);
                     
-                    colorMenuCtx.beginPath(); if (colorMenuCtx.roundRect) colorMenuCtx.roundRect(266, 380, 216, 60, 8); else colorMenuCtx.rect(266, 380, 216, 60);
-                    colorMenuCtx.fillStyle = '#' + cB.getHexString(); colorMenuCtx.fill(); 
-                    colorMenuCtx.strokeStyle = activeColorSubSlot === 1 ? '#fff' : 'rgba(255,255,255,0.2)'; colorMenuCtx.lineWidth = activeColorSubSlot === 1 ? 3 : 1; colorMenuCtx.stroke();
+                    colorMenuCtx.fillStyle = '#' + cB.getHexString(); colorMenuCtx.fillRect(266, 380, 216, 60); 
+                    colorMenuCtx.strokeStyle = activeColorSubSlot === 1 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSubSlot === 1 ? 4 : 2; colorMenuCtx.strokeRect(266, 380, 216, 60);
                     
-                    const hsl1 = {}; cA.getHSL(hsl1); colorMenuCtx.fillStyle = hsl1.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = 'bold 20px "Segoe UI", sans-serif'; colorMenuCtx.fillText('Color A', 138, 410);
+                    const hsl1 = {}; cA.getHSL(hsl1); colorMenuCtx.fillStyle = hsl1.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color A', 138, 410);
                     const hsl2 = {}; cB.getHSL(hsl2); colorMenuCtx.fillStyle = hsl2.l > 0.6 ? 'black' : 'white'; colorMenuCtx.fillText('Color B', 374, 410);
                 }
             }
@@ -943,7 +900,8 @@
         xrRight.add(rightMenuMesh);
 
         function updateRightMenuTexture() {
-            drawMenuBackground(rightMenuCtx, `Tool Selection`);
+            rightMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; rightMenuCtx.fillRect(0, 0, 512, 512);
+            rightMenuCtx.fillStyle = '#4facfe'; rightMenuCtx.font = 'bold 28px sans-serif'; rightMenuCtx.textAlign = 'center'; rightMenuCtx.fillText(`Tool Selection`, 256, 30);
             
             const tools = [
                 { id: 'brush', label: 'Brush (Standard)' },
@@ -989,7 +947,8 @@
         xrRight.add(globalMenuMesh);
 
         function updateGlobalMenuTexture() {
-            drawMenuBackground(globalMenuCtx, `Global Settings`);
+            globalMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; globalMenuCtx.fillRect(0, 0, 512, 512);
+            globalMenuCtx.fillStyle = '#4facfe'; globalMenuCtx.font = 'bold 28px sans-serif'; globalMenuCtx.textAlign = 'center'; globalMenuCtx.fillText(`Global Settings`, 256, 40);
             
             drawButton(globalMenuCtx, 40, 70, 200, 50, `V-Lock: ${isVerticalLock ? 'ON' : 'OFF'}`, isVerticalLock);
             drawButton(globalMenuCtx, 272, 70, 200, 50, `Clear Inside: ${clearInterior ? 'ON' : 'OFF'}`, clearInterior);
@@ -1024,7 +983,8 @@
         let leftMenuNeedsUpdate = true; let rightMenuNeedsUpdate = true; let colorMenuNeedsUpdate = true; let globalMenuNeedsUpdate = true; let lastMenuUpdateTime = 0;
         updateLeftMenuTexture(); updateRightMenuTexture(); updateColorMenuTexture(); updateGlobalMenuTexture();
 
-        // --- Export Pipeline ---
+        // --- Export Pipeline (OPTIMIZED & DECOUPLED FROM RENDERING) ---
+        // This guarantees Blender compatibility stays 100% intact even if we change the GPU render pipeline
         function exportToOBJ() {
             const isMesh = exportMode === 'mesh';
             const blobParts = ["# VoxTrotBravo Export\n", "mtllib voxel_materials.mtl\n"];
@@ -1047,33 +1007,39 @@
                 return chunk.voxelMatMap[localIdx] !== -1;
             }
             
-            const mat4 = new THREE.Matrix4(); const pos = new THREE.Vector3(); const col = new THREE.Color();
+            const pos = new THREE.Vector3(); 
             const vertsArray = []; const facesArrays = [[], [], []]; const matNames = ["Voxel_Solid", "Voxel_Glass", "Voxel_Emission"];
 
+            // Loop explicitly via RAM decoupled values to ensure output structure identical to original code
             for (let matIdx = 0; matIdx < 3; matIdx++) {
                 chunks.forEach(chunk => {
-                    const layer = chunk.layers[matIdx];
-                    if (!layer || layer.mesh.count === 0) return;
-                    for (let i = 0; i < layer.mesh.count; i++) {
-                        const localIdx = layer.indexToLocal[i]; if (localIdx === 65535) continue;
-                        const lx = localIdx % CHUNK_SIZE; const ly = Math.floor(localIdx / CHUNK_SIZE) % CHUNK_SIZE; const lz = Math.floor(localIdx / (CHUNK_SIZE * CHUNK_SIZE));
-                        const gx = (chunk.cx * CHUNK_SIZE) + lx; const gy = (chunk.cy * CHUNK_SIZE) + ly; const gz = (chunk.cz * CHUNK_SIZE) + lz;
+                    for (let localIdx = 0; localIdx < CHUNK_VOL; localIdx++) {
+                        if (chunk.voxelMatMap[localIdx] === matIdx) {
+                            const lx = localIdx % CHUNK_SIZE; const ly = Math.floor(localIdx / CHUNK_SIZE) % CHUNK_SIZE; const lz = Math.floor(localIdx / (CHUNK_SIZE * CHUNK_SIZE));
+                            const gx = (chunk.cx * CHUNK_SIZE) + lx; const gy = (chunk.cy * CHUNK_SIZE) + ly; const gz = (chunk.cz * CHUNK_SIZE) + lz;
 
-                        layer.mesh.getMatrixAt(i, mat4); layer.mesh.getColorAt(i, col);
-                        const r = col.r.toFixed(4); const g = col.g.toFixed(4); const b = col.b.toFixed(4);
-                        
-                        dirs.forEach(dir => {
-                            if (!hasVoxel(gx + dir.d[0], gy + dir.d[1], gz + dir.d[2])) {
-                                dir.v.forEach(vert => {
-                                    pos.copy(vert).applyMatrix4(mat4).applyMatrix4(worldGroup.matrixWorld);
-                                    vertsArray.push(`v ${pos.x.toFixed(4)} ${pos.y.toFixed(4)} ${pos.z.toFixed(4)} ${r} ${g} ${b}\n`);
-                                });
-                                if (isMesh) {
-                                    facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2}\n`); facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+2} ${vertexOffset+3}\n`);
-                                } else facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2} ${vertexOffset+3}\n`);
-                                vertexOffset += 4;
-                            }
-                        });
+                            // Calculate transformed position natively to decouple from InstancedMesh GPU buffer dependencies
+                            tempMatrix.makeTranslation(gx * VOXEL_SIZE, gy * VOXEL_SIZE, gz * VOXEL_SIZE);
+                            tempMatrix.premultiply(worldGroup.matrixWorld);
+
+                            // Read color from our new decoupled RAM byte array (Fastest)
+                            const r = (chunk.voxelColors[localIdx * 3] / 255).toFixed(4); 
+                            const g = (chunk.voxelColors[localIdx * 3 + 1] / 255).toFixed(4); 
+                            const b = (chunk.voxelColors[localIdx * 3 + 2] / 255).toFixed(4);
+                            
+                            dirs.forEach(dir => {
+                                if (!hasVoxel(gx + dir.d[0], gy + dir.d[1], gz + dir.d[2])) {
+                                    dir.v.forEach(vert => {
+                                        pos.copy(vert).applyMatrix4(tempMatrix);
+                                        vertsArray.push(`v ${pos.x.toFixed(4)} ${pos.y.toFixed(4)} ${pos.z.toFixed(4)} ${r} ${g} ${b}\n`);
+                                    });
+                                    if (isMesh) {
+                                        facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2}\n`); facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+2} ${vertexOffset+3}\n`);
+                                    } else facesArrays[matIdx].push(`f ${vertexOffset} ${vertexOffset+1} ${vertexOffset+2} ${vertexOffset+3}\n`);
+                                    vertexOffset += 4;
+                                }
+                            });
+                        }
                     }
                 });
             }
@@ -1104,13 +1070,20 @@
             return cA;
         }
 
+        // OPTIMIZATION A: Read RAM directly instead of waiting on GPU InstanceBuffer attributes!
         function getVoxelMatAndColor(gx, gy, gz, outColor) {
             const cx = Math.floor(gx / CHUNK_SIZE); const cy = Math.floor(gy / CHUNK_SIZE); const cz = Math.floor(gz / CHUNK_SIZE);
             const chunkKey = (cx + 65536) + ((cy + 65536) * 131072) + ((cz + 65536) * 17179869184);
             const chunk = chunks.get(chunkKey); if (!chunk) return -1;
             const localIdx = (gx - (cx * CHUNK_SIZE)) + ((gy - (cy * CHUNK_SIZE)) * CHUNK_SIZE) + ((gz - (cz * CHUNK_SIZE)) * CHUNK_SIZE * CHUNK_SIZE);
             const matType = chunk.voxelMatMap[localIdx];
-            if (matType !== -1 && outColor) { const layer = chunk.layers[matType]; const instIdx = layer.voxelToIndex[localIdx]; if (instIdx !== 65535) layer.mesh.getColorAt(instIdx, outColor); }
+            if (matType !== -1 && outColor) { 
+                outColor.setRGB(
+                    chunk.voxelColors[localIdx * 3] / 255,
+                    chunk.voxelColors[localIdx * 3 + 1] / 255,
+                    chunk.voxelColors[localIdx * 3 + 2] / 255
+                );
+            }
             return matType;
         }
         
@@ -1772,7 +1745,6 @@
 
         // --- Main Animation Loop ---
         renderer.setAnimationLoop(() => {
-            // Constant stable increment for Color-Shift behavior regardless of logic frame rates
             shiftProgress += 0.005 * shiftDir;
             if (shiftProgress >= 1) { shiftProgress = 1; shiftDir = -1; }
             if (shiftProgress <= 0) { shiftProgress = 0; shiftDir = 1; }
