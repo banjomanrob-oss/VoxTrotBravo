@@ -174,6 +174,14 @@
                 this.device = null;
                 this.pipelineSphere = null;
                 this.ready = false;
+                
+                // Pre-allocate persistent buffers to eliminate Garbage Collection pauses
+                this.maxOutputElements = 2000000; // Can comfortably process 2 million surface voxels at once
+                this.paramsBuffer = null;
+                this.counterBuffer = null;
+                this.outBuffer = null;
+                this.readCounterBuffer = null;
+                this.bindGroup = null;
             }
 
             async init() {
@@ -188,10 +196,11 @@
                             minX: f32, maxX: f32, minY: f32, maxY: f32,
                             minZ: f32, maxZ: f32, cx: f32, cy: f32,
                             cz: f32, rx: f32, ry: f32, rz: f32,
-                            mode: f32, clearInterior: f32, pad1: f32, pad2: f32
+                            mode: f32, clearInterior: f32, maxOut: f32, pad2: f32
                         };
                         @group(0) @binding(0) var<uniform> params: Params;
-                        @group(0) @binding(1) var<storage, read_write> result: array<u32>;
+                        @group(0) @binding(1) var<storage, read_write> counter: atomic<u32>;
+                        @group(0) @binding(2) var<storage, read_write> out_data: array<vec4<f32>>; // Packed [x, y, z, action]
 
                         @compute @workgroup_size(8, 8, 8)
                         fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -205,15 +214,8 @@
                             let ny = select(0.0, (gy - params.cy) / params.ry, params.ry > 0.0);
                             let nz = select(0.0, (gz - params.cz) / params.rz, params.rz > 0.0);
 
-                            let dx = u32(gx - params.minX);
-                            let dy = u32(gy - params.minY);
-                            let dz = u32(gz - params.minZ);
-                            let width = u32(params.maxX - params.minX + 1.0);
-                            let height = u32(params.maxY - params.minY + 1.0);
-                            let idx = dx + (dy * width) + (dz * width * height);
-
                             if ((nx*nx + ny*ny + nz*nz) <= 1.05) {
-                                var isSurface = false;
+                                var action = 0u;
                                 if (params.mode == 1.0) { 
                                     // Shell Mode Surface Detection
                                     let nx1 = select(0.0, ((gx+1.0) - params.cx) / params.rx, params.rx > 0.0);
@@ -226,21 +228,21 @@
                                     if (nx1*nx1 + ny*ny + nz*nz > 1.05 || nx2*nx2 + ny*ny + nz*nz > 1.05 ||
                                         nx*nx + ny1*ny1 + nz*nz > 1.05 || nx*nx + ny2*ny2 + nz*nz > 1.05 ||
                                         nx*nx + ny*ny + nz1*nz1 > 1.05 || nx*nx + ny*ny + nz2*nz2 > 1.05) {
-                                        isSurface = true;
-                                    }
-
-                                    if (isSurface) {
-                                        result[idx] = 1u; // Add voxel
+                                        action = 1u; // Add voxel
                                     } else if (params.clearInterior == 1.0) {
-                                        result[idx] = 2u; // Clear voxel
-                                    } else {
-                                        result[idx] = 0u; // Do nothing
+                                        action = 2u; // Clear voxel
                                     }
                                 } else {
-                                    result[idx] = 1u; // Solid Mode
+                                    action = 1u; // Solid Mode
                                 }
-                            } else {
-                                result[idx] = 0u;
+
+                                // Atomic Append: Only return actual data, filtering out millions of empty iterations
+                                if (action > 0u) {
+                                    let idx = atomicAdd(&counter, 1u);
+                                    if (idx < u32(params.maxOut)) {
+                                        out_data[idx] = vec4<f32>(gx, gy, gz, f32(action));
+                                    }
+                                }
                             }
                         }
                     `;
@@ -249,46 +251,65 @@
                         layout: 'auto',
                         compute: { module, entryPoint: 'main' }
                     });
+
+                    // Pre-allocate persistent GPU buffers
+                    this.paramsBuffer = this.device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+                    this.counterBuffer = this.device.createBuffer({ size: 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+                    this.outBuffer = this.device.createBuffer({ size: this.maxOutputElements * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+                    this.readCounterBuffer = this.device.createBuffer({ size: 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+
+                    this.bindGroup = this.device.createBindGroup({
+                        layout: this.pipelineSphere.getBindGroupLayout(0),
+                        entries: [
+                            { binding: 0, resource: { buffer: this.paramsBuffer } },
+                            { binding: 1, resource: { buffer: this.counterBuffer } },
+                            { binding: 2, resource: { buffer: this.outBuffer } }
+                        ]
+                    });
+
                     this.ready = true;
-                    console.log("WebGPU Compute Acceleration Ready");
+                    console.log("WebGPU Compute Acceleration Ready (Optimized Atomic Append)");
                 } catch(e) { console.warn("WebGPU initialization failed. Falling back to CPU.", e); }
             }
 
             async computeSphere(minX, maxX, minY, maxY, minZ, maxZ, cx, cy, cz, rx, ry, rz, mode, clearInterior) {
                 if (!this.ready) return null;
                 const w = maxX - minX + 1; const h = maxY - minY + 1; const d = maxZ - minZ + 1;
-                const numVoxels = w * h * d;
 
-                const paramsData = new Float32Array([minX, maxX, minY, maxY, minZ, maxZ, cx, cy, cz, rx, ry, rz, mode, clearInterior, 0, 0]);
-                const paramsBuffer = this.device.createBuffer({ size: paramsData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-                this.device.queue.writeBuffer(paramsBuffer, 0, paramsData);
-
-                const resultBufferSize = numVoxels * 4; 
-                const resultBuffer = this.device.createBuffer({ size: resultBufferSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
-                const readBuffer = this.device.createBuffer({ size: resultBufferSize, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-
-                const bindGroup = this.device.createBindGroup({
-                    layout: this.pipelineSphere.getBindGroupLayout(0),
-                    entries: [
-                        { binding: 0, resource: { buffer: paramsBuffer } },
-                        { binding: 1, resource: { buffer: resultBuffer } }
-                    ]
-                });
+                const paramsData = new Float32Array([minX, maxX, minY, maxY, minZ, maxZ, cx, cy, cz, rx, ry, rz, mode, clearInterior, this.maxOutputElements, 0]);
+                this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
+                
+                // Clear the atomic counter before execution
+                this.device.queue.writeBuffer(this.counterBuffer, 0, new Uint32Array([0]));
 
                 const commandEncoder = this.device.createCommandEncoder();
                 const passEncoder = commandEncoder.beginComputePass();
                 passEncoder.setPipeline(this.pipelineSphere);
-                passEncoder.setBindGroup(0, bindGroup);
+                passEncoder.setBindGroup(0, this.bindGroup);
                 passEncoder.dispatchWorkgroups(Math.ceil(w/8), Math.ceil(h/8), Math.ceil(d/8));
                 passEncoder.end();
 
-                commandEncoder.copyBufferToBuffer(resultBuffer, 0, readBuffer, 0, resultBufferSize);
+                // Copy only the 4-byte counter to read back first
+                commandEncoder.copyBufferToBuffer(this.counterBuffer, 0, this.readCounterBuffer, 0, 4);
                 this.device.queue.submit([commandEncoder.finish()]);
 
-                await readBuffer.mapAsync(GPUMapMode.READ);
-                const arrayBuffer = readBuffer.getMappedRange();
-                const data = new Uint32Array(arrayBuffer).slice(); // copy to free map lock
-                readBuffer.unmap();
+                await this.readCounterBuffer.mapAsync(GPUMapMode.READ);
+                const count = new Uint32Array(this.readCounterBuffer.getMappedRange())[0];
+                this.readCounterBuffer.unmap();
+
+                const elementsToRead = Math.min(count, this.maxOutputElements);
+                if (elementsToRead === 0) return new Float32Array(0);
+
+                // Dynamically create a tightly packed read buffer to save system bus bandwidth
+                const readDataBuffer = this.device.createBuffer({ size: elementsToRead * 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+                const copyEncoder = this.device.createCommandEncoder();
+                copyEncoder.copyBufferToBuffer(this.outBuffer, 0, readDataBuffer, 0, elementsToRead * 16);
+                this.device.queue.submit([copyEncoder.finish()]);
+
+                await readDataBuffer.mapAsync(GPUMapMode.READ);
+                const data = new Float32Array(readDataBuffer.getMappedRange()).slice(); 
+                readDataBuffer.unmap();
+                readDataBuffer.destroy(); // Destroy temp read buffer to keep memory clean
                 return data;
             }
         }
@@ -1481,27 +1502,37 @@
             if (computeEngine.ready && volume > 25000) { 
                 const data = await computeEngine.computeSphere(minX, maxX, minY, maxY, minZ, maxZ, cx, cy, cz, rx, ry, rz, sphereMode === 'shell' ? 1 : 0, clearInterior && isPainting ? 1 : 0);
                 if (data) {
-                    const w = maxX - minX + 1; const h = maxY - minY + 1; const d = maxZ - minZ + 1;
-                    for(let gx = minX; gx <= maxX; gx++) {
-                        for(let gy = minY; gy <= maxY; gy++) {
-                            for(let gz = minZ; gz <= maxZ; gz++) {
-                                const dx = gx - minX; const dy = gy - minY; const dz = gz - minZ;
-                                const idx = dx + (dy * w) + (dz * w * h);
-                                if (data[idx] === 1) {
-                                    const cMain = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
-                                    setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
-                                } else if (data[idx] === 2) {
-                                    setVoxel(gx, gy, gz, false, null);
-                                }
+                    const totalVoxels = data.length / 4;
+                    let currentIndex = 0;
+
+                    // Time-Sliced CPU Processing: Prevents the VR headset from freezing
+                    // by yielding to the main render thread every few thousand voxels.
+                    function processChunk() {
+                        const chunkLimit = Math.min(currentIndex + 4000, totalVoxels);
+                        for(; currentIndex < chunkLimit; currentIndex++) {
+                            const idx = currentIndex * 4;
+                            const gx = data[idx]; const gy = data[idx+1]; const gz = data[idx+2]; const action = data[idx+3];
+                            
+                            if (action === 1) {
+                                const cMain = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
+                                setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                            } else if (action === 2) {
+                                setVoxel(gx, gy, gz, false, null);
                             }
                         }
+
+                        if (currentIndex < totalVoxels) {
+                            setTimeout(processChunk, 0); // Yield back to the browser
+                        } else {
+                            leftMenuNeedsUpdate = true; // Refresh UI when done
+                        }
                     }
-                    leftMenuNeedsUpdate = true;
-                    return; // Early exit, WebGPU handled the volume logic
+                    processChunk();
+                    return; // Early exit, processing will finish async without locking
                 }
             }
 
-            // Fallback CPU Path (runs perfectly smooth for smaller brushes)
+            // Fallback CPU Path (runs perfectly smooth for smaller brushes < 25k volume)
             const isInside = (x, y, z) => { const nx = rx > 0 ? (x - cx) / rx : 0; const ny = ry > 0 ? (y - cy) / ry : 0; const nz = rz > 0 ? (z - cz) / rz : 0; return (nx * nx + ny * ny + nz * nz) <= 1.05; };
             for(let gx = minX; gx <= maxX; gx++) for(let gy = minY; gy <= maxY; gy++) for(let gz = minZ; gz <= maxZ; gz++) {
                 if (isInside(gx, gy, gz)) {
