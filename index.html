@@ -502,16 +502,20 @@
                 bMesh.scale.copy(selBoxMesh.scale);
                 bMesh.updateMatrix();
 
+                // Start rotation cascade from 0 for step 1, matching the base copied group perfectly
                 pivotGroup.rotation.set(
-                    THREE.MathUtils.degToRad(copyStepRotX * step),
-                    THREE.MathUtils.degToRad(copyStepRotY * step),
-                    THREE.MathUtils.degToRad(copyStepRotZ * step),
+                    THREE.MathUtils.degToRad(copyStepRotX * (step - 1)),
+                    THREE.MathUtils.degToRad(copyStepRotY * (step - 1)),
+                    THREE.MathUtils.degToRad(copyStepRotZ * (step - 1)),
                     'XYZ'
                 );
                 pivotGroup.updateMatrix();
 
                 g.position.set(pCX + px, pCY + py, pCZ + pz);
                 g.scale.set(sx, sy, sz);
+                
+                // Vital matrix recalculation when matrixAutoUpdate is disabled
+                g.updateMatrix(); 
                 g.updateMatrixWorld(true);
                 g.visible = true;
                 pIdx++;
@@ -1420,7 +1424,12 @@
             if (transformMode === 'copy') { 
                 const pCX = pivotPoint.x; const pCY = pivotPoint.y; const pCZ = pivotPoint.z;
                 for (let step = 1; step <= numCopies; step++) {
-                    const sEuler = new THREE.Euler(THREE.MathUtils.degToRad(copyStepRotX * step), THREE.MathUtils.degToRad(copyStepRotY * step), THREE.MathUtils.degToRad(copyStepRotZ * step), 'XYZ');
+                    const sEuler = new THREE.Euler(
+                        THREE.MathUtils.degToRad(copyStepRotX * (step - 1)), 
+                        THREE.MathUtils.degToRad(copyStepRotY * (step - 1)), 
+                        THREE.MathUtils.degToRad(copyStepRotZ * (step - 1)), 
+                        'XYZ'
+                    );
                     const sMat = new THREE.Matrix4().makeRotationFromEuler(sEuler);
                     for(let v of selectedVoxels) {
                         tempPos.set(v.x - pCX, v.y - pCY, v.z - pCZ);
