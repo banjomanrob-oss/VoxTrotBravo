@@ -133,6 +133,9 @@
         let selectedVoxels = [];
         
         const selectionCenter = new THREE.Vector3();
+        const pivotPoint = new THREE.Vector3();
+        let isSettingPivot = false;
+
         const selectionOffset = new THREE.Vector3();
         const dragStartCtrlPos = new THREE.Vector3();
         const dragStartOffset = new THREE.Vector3();
@@ -442,6 +445,12 @@
         selBoxMesh.matrixAutoUpdate = false;
         selectionGroup.add(selBoxMesh);
 
+        const pivotMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 0.9 });
+        const pivotIndicator = new THREE.Mesh(new THREE.SphereGeometry(VOXEL_SIZE * 0.8, 8, 8), pivotMat);
+        pivotIndicator.matrixAutoUpdate = false;
+        pivotIndicator.visible = false;
+        worldGroup.add(pivotIndicator);
+
         const previewContainer = new THREE.Group();
         worldGroup.add(previewContainer);
         const previewGroups = [];
@@ -472,24 +481,24 @@
                 const g = previewGroups[pIdx];
                 const pivotGroup = g.children[0];
                 
-                const sCX = selectionCenter.x * VOXEL_SIZE;
-                const sCY = selectionCenter.y * VOXEL_SIZE;
-                const sCZ = selectionCenter.z * VOXEL_SIZE;
+                const pCX = pivotPoint.x * VOXEL_SIZE;
+                const pCY = pivotPoint.y * VOXEL_SIZE;
+                const pCZ = pivotPoint.z * VOXEL_SIZE;
 
                 pivotGroup.children[0].instanceMatrix = selMeshSolid.instanceMatrix; pivotGroup.children[0].instanceColor = selMeshSolid.instanceColor; pivotGroup.children[0].count = selMeshSolid.count; pivotGroup.children[0].visible = selMeshSolid.visible;
                 pivotGroup.children[1].instanceMatrix = selMeshGlass.instanceMatrix; pivotGroup.children[1].instanceColor = selMeshGlass.instanceColor; pivotGroup.children[1].count = selMeshGlass.count; pivotGroup.children[1].visible = selMeshGlass.visible;
                 pivotGroup.children[2].instanceMatrix = selMeshEmission.instanceMatrix; pivotGroup.children[2].instanceColor = selMeshEmission.instanceColor; pivotGroup.children[2].count = selMeshEmission.count; pivotGroup.children[2].visible = selMeshEmission.visible;
                 
-                // Re-center meshes inside the pivot group so array rotation pivots accurately around center
+                // Re-center meshes inside the pivot group so array rotation pivots accurately around the custom pivot
                 pivotGroup.children.forEach((m, idx) => {
                     if (idx < 3) {
-                        m.position.set(-sCX, -sCY, -sCZ);
+                        m.position.set(-pCX, -pCY, -pCZ);
                         m.updateMatrix();
                     }
                 });
 
                 const bMesh = pivotGroup.children[3];
-                bMesh.position.copy(selBoxMesh.position).sub(new THREE.Vector3(sCX, sCY, sCZ));
+                bMesh.position.copy(selBoxMesh.position).sub(new THREE.Vector3(pCX, pCY, pCZ));
                 bMesh.scale.copy(selBoxMesh.scale);
                 bMesh.updateMatrix();
 
@@ -501,7 +510,7 @@
                 );
                 pivotGroup.updateMatrix();
 
-                g.position.set(sCX + px, sCY + py, sCZ + pz);
+                g.position.set(pCX + px, pCY + py, pCZ + pz);
                 g.scale.set(sx, sy, sz);
                 g.updateMatrixWorld(true);
                 g.visible = true;
@@ -766,7 +775,10 @@
                     drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'color'); drawButton(leftMenuCtx, 330, 120, 132, 40, 'MATERIAL', selectFilter === 'material');
                     leftMenuCtx.fillStyle = '#aaa'; leftMenuCtx.font = '16px sans-serif'; leftMenuCtx.fillText('Use Right Trigger on target to start selecting.', 256, 190);
                 } else {
-                    drawButton(leftMenuCtx, 50, 60, 200, 30, 'MODE: MOVE', transformMode === 'move'); drawButton(leftMenuCtx, 262, 60, 200, 30, 'MODE: COPY', transformMode === 'copy');
+                    drawButton(leftMenuCtx, 50, 60, 130, 30, 'MOVE', transformMode === 'move' && !isSettingPivot);
+                    drawButton(leftMenuCtx, 190, 60, 130, 30, 'COPY', transformMode === 'copy' && !isSettingPivot);
+                    drawButton(leftMenuCtx, 330, 60, 132, 30, isSettingPivot ? 'PICK PIVOT' : 'SET PIVOT', isSettingPivot);
+
                     drawSlider(leftMenuCtx, 50, 100, 412, 30, 'ROT X', selectionRotX, -180, 180); 
                     drawSlider(leftMenuCtx, 50, 140, 412, 30, 'ROT Y', selectionRotY, -180, 180); 
                     drawSlider(leftMenuCtx, 50, 180, 412, 30, 'ROT Z', selectionRotZ, -180, 180);
@@ -781,6 +793,12 @@
                     } else {
                         drawButton(leftMenuCtx, 50, 270, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 270, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 270, 132, 40, 'DELETE', false);
                     }
+                    
+                    if (isSettingPivot) {
+                        leftMenuCtx.fillStyle = '#ffff00';
+                        leftMenuCtx.font = 'bold 18px sans-serif';
+                        leftMenuCtx.fillText('Use Right Trigger to Pick Pivot Point.', 256, 490);
+                    }
                 }
             }
             leftMenuTexture.needsUpdate = true;
@@ -789,8 +807,12 @@
         function handleLeftMenuClick(cx, cy) {
             if (activeTool === 'select' && hasSelection) {
                 if (cy >= 60 && cy <= 90) {
-                    let newMode = null; if (cx >= 50 && cx <= 250) newMode = 'move'; if (cx >= 262 && cx <= 462) newMode = 'copy';
-                    if (newMode && newMode !== transformMode) {
+                    let newMode = transformMode; 
+                    if (cx >= 50 && cx <= 180) { newMode = 'move'; isSettingPivot = false; }
+                    else if (cx >= 190 && cx <= 320) { newMode = 'copy'; isSettingPivot = false; }
+                    else if (cx >= 330 && cx <= 462) { isSettingPivot = !isSettingPivot; }
+                    
+                    if (newMode !== transformMode) {
                         transformMode = newMode;
                         if (transformMode === 'copy') { for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat); } 
                         else { for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, false, null); }
@@ -1291,15 +1313,15 @@
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
             for (let v of baseSelection) {
                 origMap.set((v.x + 32768) + (v.y + 32768) * 65536 + (v.z + 32768) * 4294967296, v);
-                tempPos.set(v.x - selectionCenter.x, v.y - selectionCenter.y, v.z - selectionCenter.z); tempPos.applyMatrix4(rotR);
-                const rx = selectionCenter.x + tempPos.x; const ry = selectionCenter.y + tempPos.y; const rz = selectionCenter.z + tempPos.z;
+                tempPos.set(v.x - pivotPoint.x, v.y - pivotPoint.y, v.z - pivotPoint.z); tempPos.applyMatrix4(rotR);
+                const rx = pivotPoint.x + tempPos.x; const ry = pivotPoint.y + tempPos.y; const rz = pivotPoint.z + tempPos.z;
                 if (rx < minX) minX = rx; if (rx > maxX) maxX = rx; if (ry < minY) minY = ry; if (ry > maxY) maxY = ry; if (rz < minZ) minZ = rz; if (rz > maxZ) maxZ = rz;
             }
             minX = Math.floor(minX) - 1; maxX = Math.ceil(maxX) + 1; minY = Math.floor(minY) - 1; maxY = Math.ceil(maxY) + 1; minZ = Math.floor(minZ) - 1; maxZ = Math.ceil(maxZ) + 1;
             
             selectedVoxels.length = 0;
             const e = rotR_inv.elements; const inv0 = e[0], inv4 = e[4], inv8 = e[8]; const inv1 = e[1], inv5 = e[5], inv9 = e[9]; const inv2 = e[2], inv6 = e[6], inv10 = e[10];
-            const cx = selectionCenter.x; const cy = selectionCenter.y; const cz = selectionCenter.z;
+            const cx = pivotPoint.x; const cy = pivotPoint.y; const cz = pivotPoint.z;
             
             for (let x = minX; x <= maxX; x++) {
                 const dx = x - cx;
@@ -1325,6 +1347,12 @@
                 minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y); minZ = Math.min(minZ, v.z); maxZ = Math.max(maxZ, v.z);
             }
             hasSelection = true; selectionOffset.set(0,0,0); selectionGroup.position.set(0,0,0); selectionCenter.set( (minX + maxX)/2, (minY + maxY)/2, (minZ + maxZ)/2 );
+            
+            pivotPoint.copy(selectionCenter);
+            pivotIndicator.position.set(pivotPoint.x * VOXEL_SIZE, pivotPoint.y * VOXEL_SIZE, pivotPoint.z * VOXEL_SIZE);
+            pivotIndicator.updateMatrix();
+            pivotIndicator.visible = true;
+
             selectedVoxels = baseSelection.map(v => ({...v}));
             updateSelectionVisuals(); leftMenuNeedsUpdate = true;
         }
@@ -1390,23 +1418,23 @@
         function applySelection() {
             const offX = Math.round(selectionGroup.position.x / VOXEL_SIZE); const offY = Math.round(selectionGroup.position.y / VOXEL_SIZE); const offZ = Math.round(selectionGroup.position.z / VOXEL_SIZE);
             if (transformMode === 'copy') { 
-                const sCX = selectionCenter.x; const sCY = selectionCenter.y; const sCZ = selectionCenter.z;
+                const pCX = pivotPoint.x; const pCY = pivotPoint.y; const pCZ = pivotPoint.z;
                 for (let step = 1; step <= numCopies; step++) {
                     const sEuler = new THREE.Euler(THREE.MathUtils.degToRad(copyStepRotX * step), THREE.MathUtils.degToRad(copyStepRotY * step), THREE.MathUtils.degToRad(copyStepRotZ * step), 'XYZ');
                     const sMat = new THREE.Matrix4().makeRotationFromEuler(sEuler);
                     for(let v of selectedVoxels) {
-                        tempPos.set(v.x - sCX, v.y - sCY, v.z - sCZ);
+                        tempPos.set(v.x - pCX, v.y - pCY, v.z - pCZ);
                         tempPos.applyMatrix4(sMat);
-                        setVoxel(Math.round(sCX + offX * step + tempPos.x), Math.round(sCY + offY * step + tempPos.y), Math.round(sCZ + offZ * step + tempPos.z), true, v.color, v.mat);
+                        setVoxel(Math.round(pCX + offX * step + tempPos.x), Math.round(pCY + offY * step + tempPos.y), Math.round(pCZ + offZ * step + tempPos.z), true, v.color, v.mat);
                     }
                 }
             } 
             else { for(let v of selectedVoxels) setVoxel(v.x + offX, v.y + offY, v.z + offZ, true, v.color, v.mat); }
-            baseSelection.length = 0; selectedVoxels.length = 0; hasSelection = false; selectionGroup.visible = false; selectionGroup.position.set(0,0,0); selectionOffset.set(0,0,0); leftMenuNeedsUpdate = true;
+            baseSelection.length = 0; selectedVoxels.length = 0; hasSelection = false; selectionGroup.visible = false; selectionGroup.position.set(0,0,0); selectionOffset.set(0,0,0); pivotIndicator.visible = false; isSettingPivot = false; leftMenuNeedsUpdate = true;
         }
 
         function cancelSelection() { if (transformMode === 'move') for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat); deleteSelection(); }
-        function deleteSelection() { baseSelection.length = 0; selectedVoxels.length = 0; hasSelection = false; selectionGroup.visible = false; selectionGroup.position.set(0,0,0); selectionOffset.set(0,0,0); leftMenuNeedsUpdate = true; }
+        function deleteSelection() { baseSelection.length = 0; selectedVoxels.length = 0; hasSelection = false; selectionGroup.visible = false; selectionGroup.position.set(0,0,0); selectionOffset.set(0,0,0); pivotIndicator.visible = false; isSettingPivot = false; leftMenuNeedsUpdate = true; }
 
         // --- Brushes ---
         function placeBrushVoxels(targetPos, isPainting) {
@@ -1676,7 +1704,7 @@
             };
 
             for(let gx = loopMinX; gx <= loopMaxX; gx++) 
-            for(let gy = loopMinY; gy <= loopMaxY; gy++) 
+            for(let gy = loopMinY; loopMaxY >= gy; gy++) 
             for(let gz = loopMinZ; gz <= loopMaxZ; gz++) {
                 if (isInside(gx, gy, gz)) {
                     const cMain = getDrawColor(gx, gy, gz, loopMinX, loopMaxX, loopMinY, loopMaxY, 0);
@@ -1846,7 +1874,19 @@
                     if (cy >= 155 && cy <= 315 && cx >= 30 && cx <= 482) { isColorPicking = true; isPaletteMagnified = true; updateColorMenuTexture(); } else handleColorMenuClick(cx, cy);
                 } else {
                     if (activeTool === 'select') {
-                        if (hasSelection) { isDrawing = true; dragStartCtrlPos.copy(rightTargetLocal); dragStartOffset.copy(selectionGroup.position); } 
+                        if (hasSelection) { 
+                            if (isSettingPivot) {
+                                pivotPoint.set(Math.round(rightTargetLocal.x / VOXEL_SIZE), Math.round(rightTargetLocal.y / VOXEL_SIZE), Math.round(rightTargetLocal.z / VOXEL_SIZE));
+                                pivotIndicator.position.set(pivotPoint.x * VOXEL_SIZE, pivotPoint.y * VOXEL_SIZE, pivotPoint.z * VOXEL_SIZE);
+                                pivotIndicator.updateMatrix();
+                                isSettingPivot = false;
+                                updateRotatedSelection();
+                                updatePreviews();
+                                leftMenuNeedsUpdate = true;
+                            } else {
+                                isDrawing = true; dragStartCtrlPos.copy(rightTargetLocal); dragStartOffset.copy(selectionGroup.position); 
+                            }
+                        } 
                         else { 
                             if (selectMode === 'box') { isDrawing = true; drawStartPos.copy(rightTargetLocal); isPreviewingBox = true; } 
                             else if (selectMode === 'connected') executeSelectConnected(rightTargetLocal); 
@@ -2091,7 +2131,7 @@
 
                 // DRAWING EXECUTION (Right Hand)
                 if (xrRight && isDrawing) {
-                    if (activeTool === 'select' && hasSelection) {
+                    if (activeTool === 'select' && hasSelection && !isSettingPivot) {
                         selectionOffset.copy(rightTargetLocal).sub(dragStartCtrlPos);
                         selectionOffset.set(Math.round(selectionOffset.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(selectionOffset.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(selectionOffset.z / VOXEL_SIZE) * VOXEL_SIZE);
                         selectionGroup.position.copy(dragStartOffset).add(selectionOffset); selectionGroup.updateMatrix();
