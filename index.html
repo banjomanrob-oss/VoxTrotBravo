@@ -209,19 +209,33 @@
             sweptBounds.rSq = (sweptBounds.r + 0.1) * (sweptBounds.r + 0.1);
         }
 
-        function isInsideSweptBrush(x, y, z, bounds) {
+        function isInsideSweptBrush(x, y, z, bounds, checkHollow = false) {
             if (brushShape === 'sphere') {
                 const px = x - bounds.A.x; const py = y - bounds.A.y; const pz = z - bounds.A.z;
                 let t = 0;
                 if (bounds.segLenSq > 0) t = Math.max(0, Math.min(1, (px * bounds.dGx + py * bounds.dGy + pz * bounds.dGz) / bounds.segLenSq));
                 const projX = t * bounds.dGx; const projY = t * bounds.dGy; const projZ = t * bounds.dGz;
-                return ((px - projX)**2 + (py - projY)**2 + (pz - projZ)**2) <= bounds.rSq;
+                const dSq = (px - projX)**2 + (py - projY)**2 + (pz - projZ)**2;
+                if (dSq > bounds.rSq) return false;
+                if (checkHollow && dSq <= (bounds.r - 0.8)**2) return false;
+                return true;
             } else {
                 let tMin = 0; let tMax = 1; let valid = true;
                 if (bounds.dGx === 0) { if (Math.abs(x - bounds.A.x) > bounds.r) valid = false; } else { let tx1 = (x - bounds.A.x - bounds.r)/bounds.dGx; let tx2 = (x - bounds.A.x + bounds.r)/bounds.dGx; if (tx1 > tx2) { let tmp = tx1; tx1 = tx2; tx2 = tmp; } if (tx1 > tMin) tMin = tx1; if (tx2 < tMax) tMax = tx2; if (tMin > tMax) valid = false; }
                 if (valid) { if (bounds.dGy === 0) { if (Math.abs(y - bounds.A.y) > bounds.r) valid = false; } else { let ty1 = (y - bounds.A.y - bounds.r)/bounds.dGy; let ty2 = (y - bounds.A.y + bounds.r)/bounds.dGy; if (ty1 > ty2) { let tmp = ty1; ty1 = ty2; ty2 = tmp; } if (ty1 > tMin) tMin = ty1; if (ty2 < tMax) tMax = ty2; if (tMin > tMax) valid = false; } }
                 if (valid) { if (bounds.dGz === 0) { if (Math.abs(z - bounds.A.z) > bounds.r) valid = false; } else { let tz1 = (z - bounds.A.z - bounds.r)/bounds.dGz; let tz2 = (z - bounds.A.z + bounds.r)/bounds.dGz; if (tz1 > tz2) { let tmp = tz1; tz1 = tz2; tz2 = tmp; } if (tz1 > tMin) tMin = tz1; if (tz2 < tMax) tMax = tz2; if (tMin > tMax) valid = false; } }
-                return valid;
+                
+                if (!valid) return false;
+                if (!checkHollow) return true;
+
+                const innerR = bounds.r - 1;
+                if (innerR < 0) return true;
+                let tMinI = 0; let tMaxI = 1; let validI = true;
+                if (bounds.dGx === 0) { if (Math.abs(x - bounds.A.x) > innerR) validI = false; } else { let tx1 = (x - bounds.A.x - innerR)/bounds.dGx; let tx2 = (x - bounds.A.x + innerR)/bounds.dGx; if (tx1 > tx2) { let tmp = tx1; tx1 = tx2; tx2 = tmp; } if (tx1 > tMinI) tMinI = tx1; if (tx2 < tMaxI) tMaxI = tx2; if (tMinI > tMaxI) validI = false; }
+                if (validI) { if (bounds.dGy === 0) { if (Math.abs(y - bounds.A.y) > innerR) validI = false; } else { let ty1 = (y - bounds.A.y - innerR)/bounds.dGy; let ty2 = (y - bounds.A.y + innerR)/bounds.dGy; if (ty1 > ty2) { let tmp = ty1; ty1 = ty2; ty2 = tmp; } if (ty1 > tMinI) tMinI = ty1; if (ty2 < tMaxI) tMaxI = ty2; if (tMinI > tMaxI) validI = false; } }
+                if (validI) { if (bounds.dGz === 0) { if (Math.abs(z - bounds.A.z) > innerR) validI = false; } else { let tz1 = (z - bounds.A.z - innerR)/bounds.dGz; let tz2 = (z - bounds.A.z + innerR)/bounds.dGz; if (tz1 > tz2) { let tmp = tz1; tz1 = tz2; tz2 = tmp; } if (tz1 > tMinI) tMinI = tz1; if (tz2 < tMaxI) tMaxI = tz2; if (tMinI > tMaxI) validI = false; } }
+                
+                return !validI;
             }
         }
 
@@ -1553,8 +1567,23 @@
             const r = brushSize - 1; const rSq = (r + 0.1) * (r + 0.1); 
             const centerGx = Math.round(targetPos.x / VOXEL_SIZE); const centerGy = Math.round(targetPos.y / VOXEL_SIZE); const centerGz = Math.round(targetPos.z / VOXEL_SIZE);
             const minX = centerGx - r; const maxX = centerGx + r; const minY = centerGy - r; const maxY = centerGy + r;
+            const isHollow = brushSize > 1;
+            const sphereInnerSq = (r - 0.8) * (r - 0.8);
+
             for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
-                if (brushShape === 'sphere' && (dx*dx + dy*dy + dz*dz > rSq)) continue; 
+                if (brushShape === 'sphere') {
+                    const dSq = dx*dx + dy*dy + dz*dz;
+                    if (dSq > rSq) continue;
+                    if (isHollow && dSq <= sphereInnerSq) {
+                        if (isPainting && clearInterior) setVoxel(centerGx + dx, centerGy + dy, centerGz + dz, false, null);
+                        continue;
+                    }
+                } else if (brushShape === 'cube') {
+                    if (isHollow && Math.abs(dx) < r && Math.abs(dy) < r && Math.abs(dz) < r) {
+                        if (isPainting && clearInterior) setVoxel(centerGx + dx, centerGy + dy, centerGz + dz, false, null);
+                        continue;
+                    }
+                }
                 setVoxel(centerGx + dx, centerGy + dy, centerGz + dz, isPainting, getDrawColor(centerGx + dx, centerGy + dy, centerGz + dz, minX, maxX, minY, maxY, 0), matTypes[0]);
             }
             leftMenuNeedsUpdate = true;
@@ -1564,19 +1593,31 @@
             const r = brushSize - 1; const rSq = (r + 0.1) * (r + 0.1); 
             const centerGx = Math.round(targetPos.x / VOXEL_SIZE); const centerGy = Math.round(targetPos.y / VOXEL_SIZE); const centerGz = Math.round(targetPos.z / VOXEL_SIZE);
             const minX = centerGx - r; const maxX = centerGx + r; const minY = centerGy - r; const maxY = centerGy + r;
+            const isHollow = brushSize > 1;
+            const sphereInnerSq = (r - 0.8) * (r - 0.8);
+
             for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
-                if (brushShape === 'sphere' && (dx*dx + dy*dy + dz*dz > rSq)) continue; 
+                if (brushShape === 'sphere') {
+                    const dSq = dx*dx + dy*dy + dz*dz;
+                    if (dSq > rSq) continue;
+                    if (isHollow && dSq <= sphereInnerSq) continue;
+                } else if (brushShape === 'cube') {
+                    if (isHollow && Math.abs(dx) < r && Math.abs(dy) < r && Math.abs(dz) < r) continue;
+                }
                 recolorVoxelSet(centerGx + dx, centerGy + dy, centerGz + dz, getDrawColor(centerGx + dx, centerGy + dy, centerGz + dz, minX, maxX, minY, maxY, 0));
             }
         }
 
         function drawLineVoxels(startPos, endPos, isPainting) {
             updateSweptBrushBounds(startPos, endPos);
+            const checkHollow = brushSize > 1;
             for (let x = sweptBounds.minX; x <= sweptBounds.maxX; x++) {
                 for (let y = sweptBounds.minY; y <= sweptBounds.maxY; y++) {
                     for (let z = sweptBounds.minZ; z <= sweptBounds.maxZ; z++) {
-                        if (isInsideSweptBrush(x, y, z, sweptBounds)) {
+                        if (isInsideSweptBrush(x, y, z, sweptBounds, checkHollow)) {
                             setVoxel(x, y, z, isPainting, getDrawColor(x, y, z, sweptBounds.minX, sweptBounds.maxX, sweptBounds.minY, sweptBounds.maxY, 0), matTypes[0]);
+                        } else if (checkHollow && isPainting && clearInterior && isInsideSweptBrush(x, y, z, sweptBounds, false)) {
+                            setVoxel(x, y, z, false, null);
                         }
                     }
                 }
@@ -1586,10 +1627,11 @@
 
         function drawPaintLineVoxels(startPos, endPos) {
             updateSweptBrushBounds(startPos, endPos);
+            const checkHollow = brushSize > 1;
             for (let x = sweptBounds.minX; x <= sweptBounds.maxX; x++) {
                 for (let y = sweptBounds.minY; y <= sweptBounds.maxY; y++) {
                     for (let z = sweptBounds.minZ; z <= sweptBounds.maxZ; z++) {
-                        if (isInsideSweptBrush(x, y, z, sweptBounds)) {
+                        if (isInsideSweptBrush(x, y, z, sweptBounds, checkHollow)) {
                             recolorVoxelSet(x, y, z, getDrawColor(x, y, z, sweptBounds.minX, sweptBounds.maxX, sweptBounds.minY, sweptBounds.maxY, 0));
                         }
                     }
@@ -2298,10 +2340,11 @@
                         } else {
                             updateSweptBrushBounds(previewLineStart, previewLineEnd);
                             let instCount = 0; 
+                            const isPreviewHollow = brushSize > 1;
                             for (let x = sweptBounds.minX; x <= sweptBounds.maxX; x++) {
                                 for (let y = sweptBounds.minY; y <= sweptBounds.maxY; y++) {
                                     for (let z = sweptBounds.minZ; z <= sweptBounds.maxZ; z++) {
-                                        if (isInsideSweptBrush(x, y, z, sweptBounds)) {
+                                        if (isInsideSweptBrush(x, y, z, sweptBounds, isPreviewHollow)) {
                                             if (instCount < 60000) { 
                                                 tempMatrix.makeTranslation(x * VOXEL_SIZE, y * VOXEL_SIZE, z * VOXEL_SIZE); 
                                                 linePreviewMesh.setMatrixAt(instCount, tempMatrix); 
