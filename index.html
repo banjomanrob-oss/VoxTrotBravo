@@ -161,6 +161,13 @@
             [new THREE.Color(0x00ffcc), new THREE.Color(0xffff00)]  
         ];
         
+        const slotHSLs = [
+            [{h: 0, s: 0, l: 0}, {h: 0, s: 0, l: 0}],
+            [{h: 0, s: 0, l: 0}, {h: 0, s: 0, l: 0}]
+        ];
+        slotColors[0][0].getHSL(slotHSLs[0][0]); slotColors[0][1].getHSL(slotHSLs[0][1]);
+        slotColors[1][0].getHSL(slotHSLs[1][0]); slotColors[1][1].getHSL(slotHSLs[1][1]);
+        
         let shiftProgress = 0;
         let shiftDir = 1;
         const tempColorForDraw = [new THREE.Color(), new THREE.Color()]; 
@@ -224,7 +231,7 @@
         const leftPointerPos = new THREE.Vector3();
         const sheetPosL = new THREE.Vector3();
         const sheetPosR = new THREE.Vector3();
-        const tempHSL = { h: 0, s: 0, l: 0 }; // Used heavily in UI mapping
+        const tempHSL = { h: 0, s: 0, l: 0 }; // Legacy reference, keeping for safety
         const cursorGeos = {}; 
 
         // --- Scene Setup ---
@@ -965,9 +972,7 @@
         colorMenuMesh.visible = false; colorMenuMesh.position.set(0, 0.15, -0.05); colorMenuMesh.rotation.x = -Math.PI / 4;
         xrLeft.add(colorMenuMesh);
 
-        function drawColorPickerUI(ctx, cx, cy, radius, sliderX, sliderY, sliderW, sliderH, targetColor, isMagnified) {
-            targetColor.getHSL(tempHSL);
-
+        function drawColorPickerUI(ctx, cx, cy, radius, sliderX, sliderY, sliderW, sliderH, targetHSL, isMagnified) {
             // Hue Wheel
             const conic = ctx.createConicGradient(0, cx, cy);
             for(let i = 0; i <= 360; i += 60) conic.addColorStop(i / 360, `hsl(${i}, 100%, 50%)`);
@@ -981,47 +986,48 @@
             ctx.fillStyle = radial;
             ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill();
 
-            // Lightness Overlay
-            ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-            if (tempHSL.l < 0.5) {
-                ctx.fillStyle = `rgba(0,0,0,${1 - (tempHSL.l / 0.5)})`;
-            } else {
-                ctx.fillStyle = `rgba(255,255,255,${(tempHSL.l - 0.5) / 0.5})`;
-            }
-            ctx.fill();
-
             // Brightness Slider
             const grad = ctx.createLinearGradient(sliderX, 0, sliderX + sliderW, 0);
-            grad.addColorStop(0, `hsl(${tempHSL.h * 360}, ${tempHSL.s * 100}%, 0%)`);
-            grad.addColorStop(0.5, `hsl(${tempHSL.h * 360}, ${tempHSL.s * 100}%, 50%)`);
-            grad.addColorStop(1, `hsl(${tempHSL.h * 360}, ${tempHSL.s * 100}%, 100%)`);
+            grad.addColorStop(0, `hsl(${targetHSL.h * 360}, ${targetHSL.s * 100}%, 0%)`);
+            grad.addColorStop(0.5, `hsl(${targetHSL.h * 360}, ${targetHSL.s * 100}%, 50%)`);
+            grad.addColorStop(1, `hsl(${targetHSL.h * 360}, ${targetHSL.s * 100}%, 100%)`);
             ctx.fillStyle = grad;
             ctx.fillRect(sliderX, sliderY, sliderW, sliderH);
             ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(sliderX, sliderY, sliderW, sliderH);
 
             if (isMagnified) {
-                const markerX = cx + Math.cos(tempHSL.h * Math.PI * 2) * (tempHSL.s * radius);
-                const markerY = cy + Math.sin(tempHSL.h * Math.PI * 2) * (tempHSL.s * radius);
+                const markerX = cx + Math.cos(targetHSL.h * Math.PI * 2) * (targetHSL.s * radius);
+                const markerY = cy + Math.sin(targetHSL.h * Math.PI * 2) * (targetHSL.s * radius);
                 ctx.beginPath(); ctx.arc(markerX, markerY, 8, 0, Math.PI * 2);
-                ctx.strokeStyle = tempHSL.l > 0.6 ? '#000' : '#fff'; ctx.lineWidth = 3; ctx.stroke();
+                ctx.strokeStyle = targetHSL.l > 0.6 ? '#000' : '#fff'; ctx.lineWidth = 3; ctx.stroke();
 
-                const sliderMarkerX = sliderX + tempHSL.l * sliderW;
+                const sliderMarkerX = sliderX + targetHSL.l * sliderW;
                 ctx.fillStyle = '#fff'; ctx.fillRect(sliderMarkerX - 4, sliderY - 5, 8, sliderH + 10);
                 ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(sliderMarkerX - 4, sliderY - 5, 8, sliderH + 10);
+            } else {
+                const markerX = cx + Math.cos(targetHSL.h * Math.PI * 2) * (targetHSL.s * radius);
+                const markerY = cy + Math.sin(targetHSL.h * Math.PI * 2) * (targetHSL.s * radius);
+                ctx.beginPath(); ctx.arc(markerX, markerY, 4, 0, Math.PI * 2);
+                ctx.strokeStyle = targetHSL.l > 0.6 ? '#000' : '#fff'; ctx.lineWidth = 2; ctx.stroke();
+
+                const sliderMarkerX = sliderX + targetHSL.l * sliderW;
+                ctx.fillStyle = '#fff'; ctx.fillRect(sliderMarkerX - 2, sliderY - 3, 4, sliderH + 6);
+                ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(sliderMarkerX - 2, sliderY - 3, 4, sliderH + 6);
             }
         }
 
         function updateColorMenuTexture() {
             colorMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; colorMenuCtx.fillRect(0, 0, 512, 512);
             const targetColor = slotColors[activeMatSlot][activeColorSubSlot];
+            const targetHSL = slotHSLs[activeMatSlot][activeColorSubSlot];
 
             if (isPaletteMagnified) {
                 colorMenuCtx.fillStyle = '#4facfe'; colorMenuCtx.font = 'bold 26px sans-serif'; colorMenuCtx.textAlign = 'center'; colorMenuCtx.fillText(`Precision Picker`, 256, 36);
 
-                drawColorPickerUI(colorMenuCtx, 256, 220, 150, 20, 400, 472, 30, targetColor, true);
+                drawColorPickerUI(colorMenuCtx, 256, 220, 150, 20, 400, 472, 30, targetHSL, true);
 
                 const activeColorHex = targetColor.getHexString(); colorMenuCtx.fillStyle = '#' + activeColorHex; colorMenuCtx.fillRect(20, 450, 472, 35);
-                targetColor.getHSL(tempHSL); colorMenuCtx.fillStyle = tempHSL.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = 'bold 20px sans-serif'; colorMenuCtx.fillText(`Release trigger to apply`, 256, 474);
+                colorMenuCtx.fillStyle = targetHSL.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = 'bold 20px sans-serif'; colorMenuCtx.fillText(`Release trigger to apply`, 256, 474);
             } else {
                 colorMenuCtx.fillStyle = '#4facfe'; colorMenuCtx.font = 'bold 22px sans-serif'; colorMenuCtx.textAlign = 'center'; colorMenuCtx.fillText(`Materials & Colors`, 256, 30);
                 
@@ -1033,8 +1039,7 @@
                 drawButton(colorMenuCtx, 186, 100, 140, 45, 'GLASS', mType === 1); 
                 drawButton(colorMenuCtx, 342, 100, 140, 45, 'EMISSION', mType === 2);
                 
-                // Unified UI allowing full color wheel for all material types (incl Emission!)
-                drawColorPickerUI(colorMenuCtx, 256, 235, 75, 40, 315, 432, 15, targetColor, false);
+                drawColorPickerUI(colorMenuCtx, 256, 235, 75, 40, 315, 432, 15, targetHSL, false);
 
                 const cMode = colorModes[activeMatSlot];
                 drawButton(colorMenuCtx, 30, 340, 105, 40, 'SOLID', cMode === 'solid'); 
@@ -1047,7 +1052,7 @@
                 if (!showColor2) {
                     colorMenuCtx.fillStyle = '#' + cA.getHexString(); colorMenuCtx.fillRect(30, 390, 452, 55); 
                     colorMenuCtx.strokeStyle = '#fff'; colorMenuCtx.lineWidth = 4; colorMenuCtx.strokeRect(30, 390, 452, 55);
-                    cA.getHSL(tempHSL); colorMenuCtx.fillStyle = tempHSL.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color A', 256, 423);
+                    colorMenuCtx.fillStyle = slotHSLs[activeMatSlot][0].l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color A', 256, 423);
                 } else {
                     colorMenuCtx.fillStyle = '#' + cA.getHexString(); colorMenuCtx.fillRect(30, 390, 216, 55); 
                     colorMenuCtx.strokeStyle = activeColorSubSlot === 0 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSubSlot === 0 ? 4 : 2; colorMenuCtx.strokeRect(30, 390, 216, 55);
@@ -1055,8 +1060,8 @@
                     colorMenuCtx.fillStyle = '#' + cB.getHexString(); colorMenuCtx.fillRect(266, 390, 216, 55); 
                     colorMenuCtx.strokeStyle = activeColorSubSlot === 1 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSubSlot === 1 ? 4 : 2; colorMenuCtx.strokeRect(266, 390, 216, 55);
                     
-                    cA.getHSL(tempHSL); colorMenuCtx.fillStyle = tempHSL.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color A', 138, 423);
-                    cB.getHSL(tempHSL); colorMenuCtx.fillStyle = tempHSL.l > 0.6 ? 'black' : 'white'; colorMenuCtx.fillText('Color B', 374, 423);
+                    colorMenuCtx.fillStyle = slotHSLs[activeMatSlot][0].l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color A', 138, 423);
+                    colorMenuCtx.fillStyle = slotHSLs[activeMatSlot][1].l > 0.6 ? 'black' : 'white'; colorMenuCtx.fillText('Color B', 374, 423);
                 }
             }
             colorMenuTexture.needsUpdate = true;
@@ -1072,7 +1077,7 @@
             }
 
             const targetColor = slotColors[activeMatSlot][activeColorSubSlot];
-            targetColor.getHSL(tempHSL);
+            const targetHSL = slotHSLs[activeMatSlot][activeColorSubSlot];
 
             const dx = cx - wheelCx; const dy = cy - wheelCy;
             const dist = Math.sqrt(dx*dx + dy*dy);
@@ -1080,12 +1085,12 @@
             if (dist <= wheelR) {
                 let angle = Math.atan2(dy, dx);
                 if (angle < 0) angle += Math.PI * 2;
-                const h = angle / (Math.PI * 2);
-                const s = Math.min(1, dist / wheelR);
-                targetColor.setHSL(h, s, tempHSL.l);
+                targetHSL.h = angle / (Math.PI * 2);
+                targetHSL.s = Math.min(1, dist / wheelR);
+                targetColor.setHSL(targetHSL.h, targetHSL.s, targetHSL.l);
             } else if (cx >= sliderX && cx <= sliderX + sliderW && cy >= sliderY && cy <= sliderY + sliderH) {
-                const l = Math.max(0, Math.min(1, (cx - sliderX) / sliderW));
-                targetColor.setHSL(tempHSL.h, tempHSL.s, l);
+                targetHSL.l = Math.max(0, Math.min(1, (cx - sliderX) / sliderW));
+                targetColor.setHSL(targetHSL.h, targetHSL.s, targetHSL.l);
             }
 
             updateCursors(); colorMenuNeedsUpdate = true;
@@ -1098,7 +1103,7 @@
             } else if (cy >= 100 && cy <= 145) {
                 if (cx >= 30 && cx <= 170) matTypes[activeMatSlot] = 0;
                 if (cx >= 186 && cx <= 326) matTypes[activeMatSlot] = 1;
-                if (cx >= 342 && cx <= 482) { matTypes[activeMatSlot] = 2; activeColorSubSlot = 0; colorModes[activeMatSlot] = 'solid'; slotColors[activeMatSlot][0].setHex(0x808080); }
+                if (cx >= 342 && cx <= 482) { matTypes[activeMatSlot] = 2; activeColorSubSlot = 0; colorModes[activeMatSlot] = 'solid'; }
             } else if (cy >= 340 && cy <= 380) {
                 if (cx >= 30 && cx <= 135) { colorModes[activeMatSlot] = 'solid'; activeColorSubSlot = 0; }
                 if (cx >= 145 && cx <= 250) colorModes[activeMatSlot] = 'grad_h'; 
