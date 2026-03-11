@@ -256,18 +256,19 @@
             sweptBounds.rSq = (sweptBounds.r + 0.1) * (sweptBounds.r + 0.1);
         }
 
-        function isInsideSweptBrush(x, y, z, bounds) {
+        function isInsideSweptBrush(x, y, z, bounds, customR = undefined) {
+            const rLimit = customR !== undefined ? customR : bounds.r;
             if (brushShape === 'sphere') {
                 const px = x - bounds.A.x; const py = y - bounds.A.y; const pz = z - bounds.A.z;
                 let t = 0;
                 if (bounds.segLenSq > 0) t = Math.max(0, Math.min(1, (px * bounds.dGx + py * bounds.dGy + pz * bounds.dGz) / bounds.segLenSq));
                 const projX = t * bounds.dGx; const projY = t * bounds.dGy; const projZ = t * bounds.dGz;
-                return ((px - projX)**2 + (py - projY)**2 + (pz - projZ)**2) <= bounds.rSq;
+                return ((px - projX)**2 + (py - projY)**2 + (pz - projZ)**2) <= (rLimit + 0.1) * (rLimit + 0.1);
             } else {
                 let tMin = 0; let tMax = 1; let valid = true;
-                if (bounds.dGx === 0) { if (Math.abs(x - bounds.A.x) > bounds.r) valid = false; } else { let tx1 = (x - bounds.A.x - bounds.r)/bounds.dGx; let tx2 = (x - bounds.A.x + bounds.r)/bounds.dGx; if (tx1 > tx2) { let tmp = tx1; tx1 = tx2; tx2 = tmp; } if (tx1 > tMin) tMin = tx1; if (tx2 < tMax) tMax = tx2; if (tMin > tMax) valid = false; }
-                if (valid) { if (bounds.dGy === 0) { if (Math.abs(y - bounds.A.y) > bounds.r) valid = false; } else { let ty1 = (y - bounds.A.y - bounds.r)/bounds.dGy; let ty2 = (y - bounds.A.y + bounds.r)/bounds.dGy; if (ty1 > ty2) { let tmp = ty1; ty1 = ty2; ty2 = tmp; } if (ty1 > tMin) tMin = ty1; if (ty2 < tMax) tMax = ty2; if (tMin > tMax) valid = false; } }
-                if (valid) { if (bounds.dGz === 0) { if (Math.abs(z - bounds.A.z) > bounds.r) valid = false; } else { let tz1 = (z - bounds.A.z - bounds.r)/bounds.dGz; let tz2 = (z - bounds.A.z + bounds.r)/bounds.dGz; if (tz1 > tz2) { let tmp = tz1; tz1 = tz2; tz2 = tmp; } if (tz1 > tMin) tMin = tz1; if (tz2 < tMax) tMax = tz2; if (tMin > tMax) valid = false; } }
+                if (bounds.dGx === 0) { if (Math.abs(x - bounds.A.x) > rLimit) valid = false; } else { let tx1 = (x - bounds.A.x - rLimit)/bounds.dGx; let tx2 = (x - bounds.A.x + rLimit)/bounds.dGx; if (tx1 > tx2) { let tmp = tx1; tx1 = tx2; tx2 = tmp; } if (tx1 > tMin) tMin = tx1; if (tx2 < tMax) tMax = tx2; if (tMin > tMax) valid = false; }
+                if (valid) { if (bounds.dGy === 0) { if (Math.abs(y - bounds.A.y) > rLimit) valid = false; } else { let ty1 = (y - bounds.A.y - rLimit)/bounds.dGy; let ty2 = (y - bounds.A.y + rLimit)/bounds.dGy; if (ty1 > ty2) { let tmp = ty1; ty1 = ty2; ty2 = tmp; } if (ty1 > tMin) tMin = ty1; if (ty2 < tMax) tMax = ty2; if (tMin > tMax) valid = false; } }
+                if (valid) { if (bounds.dGz === 0) { if (Math.abs(z - bounds.A.z) > rLimit) valid = false; } else { let tz1 = (z - bounds.A.z - rLimit)/bounds.dGz; let tz2 = (z - bounds.A.z + rLimit)/bounds.dGz; if (tz1 > tz2) { let tmp = tz1; tz1 = tz2; tz2 = tmp; } if (tz1 > tMin) tMin = tz1; if (tz2 < tMax) tMax = tz2; if (tMin > tMax) valid = false; } }
                 return valid;
             }
         }
@@ -853,7 +854,7 @@
             } else if (activeTool === 'select') {
                 if (!hasSelection) {
                     drawButton(leftMenuCtx, 50, 70, 200, 40, 'BOX MODE', selectMode === 'box'); drawButton(leftMenuCtx, 262, 70, 200, 40, 'CONNECTED', selectMode === 'connected');
-                    drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'color'); drawButton(leftMenuCtx, 330, 120, 132, 40, 'MATERIAL', selectFilter === 'material');
+                    drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'material');
                     leftMenuCtx.fillStyle = '#aaa'; leftMenuCtx.font = '16px sans-serif'; leftMenuCtx.fillText('Use Right Trigger on target to start selecting.', 256, 190);
                 } else {
                     drawButton(leftMenuCtx, 50, 60, 130, 30, 'MOVE', transformMode === 'move' && !isSettingPivot);
@@ -1580,10 +1581,26 @@
 
         function placeBrushVoxels(targetPos, isPainting) {
             const r = brushSize - 1; const rSq = (r + 0.1) * (r + 0.1); 
+            const isHollow = brushSize > 2 && (activeTool === 'stroke' || activeTool === 'brush' || activeTool === 'paint');
+            const rInner = isHollow ? r - 1 : -1;
+            const rInnerSq = (rInner + 0.1) * (rInner + 0.1);
+
             const centerGx = Math.round(targetPos.x / VOXEL_SIZE); const centerGy = Math.round(targetPos.y / VOXEL_SIZE); const centerGz = Math.round(targetPos.z / VOXEL_SIZE);
             const minX = centerGx - r; const maxX = centerGx + r; const minY = centerGy - r; const maxY = centerGy + r;
             for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
-                if (brushShape === 'sphere' && (dx*dx + dy*dy + dz*dz > rSq)) continue; 
+                if (brushShape === 'sphere') {
+                    const distSq = dx*dx + dy*dy + dz*dz;
+                    if (distSq > rSq) continue;
+                    if (isHollow && distSq <= rInnerSq) {
+                        if (clearInterior && isPainting) setVoxel(centerGx + dx, centerGy + dy, centerGz + dz, false, null);
+                        continue;
+                    }
+                } else {
+                    if (isHollow && Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) <= rInner) {
+                        if (clearInterior && isPainting) setVoxel(centerGx + dx, centerGy + dy, centerGz + dz, false, null);
+                        continue;
+                    }
+                }
                 setVoxel(centerGx + dx, centerGy + dy, centerGz + dz, isPainting, getDrawColor(centerGx + dx, centerGy + dy, centerGz + dz, minX, maxX, minY, maxY, 0), matTypes[0]);
             }
             leftMenuNeedsUpdate = true;
@@ -1591,21 +1608,38 @@
 
         function placePaintVoxels(targetPos) {
             const r = brushSize - 1; const rSq = (r + 0.1) * (r + 0.1); 
+            const isHollow = brushSize > 2 && (activeTool === 'stroke' || activeTool === 'brush' || activeTool === 'paint');
+            const rInner = isHollow ? r - 1 : -1;
+            const rInnerSq = (rInner + 0.1) * (rInner + 0.1);
+
             const centerGx = Math.round(targetPos.x / VOXEL_SIZE); const centerGy = Math.round(targetPos.y / VOXEL_SIZE); const centerGz = Math.round(targetPos.z / VOXEL_SIZE);
             const minX = centerGx - r; const maxX = centerGx + r; const minY = centerGy - r; const maxY = centerGy + r;
             for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
-                if (brushShape === 'sphere' && (dx*dx + dy*dy + dz*dz > rSq)) continue; 
+                if (brushShape === 'sphere') {
+                    const distSq = dx*dx + dy*dy + dz*dz;
+                    if (distSq > rSq) continue;
+                    if (isHollow && distSq <= rInnerSq) continue;
+                } else {
+                    if (isHollow && Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) <= rInner) continue;
+                }
                 recolorVoxelSet(centerGx + dx, centerGy + dy, centerGz + dz, getDrawColor(centerGx + dx, centerGy + dy, centerGz + dz, minX, maxX, minY, maxY, 0));
             }
         }
 
         function drawLineVoxels(startPos, endPos, isPainting) {
             updateSweptBrushBounds(startPos, endPos);
+            const isHollow = brushSize > 2 && (activeTool === 'stroke' || activeTool === 'brush' || activeTool === 'paint');
+            const rInner = isHollow ? sweptBounds.r - 1 : -1;
+
             for (let x = sweptBounds.minX; x <= sweptBounds.maxX; x++) {
                 for (let y = sweptBounds.minY; y <= sweptBounds.maxY; y++) {
                     for (let z = sweptBounds.minZ; z <= sweptBounds.maxZ; z++) {
-                        if (isInsideSweptBrush(x, y, z, sweptBounds)) {
-                            setVoxel(x, y, z, isPainting, getDrawColor(x, y, z, sweptBounds.minX, sweptBounds.maxX, sweptBounds.minY, sweptBounds.maxY, 0), matTypes[0]);
+                        if (isInsideSweptBrush(x, y, z, sweptBounds, sweptBounds.r)) {
+                            if (isHollow && isInsideSweptBrush(x, y, z, sweptBounds, rInner)) {
+                                if (clearInterior && isPainting) setVoxel(x, y, z, false, null);
+                            } else {
+                                setVoxel(x, y, z, isPainting, getDrawColor(x, y, z, sweptBounds.minX, sweptBounds.maxX, sweptBounds.minY, sweptBounds.maxY, 0), matTypes[0]);
+                            }
                         }
                     }
                 }
@@ -1615,11 +1649,16 @@
 
         function drawPaintLineVoxels(startPos, endPos) {
             updateSweptBrushBounds(startPos, endPos);
+            const isHollow = brushSize > 2 && (activeTool === 'stroke' || activeTool === 'brush' || activeTool === 'paint');
+            const rInner = isHollow ? sweptBounds.r - 1 : -1;
+
             for (let x = sweptBounds.minX; x <= sweptBounds.maxX; x++) {
                 for (let y = sweptBounds.minY; y <= sweptBounds.maxY; y++) {
                     for (let z = sweptBounds.minZ; z <= sweptBounds.maxZ; z++) {
-                        if (isInsideSweptBrush(x, y, z, sweptBounds)) {
-                            recolorVoxelSet(x, y, z, getDrawColor(x, y, z, sweptBounds.minX, sweptBounds.maxX, sweptBounds.minY, sweptBounds.maxY, 0));
+                        if (isInsideSweptBrush(x, y, z, sweptBounds, sweptBounds.r)) {
+                            if (!(isHollow && isInsideSweptBrush(x, y, z, sweptBounds, rInner))) {
+                                recolorVoxelSet(x, y, z, getDrawColor(x, y, z, sweptBounds.minX, sweptBounds.maxX, sweptBounds.minY, sweptBounds.maxY, 0));
+                            }
                         }
                     }
                 }
@@ -2100,245 +2139,195 @@
                     rightLaserLine.visible = true;
                 } else { leftMenuHovered = false; colorMenuHovered = false; if(rightLaserLine) rightLaserLine.visible = false; }
 
-                if (activeSliderDrag && leftMenuHovered) {
-                    const cx = Math.floor(leftMenuUV.x * 512); 
-                    const pct = Math.max(0, Math.min(1, (cx - 50) / 412)); 
-                    let changed = false;
-
-                    if (activeSliderDrag === 'scale' || activeSliderDrag === 'stepScale') {
-                        const s = Math.round((0.1 + pct * 4.9) * 10) / 10;
-                        if (activeSliderDrag === 'scale' && selectionScale !== s) { selectionScale = s; changed = true; }
-                        if (activeSliderDrag === 'stepScale' && copyStepScale !== s) { copyStepScale = s; changed = true; }
-                    } else {
-                        const snappedVal = Math.round((-180 + pct * 360) / 15) * 15;
-                        if (activeSliderDrag === 'rotX' && selectionRotX !== snappedVal) { selectionRotX = snappedVal; changed = true; }
-                        if (activeSliderDrag === 'rotY' && selectionRotY !== snappedVal) { selectionRotY = snappedVal; changed = true; }
-                        if (activeSliderDrag === 'rotZ' && selectionRotZ !== snappedVal) { selectionRotZ = snappedVal; changed = true; }
-                        if (activeSliderDrag === 'stepRotX' && copyStepRotX !== snappedVal) { copyStepRotX = snappedVal; changed = true; }
-                        if (activeSliderDrag === 'stepRotY' && copyStepRotY !== snappedVal) { copyStepRotY = snappedVal; changed = true; }
-                        if (activeSliderDrag === 'stepRotZ' && copyStepRotZ !== snappedVal) { copyStepRotZ = snappedVal; changed = true; }
+                // --- World Transform (Grips) ---
+                if (isRightGripping && isLeftGripping) {
+                    gripRight.getWorldPosition(rightPos); gripLeft.getWorldPosition(leftPos);
+                    const currentDist = rightPos.distanceTo(leftPos);
+                    const currentMid = tempPos.copy(rightPos).lerp(leftPos, 0.5);
+                    currentHandVec.subVectors(rightPos, leftPos).normalize();
+                    
+                    const scaleFactor = currentDist / prevGripDist;
+                    worldGroup.scale.multiplyScalar(scaleFactor);
+                    
+                    panDelta.subVectors(currentMid, prevMid);
+                    worldGroup.position.add(panDelta);
+                    
+                    const qDiff = new THREE.Quaternion().setFromUnitVectors(prevHandVec, currentHandVec);
+                    if (isVerticalLock) {
+                        const euler = new THREE.Euler().setFromQuaternion(qDiff, 'YXZ');
+                        euler.x = 0; euler.z = 0;
+                        qDiff.setFromEuler(euler);
                     }
-
-                    if (changed) { if (!activeSliderDrag.startsWith('step')) updateRotatedSelection(); leftMenuNeedsUpdate = true; }
-                } else if (isColorPicking && colorMenuHovered) {
-                    const cx = Math.floor(colorMenuUV.x * 512); const cy = Math.floor((1 - colorMenuUV.y) * 512);
-                    let clampX, clampY;
-                    if (isPaletteMagnified) { clampX = Math.max(20, Math.min(492, cx)); clampY = Math.max(50, Math.min(450, cy)); } else { clampX = Math.max(30, Math.min(482, cx)); clampY = Math.max(155, Math.min(315, cy)); }
-                    pickColorFromCanvas(clampX, clampY);
+                    worldGroup.quaternion.premultiply(qDiff);
+                    
+                    const pivot = currentMid;
+                    worldGroup.position.sub(pivot);
+                    worldGroup.position.applyQuaternion(qDiff);
+                    worldGroup.position.multiplyScalar(scaleFactor);
+                    worldGroup.position.add(pivot);
+                    
+                    prevGripDist = currentDist; prevMid.copy(currentMid); prevHandVec.copy(currentHandVec);
+                } else if (isRightGripping) {
+                    gripRight.getWorldPosition(rightPos); panDelta.subVectors(rightPos, prevRightPos); worldGroup.position.add(panDelta); prevRightPos.copy(rightPos);
+                } else if (isLeftGripping) {
+                    gripLeft.getWorldPosition(leftPos); panDelta.subVectors(leftPos, prevLeftPos); worldGroup.position.add(panDelta); prevLeftPos.copy(leftPos);
                 }
 
-                if (gripRight) gripRight.getWorldPosition(rightPos); 
-                if (gripLeft) gripLeft.getWorldPosition(leftPos);
+                worldGroup.updateMatrixWorld(true);
+                const invWorldMat = new THREE.Matrix4().copy(worldGroup.matrixWorld).invert();
+                const invWorldQuat = tempQuat.copy(worldGroup.quaternion).invert();
 
-                if (isRightGripping && isLeftGripping && gripRight && gripLeft) {
-                    const dist = rightPos.distanceTo(leftPos); midPos.copy(rightPos).lerp(leftPos, 0.5); currentHandVec.subVectors(rightPos, leftPos).normalize();
-                    if (prevGripDist > 0 && prevHandVec.lengthSq() > 0) {
-                        const scaleDelta = dist / prevGripDist; panDelta.copy(midPos).sub(prevMid);
-                        if (isVerticalLock) {
-                            const pXZ = new THREE.Vector3(prevHandVec.x, 0, prevHandVec.z); const cXZ = new THREE.Vector3(currentHandVec.x, 0, currentHandVec.z);
-                            if (pXZ.lengthSq() > 0.001 && cXZ.lengthSq() > 0.001) tempQuat.setFromUnitVectors(pXZ.normalize(), cXZ.normalize()); else tempQuat.identity();
-                        } else tempQuat.setFromUnitVectors(prevHandVec, currentHandVec);
-                        worldGroup.position.add(panDelta); worldGroup.position.sub(midPos); worldGroup.position.multiplyScalar(scaleDelta);
-                        worldGroup.scale.multiplyScalar(scaleDelta); worldGroup.position.applyQuaternion(tempQuat); worldGroup.quaternion.premultiply(tempQuat); worldGroup.position.add(midPos);
+                xrRight.getWorldPosition(rightPointerPos); xrRight.getWorldQuaternion(currentRightQuat);
+                rightTargetLocal.copy(rightPointerPos).applyMatrix4(invWorldMat);
+                currentRightQuat.premultiply(invWorldQuat);
+                
+                xrLeft.getWorldPosition(leftPointerPos); xrLeft.getWorldQuaternion(currentLeftQuat);
+                leftTargetLocal.copy(leftPointerPos).applyMatrix4(invWorldMat);
+                currentLeftQuat.premultiply(invWorldQuat);
+
+                if (!rightMenuHovered && !globalMenuHovered && !leftMenuHovered && !colorMenuHovered) {
+                    if (isDrawing && !isSettingPivot) {
+                        if (activeTool === 'brush') {
+                            if (brushShape === 'ribbon') {
+                                if (lastPaintedPos.x === Infinity) { drawRibbonVoxels(rightTargetLocal, rightTargetLocal, currentRightQuat, currentRightQuat, true); }
+                                else { drawRibbonVoxels(lastPaintedPos, rightTargetLocal, lastPaintedQuatRight, currentRightQuat, true); }
+                                lastPaintedQuatRight.copy(currentRightQuat);
+                            } else {
+                                if (lastPaintedPos.x === Infinity) { placeBrushVoxels(rightTargetLocal, true); }
+                                else { drawLineVoxels(lastPaintedPos, rightTargetLocal, true); }
+                            }
+                            lastPaintedPos.copy(rightTargetLocal);
+                        } else if (activeTool === 'stroke' && strokeMode === 'continuous') {
+                            if (brushShape === 'ribbon') {
+                                if (lastPaintedPos.x === Infinity) { drawRibbonVoxels(drawStartPos, rightTargetLocal, currentRightQuat, currentRightQuat, true); }
+                                else { drawRibbonVoxels(lastPaintedPos, rightTargetLocal, lastPaintedQuatRight, currentRightQuat, true); }
+                                lastPaintedQuatRight.copy(currentRightQuat);
+                            } else {
+                                drawLineVoxels(drawStartPos, rightTargetLocal, true); 
+                            }
+                            lastPaintedPos.copy(rightTargetLocal);
+                        } else if (activeTool === 'paint') {
+                            if (paintMode === 'brush') {
+                                if (brushShape === 'ribbon') {
+                                    if (lastPaintedPos.x === Infinity) { drawRibbonVoxels(rightTargetLocal, rightTargetLocal, currentRightQuat, currentRightQuat, true); }
+                                    else { drawRibbonVoxels(lastPaintedPos, rightTargetLocal, lastPaintedQuatRight, currentRightQuat, true); }
+                                    lastPaintedQuatRight.copy(currentRightQuat);
+                                } else {
+                                    if (lastPaintedPos.x === Infinity) { placePaintVoxels(rightTargetLocal); }
+                                    else { drawPaintLineVoxels(lastPaintedPos, rightTargetLocal); }
+                                }
+                                lastPaintedPos.copy(rightTargetLocal);
+                            }
+                        } else if (activeTool === 'box' && isPreviewingBox) {
+                            updateBoxPreview(drawStartPos, rightTargetLocal, true);
+                        } else if (activeTool === 'quadsphere' && isPreviewingSphere) {
+                            updateSpherePreview(drawStartPos, rightTargetLocal, true);
+                        } else if (activeTool === 'plane' && isPreviewingPlane) {
+                            updatePlanePreview(drawStartPos, rightTargetLocal, true);
+                        } else if (activeTool === 'triangle' && isPreviewingTriangle) {
+                            updateBoxPreview(drawStartPos, rightTargetLocal, true);
+                        } else if (activeTool === 'select' && selectMode === 'box' && isPreviewingBox) {
+                            updateBoxPreview(drawStartPos, rightTargetLocal, true);
+                        } else if (activeTool === 'select' && hasSelection && transformMode === 'move') {
+                            const curWorld = new THREE.Vector3().copy(rightTargetLocal).applyMatrix4(worldGroup.matrixWorld);
+                            const startWorld = new THREE.Vector3().copy(dragStartCtrlPos).applyMatrix4(worldGroup.matrixWorld);
+                            const moveDelta = new THREE.Vector3().subVectors(curWorld, startWorld);
+                            selectionGroup.position.copy(dragStartOffset).add(moveDelta);
+                            selectionGroup.updateMatrix();
+                            selectionOffset.copy(selectionGroup.position);
+                            updatePreviews();
+                        }
                     }
-                    prevGripDist = dist; prevMid.copy(midPos); prevHandVec.copy(currentHandVec); prevRightPos.copy(rightPos); prevLeftPos.copy(leftPos);
-                } else if (isRightGripping && gripRight) { worldGroup.position.add(tempPos.copy(rightPos).sub(prevRightPos)); prevRightPos.copy(rightPos); prevGripDist = 0;
-                } else if (isLeftGripping && gripLeft) { worldGroup.position.add(tempPos.copy(leftPos).sub(prevLeftPos)); prevLeftPos.copy(leftPos); prevGripDist = 0; 
-                } else prevGripDist = 0;
 
-                if (xrLeft) {
-                    xrLeft.getWorldDirection(leftDir); 
-                    xrLeft.getWorldPosition(leftPointerPos); 
-                    xrLeft.getWorldQuaternion(currentLeftQuat);
-                    leftTargetLocal.copy(leftPointerPos).addScaledVector(leftDir, -0.05); worldGroup.worldToLocal(leftTargetLocal);
-                    leftTargetLocal.set(Math.round(leftTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(leftTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(leftTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE);
-                    
-                    cursorLeft.position.copy(leftTargetLocal); 
-                    if (brushShape === 'ribbon' && ['brush', 'stroke', 'paint'].includes(activeTool)) cursorLeft.quaternion.copy(worldGroup.quaternion).invert().premultiply(currentLeftQuat);
-                    else cursorLeft.quaternion.identity();
-                    cursorLeft.updateMatrix(); cursorLeft.visible = true;
-                } else cursorLeft.visible = false;
+                    if (isErasing) {
+                        if (activeTool === 'brush') {
+                            if (brushShape === 'ribbon') {
+                                if (lastErasedPos.x === Infinity) { drawRibbonVoxels(leftTargetLocal, leftTargetLocal, currentLeftQuat, currentLeftQuat, false); }
+                                else { drawRibbonVoxels(lastErasedPos, leftTargetLocal, lastPaintedQuatLeft, currentLeftQuat, false); }
+                                lastPaintedQuatLeft.copy(currentLeftQuat);
+                            } else {
+                                if (lastErasedPos.x === Infinity) { placeBrushVoxels(leftTargetLocal, false); }
+                                else { drawLineVoxels(lastErasedPos, leftTargetLocal, false); }
+                            }
+                            lastErasedPos.copy(leftTargetLocal);
+                        } else if (activeTool === 'stroke' && strokeMode === 'continuous') {
+                            if (brushShape === 'ribbon') {
+                                if (lastErasedPos.x === Infinity) { drawRibbonVoxels(drawStartPos, leftTargetLocal, currentLeftQuat, currentLeftQuat, false); }
+                                else { drawRibbonVoxels(lastErasedPos, leftTargetLocal, lastPaintedQuatLeft, currentLeftQuat, false); }
+                                lastPaintedQuatLeft.copy(currentLeftQuat);
+                            } else {
+                                drawLineVoxels(drawStartPos, leftTargetLocal, false); 
+                            }
+                            lastErasedPos.copy(leftTargetLocal);
+                        } else if (activeTool === 'box' && isPreviewingBox) {
+                            updateBoxPreview(drawStartPos, leftTargetLocal, false);
+                        } else if (activeTool === 'quadsphere' && isPreviewingSphere) {
+                            updateSpherePreview(drawStartPos, leftTargetLocal, false);
+                        } else if (activeTool === 'plane' && isPreviewingPlane) {
+                            updatePlanePreview(drawStartPos, leftTargetLocal, false);
+                        } else if (activeTool === 'triangle' && isPreviewingTriangle) {
+                            updateBoxPreview(drawStartPos, leftTargetLocal, false);
+                        }
+                    }
+                }
 
-                if (xrRight) {
-                    xrRight.getWorldDirection(rightDir); 
-                    xrRight.getWorldPosition(rightPointerPos); 
-                    xrRight.getWorldQuaternion(currentRightQuat);
-                    rightTargetLocal.copy(rightPointerPos).addScaledVector(rightDir, -0.05); worldGroup.worldToLocal(rightTargetLocal);
-                    rightTargetLocal.set(Math.round(rightTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(rightTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(rightTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE);
-                    
-                    cursorRight.position.copy(rightTargetLocal); 
-                    if (brushShape === 'ribbon' && ['brush', 'stroke', 'paint'].includes(activeTool)) cursorRight.quaternion.copy(worldGroup.quaternion).invert().premultiply(currentRightQuat);
-                    else cursorRight.quaternion.identity();
+                if (!rightMenuHovered && !globalMenuHovered && (!isDrawing || (activeTool === 'select' && hasSelection))) {
+                    cursorRight.position.copy(rightTargetLocal);
+                    cursorRight.quaternion.copy(currentRightQuat);
                     cursorRight.updateMatrix(); cursorRight.visible = true;
                 } else cursorRight.visible = false;
 
-                if (xrRight && activeTool === 'paint' && paintMode === 'bucket' && !isDrawing) {
-                    const gx = Math.round(rightTargetLocal.x / VOXEL_SIZE); const gy = Math.round(rightTargetLocal.y / VOXEL_SIZE); const gz = Math.round(rightTargetLocal.z / VOXEL_SIZE);
-                    if (gx !== lastHoveredVoxel.x || gy !== lastHoveredVoxel.y || gz !== lastHoveredVoxel.z) {
-                        let alreadyInRegion = false;
-                        for (let i = 0; i < hoveredFillCount; i+=3) { if (hoveredFillCoords[i] === gx && hoveredFillCoords[i+1] === gy && hoveredFillCoords[i+2] === gz) { alreadyInRegion = true; break; } }
-                        if (!alreadyInRegion) {
-                            lastHoveredVoxel.set(gx, gy, gz); calculateFloodFill(gx, gy, gz); const pointsFound = hoveredFillCount / 3;
-                            if (pointsFound > 0) {
-                                bucketPreviewMesh.count = pointsFound;
-                                for (let i = 0; i < pointsFound; i++) { tempMatrix.makeTranslation(hoveredFillCoords[i*3] * VOXEL_SIZE, hoveredFillCoords[i*3+1] * VOXEL_SIZE, hoveredFillCoords[i*3+2] * VOXEL_SIZE); bucketPreviewMesh.setMatrixAt(i, tempMatrix); }
-                                bucketPreviewMesh.instanceMatrix.needsUpdate = true; bucketPreviewMesh.visible = true;
-                            } else bucketPreviewMesh.visible = false;
-                        }
-                        lastHoveredVoxel.set(gx, gy, gz);
-                    }
-                } else { bucketPreviewMesh.visible = false; if (activeTool !== 'paint' || paintMode !== 'bucket') { lastHoveredVoxel.set(Infinity, Infinity, Infinity); hoveredFillCount = 0; } }
-
-                if (xrRight && isDrawing) {
-                    for (let i = 0; i < 2; i++) {
-                        if (colorModes[i] === 'shift') {
-                            slotColors[i][0].getHSL(shiftHsl);
-                            shiftHsl.h = (shiftHsl.h + 0.003 + (Math.random() - 0.5) * 0.002) % 1.0;
-                            if (shiftHsl.h < 0) shiftHsl.h += 1.0;
-                            slotColors[i][0].setHSL(shiftHsl.h, 1.0, 0.5);
-                            colorMenuNeedsUpdate = true;
-                        }
-                    }
-                    if (colorModes[0] === 'shift' || colorModes[1] === 'shift') updateCursors();
-
-                    const rightRotated = brushShape === 'ribbon' && currentRightQuat.angleTo(lastPaintedQuatRight) > 0.05;
-
-                    if (activeTool === 'select' && hasSelection && !isSettingPivot) {
-                        selectionOffset.copy(rightTargetLocal).sub(dragStartCtrlPos);
-                        selectionOffset.set(Math.round(selectionOffset.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(selectionOffset.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(selectionOffset.z / VOXEL_SIZE) * VOXEL_SIZE);
-                        selectionGroup.position.copy(dragStartOffset).add(selectionOffset); selectionGroup.updateMatrix();
-                    } 
-                    else if (activeTool === 'select' && selectMode === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, rightTargetLocal, true);
-                    else if (activeTool === 'brush') { 
-                        if (lastPaintedPos.x === Infinity) {
-                            if (brushShape === 'ribbon') drawRibbonVoxels(rightTargetLocal, rightTargetLocal, currentRightQuat, currentRightQuat, true);
-                            else placeBrushVoxels(rightTargetLocal, true);
-                            lastPaintedPos.copy(rightTargetLocal); lastPaintedQuatRight.copy(currentRightQuat);
-                        } else if (!rightTargetLocal.equals(lastPaintedPos) || rightRotated) { 
-                            if (brushShape === 'ribbon') drawRibbonVoxels(lastPaintedPos, rightTargetLocal, lastPaintedQuatRight, currentRightQuat, true);
-                            else placeBrushVoxels(rightTargetLocal, true); 
-                            lastPaintedPos.copy(rightTargetLocal); lastPaintedQuatRight.copy(currentRightQuat);
-                        } 
-                    }
-                    else if (activeTool === 'stroke' && strokeMode === 'continuous') {
-                        if (lastPaintedPos.x === Infinity) { 
-                            if (brushShape === 'ribbon') drawRibbonVoxels(rightTargetLocal, rightTargetLocal, currentRightQuat, currentRightQuat, true);
-                            else placeBrushVoxels(rightTargetLocal, true); 
-                            lastPaintedPos.copy(rightTargetLocal); lastPaintedQuatRight.copy(currentRightQuat);
-                        } else if (!rightTargetLocal.equals(lastPaintedPos) || rightRotated) { 
-                            if (brushShape === 'ribbon') drawRibbonVoxels(lastPaintedPos, rightTargetLocal, lastPaintedQuatRight, currentRightQuat, true);
-                            else drawLineVoxels(lastPaintedPos, rightTargetLocal, true); 
-                            lastPaintedPos.copy(rightTargetLocal); lastPaintedQuatRight.copy(currentRightQuat);
-                        }
-                    }
-                    else if (activeTool === 'paint' && paintMode === 'brush') { 
-                        if (lastPaintedPos.x === Infinity) { 
-                            if (brushShape === 'ribbon') drawRibbonVoxels(rightTargetLocal, rightTargetLocal, currentRightQuat, currentRightQuat, true);
-                            else placePaintVoxels(rightTargetLocal); 
-                            lastPaintedPos.copy(rightTargetLocal); lastPaintedQuatRight.copy(currentRightQuat);
-                        } else if (!rightTargetLocal.equals(lastPaintedPos) || rightRotated) { 
-                            if (brushShape === 'ribbon') drawRibbonVoxels(lastPaintedPos, rightTargetLocal, lastPaintedQuatRight, currentRightQuat, true);
-                            else drawPaintLineVoxels(lastPaintedPos, rightTargetLocal); 
-                            lastPaintedPos.copy(rightTargetLocal); lastPaintedQuatRight.copy(currentRightQuat);
-                        } 
-                    }
-                    else if (activeTool === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, rightTargetLocal, true);
-                    else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, rightTargetLocal, true);
-                    else if (activeTool === 'plane' && isPreviewingPlane) updatePlanePreview(drawStartPos, rightTargetLocal, true);
-                    else if (activeTool === 'triangle' && isPreviewingTriangle) updateBoxPreview(drawStartPos, rightTargetLocal, true);
-                }
-
-                if (xrLeft && isErasing && !isColorPicking) {
-                    const leftRotated = brushShape === 'ribbon' && currentLeftQuat.angleTo(lastPaintedQuatLeft) > 0.05;
-                    
-                    if (activeTool === 'brush') { 
-                        if (lastErasedPos.x === Infinity) {
-                            if (brushShape === 'ribbon') drawRibbonVoxels(leftTargetLocal, leftTargetLocal, currentLeftQuat, currentLeftQuat, false);
-                            else placeBrushVoxels(leftTargetLocal, false);
-                            lastErasedPos.copy(leftTargetLocal); lastPaintedQuatLeft.copy(currentLeftQuat);
-                        } else if (!leftTargetLocal.equals(lastErasedPos) || leftRotated) { 
-                            if (brushShape === 'ribbon') drawRibbonVoxels(lastErasedPos, leftTargetLocal, lastPaintedQuatLeft, currentLeftQuat, false);
-                            else placeBrushVoxels(leftTargetLocal, false); 
-                            lastErasedPos.copy(leftTargetLocal); lastPaintedQuatLeft.copy(currentLeftQuat);
-                        } 
-                    }
-                    else if (activeTool === 'stroke' && strokeMode === 'continuous') {
-                        if (lastErasedPos.x === Infinity) { 
-                            if (brushShape === 'ribbon') drawRibbonVoxels(leftTargetLocal, leftTargetLocal, currentLeftQuat, currentLeftQuat, false);
-                            else placeBrushVoxels(leftTargetLocal, false); 
-                            lastErasedPos.copy(leftTargetLocal); lastPaintedQuatLeft.copy(currentLeftQuat);
-                        } else if (!leftTargetLocal.equals(lastErasedPos) || leftRotated) { 
-                            if (brushShape === 'ribbon') drawRibbonVoxels(lastErasedPos, leftTargetLocal, lastPaintedQuatLeft, currentLeftQuat, false);
-                            else drawLineVoxels(lastErasedPos, leftTargetLocal, false); 
-                            lastErasedPos.copy(leftTargetLocal); lastPaintedQuatLeft.copy(currentLeftQuat);
-                        }
-                    }
-                    else if (activeTool === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, leftTargetLocal, false);
-                    else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, leftTargetLocal, false);
-                    else if (activeTool === 'plane' && isPreviewingPlane) updatePlanePreview(drawStartPos, leftTargetLocal, false);
-                    else if (activeTool === 'triangle' && isPreviewingTriangle) updateBoxPreview(drawStartPos, leftTargetLocal, false);
-                }
-
-                let previewLineStart = null; let previewLineEnd = null; let previewLinePainting = false;
-                if (activeTool === 'stroke' && strokeMode === 'line') {
-                    if (isPreviewingLineRight) { previewLineStart = lineStartRight; previewLineEnd = rightTargetLocal; previewLinePainting = true; }
-                    else if (isPreviewingLineLeft) { previewLineStart = lineStartLeft; previewLineEnd = leftTargetLocal; previewLinePainting = false; }
-                    
-                    if (previewLineStart) {
-                        if (brushShape === 'ribbon') {
-                            const pLineQStart = isPreviewingLineRight ? lineStartQuatRight : lineStartQuatLeft;
-                            const pLineQEnd = isPreviewingLineRight ? currentRightQuat : currentLeftQuat;
-                            
-                            const dist = previewLineStart.distanceTo(previewLineEnd);
-                            const steps = Math.max(1, Math.ceil(dist / (VOXEL_SIZE * 0.4)));
-                            const r = brushSize - 1;
-                            const invWorldQ = tempQuat.copy(worldGroup.quaternion).invert();
-                            let instCount = 0; 
-
-                            for (let i = 0; i <= steps; i++) {
-                                const t = steps === 0 ? 0 : i / steps;
-                                _ribbonP.lerpVectors(previewLineStart, previewLineEnd, t);
-                                _ribbonQ.slerpQuaternions(pLineQStart, pLineQEnd, t);
-                                
-                                _ribbonRVec.set(1, 0, 0).applyQuaternion(_ribbonQ);
-                                _ribbonRVec.applyQuaternion(invWorldQ); 
-                                
-                                for (let w = -r; w <= r; w++) {
-                                    if (instCount >= 60000) break;
-                                    _ribbonVPos.copy(_ribbonP).addScaledVector(_ribbonRVec, w * VOXEL_SIZE);
-                                    const gx = Math.round(_ribbonVPos.x / VOXEL_SIZE);
-                                    const gy = Math.round(_ribbonVPos.y / VOXEL_SIZE);
-                                    const gz = Math.round(_ribbonVPos.z / VOXEL_SIZE);
-                                    
-                                    tempMatrix.makeTranslation(gx * VOXEL_SIZE, gy * VOXEL_SIZE, gz * VOXEL_SIZE);
-                                    linePreviewMesh.setMatrixAt(instCount, tempMatrix);
-                                    instCount++;
-                                }
+                if (!leftMenuHovered && !colorMenuHovered && !isErasing) {
+                    cursorLeft.position.copy(leftTargetLocal);
+                    cursorLeft.quaternion.copy(currentLeftQuat);
+                    cursorLeft.updateMatrix(); cursorLeft.visible = true;
+                } else cursorLeft.visible = false;
+                
+                if (activeTool === 'paint' && paintMode === 'bucket' && !isDrawing) {
+                    const hx = Math.round(rightTargetLocal.x / VOXEL_SIZE); const hy = Math.round(rightTargetLocal.y / VOXEL_SIZE); const hz = Math.round(rightTargetLocal.z / VOXEL_SIZE);
+                    if (hx !== lastHoveredVoxel.x || hy !== lastHoveredVoxel.y || hz !== lastHoveredVoxel.z) {
+                        lastHoveredVoxel.set(hx, hy, hz);
+                        calculateFloodFill(hx, hy, hz);
+                        if (hoveredFillCount > 0) {
+                            bucketPreviewMesh.count = hoveredFillCount / 3;
+                            for (let i = 0; i < hoveredFillCount; i+=3) {
+                                tempMatrix.makeTranslation(hoveredFillCoords[i] * VOXEL_SIZE, hoveredFillCoords[i+1] * VOXEL_SIZE, hoveredFillCoords[i+2] * VOXEL_SIZE);
+                                bucketPreviewMesh.setMatrixAt(i/3, tempMatrix);
                             }
-                            linePreviewMesh.count = instCount; linePreviewMesh.instanceMatrix.needsUpdate = true;
-                            if (previewLinePainting) linePreviewMat.color.copy(slotColors[activeMatSlot][activeColorSubSlot]); else linePreviewMat.color.setHex(0xff0055);
-                            linePreviewMesh.visible = true;
+                            bucketPreviewMesh.instanceMatrix.needsUpdate = true;
+                            bucketPreviewMesh.visible = true;
                         } else {
-                            updateSweptBrushBounds(previewLineStart, previewLineEnd);
-                            let instCount = 0; 
-                            for (let x = sweptBounds.minX; x <= sweptBounds.maxX; x++) {
-                                for (let y = sweptBounds.minY; y <= sweptBounds.maxY; y++) {
-                                    for (let z = sweptBounds.minZ; z <= sweptBounds.maxZ; z++) {
-                                        if (isInsideSweptBrush(x, y, z, sweptBounds)) {
-                                            if (instCount < 60000) { 
-                                                tempMatrix.makeTranslation(x * VOXEL_SIZE, y * VOXEL_SIZE, z * VOXEL_SIZE); 
-                                                linePreviewMesh.setMatrixAt(instCount, tempMatrix); 
-                                                instCount++; 
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            linePreviewMesh.count = instCount; linePreviewMesh.instanceMatrix.needsUpdate = true;
-                            if (previewLinePainting) linePreviewMat.color.copy(slotColors[activeMatSlot][activeColorSubSlot]); else linePreviewMat.color.setHex(0xff0055);
-                            linePreviewMesh.visible = true;
+                            bucketPreviewMesh.visible = false;
                         }
-                    } else linePreviewMesh.visible = false;
+                    }
+                } else if (activeTool !== 'paint' || paintMode !== 'bucket') {
+                    bucketPreviewMesh.visible = false;
+                    lastHoveredVoxel.set(Infinity, Infinity, Infinity);
+                    hoveredFillCount = 0;
+                }
+
+                if (activeTool === 'stroke' && strokeMode === 'line') {
+                    linePreviewMesh.count = 0; let linePreviewIdx = 0;
+                    if (isPreviewingLineRight && brushShape !== 'ribbon') {
+                        updateSweptBrushBounds(lineStartRight, rightTargetLocal);
+                        for (let x = sweptBounds.minX; x <= sweptBounds.maxX; x++) for (let y = sweptBounds.minY; y <= sweptBounds.maxY; y++) for (let z = sweptBounds.minZ; z <= sweptBounds.maxZ; z++) {
+                            if (isInsideSweptBrush(x, y, z, sweptBounds) && linePreviewIdx < 60000) {
+                                tempMatrix.makeTranslation(x * VOXEL_SIZE, y * VOXEL_SIZE, z * VOXEL_SIZE);
+                                linePreviewMesh.setMatrixAt(linePreviewIdx++, tempMatrix);
+                            }
+                        }
+                    }
+                    if (isPreviewingLineLeft && brushShape !== 'ribbon') {
+                        updateSweptBrushBounds(lineStartLeft, leftTargetLocal);
+                        for (let x = sweptBounds.minX; x <= sweptBounds.maxX; x++) for (let y = sweptBounds.minY; y <= sweptBounds.maxY; y++) for (let z = sweptBounds.minZ; z <= sweptBounds.maxZ; z++) {
+                            if (isInsideSweptBrush(x, y, z, sweptBounds) && linePreviewIdx < 60000) {
+                                tempMatrix.makeTranslation(x * VOXEL_SIZE, y * VOXEL_SIZE, z * VOXEL_SIZE);
+                                linePreviewMesh.setMatrixAt(linePreviewIdx++, tempMatrix);
+                            }
+                        }
+                    }
+                    if (linePreviewIdx > 0) { linePreviewMesh.count = linePreviewIdx; linePreviewMesh.instanceMatrix.needsUpdate = true; linePreviewMesh.visible = true; } 
+                    else linePreviewMesh.visible = false;
                 } else linePreviewMesh.visible = false;
 
                 if (hasSelection) updatePreviews();
