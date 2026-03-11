@@ -1026,23 +1026,31 @@
                 const cyWheel = 220; const radius = 160;
                 const sliderY = 395; const sliderH = 25; const sliderW = 360; const sliderX = 256 - sliderW / 2;
 
-                // Draw Wheel (Magnified)
+                // Draw Wheel (Magnified) - Independent of Brightness (Always V=1)
                 colorMenuCtx.save();
-                colorMenuCtx.beginPath(); colorMenuCtx.arc(cx, cyWheel, radius, 0, Math.PI * 2); colorMenuCtx.clip();
+                colorMenuCtx.translate(cx, cyWheel);
+                colorMenuCtx.beginPath(); colorMenuCtx.arc(0, 0, radius, 0, Math.PI * 2); colorMenuCtx.clip();
+                
+                // Conic (Hue) - Rotated by 90 degrees (Math.PI/2) to perfectly align visually with Math.atan2 picking logic!
+                colorMenuCtx.save();
+                colorMenuCtx.rotate(Math.PI / 2);
                 if (colorMenuCtx.createConicGradient) {
-                    const conic = colorMenuCtx.createConicGradient(0, cx, cyWheel);
+                    const conic = colorMenuCtx.createConicGradient(0, 0, 0);
                     conic.addColorStop(0, '#f00'); conic.addColorStop(1/6, '#ff0'); conic.addColorStop(2/6, '#0f0'); conic.addColorStop(3/6, '#0ff'); conic.addColorStop(4/6, '#00f'); conic.addColorStop(5/6, '#f0f'); conic.addColorStop(1, '#f00');
-                    colorMenuCtx.fillStyle = conic; colorMenuCtx.fillRect(cx - radius, cyWheel - radius, radius * 2, radius * 2);
+                    colorMenuCtx.fillStyle = conic; colorMenuCtx.fillRect(-radius, -radius, radius * 2, radius * 2);
                 }
-                const radial = colorMenuCtx.createRadialGradient(cx, cyWheel, 0, cx, cyWheel, radius);
+                colorMenuCtx.restore();
+
+                // Radial (Saturation)
+                const radial = colorMenuCtx.createRadialGradient(0, 0, 0, 0, 0, radius);
                 radial.addColorStop(0, 'rgba(255,255,255,1)'); radial.addColorStop(1, 'rgba(255,255,255,0)');
-                colorMenuCtx.fillStyle = radial; colorMenuCtx.fillRect(cx - radius, cyWheel - radius, radius * 2, radius * 2);
-                colorMenuCtx.fillStyle = `rgba(0,0,0,${1 - hsv.v})`; colorMenuCtx.fillRect(cx - radius, cyWheel - radius, radius * 2, radius * 2);
+                colorMenuCtx.fillStyle = radial; colorMenuCtx.fillRect(-radius, -radius, radius * 2, radius * 2);
                 colorMenuCtx.restore();
 
                 // Draw Picker Indicator
                 const px = cx + hsv.s * radius * Math.cos(hsv.h * Math.PI * 2); const py = cyWheel + hsv.s * radius * Math.sin(hsv.h * Math.PI * 2);
-                colorMenuCtx.beginPath(); colorMenuCtx.arc(px, py, 6, 0, Math.PI * 2); colorMenuCtx.strokeStyle = hsv.v > 0.5 && hsv.s < 0.5 ? '#000' : '#fff'; colorMenuCtx.lineWidth = 2; colorMenuCtx.stroke();
+                colorMenuCtx.beginPath(); colorMenuCtx.arc(px, py, 6, 0, Math.PI * 2); colorMenuCtx.strokeStyle = '#000'; colorMenuCtx.lineWidth = 3; colorMenuCtx.stroke();
+                colorMenuCtx.beginPath(); colorMenuCtx.arc(px, py, 6, 0, Math.PI * 2); colorMenuCtx.strokeStyle = '#fff'; colorMenuCtx.lineWidth = 1; colorMenuCtx.stroke();
 
                 // Draw Value Slider
                 const baseColor = hsvToRgb(hsv.h, hsv.s, 1);
@@ -1072,23 +1080,31 @@
                 const cyWheel = 225; const radius = 65;
                 const sliderY = 300; const sliderH = 15; const sliderW = 240; const sliderX = 256 - sliderW / 2;
 
-                // Draw Wheel (Standard)
+                // Draw Wheel (Standard) - Independent of Brightness (Always V=1)
                 colorMenuCtx.save();
-                colorMenuCtx.beginPath(); colorMenuCtx.arc(cx, cyWheel, radius, 0, Math.PI * 2); colorMenuCtx.clip();
+                colorMenuCtx.translate(cx, cyWheel);
+                colorMenuCtx.beginPath(); colorMenuCtx.arc(0, 0, radius, 0, Math.PI * 2); colorMenuCtx.clip();
+                
+                // Conic (Hue) - Rotated by 90 degrees (Math.PI/2) to perfectly align visually with Math.atan2 picking logic!
+                colorMenuCtx.save();
+                colorMenuCtx.rotate(Math.PI / 2);
                 if (colorMenuCtx.createConicGradient) {
-                    const conic = colorMenuCtx.createConicGradient(0, cx, cyWheel);
+                    const conic = colorMenuCtx.createConicGradient(0, 0, 0);
                     conic.addColorStop(0, '#f00'); conic.addColorStop(1/6, '#ff0'); conic.addColorStop(2/6, '#0f0'); conic.addColorStop(3/6, '#0ff'); conic.addColorStop(4/6, '#00f'); conic.addColorStop(5/6, '#f0f'); conic.addColorStop(1, '#f00');
-                    colorMenuCtx.fillStyle = conic; colorMenuCtx.fillRect(cx - radius, cyWheel - radius, radius * 2, radius * 2);
+                    colorMenuCtx.fillStyle = conic; colorMenuCtx.fillRect(-radius, -radius, radius * 2, radius * 2);
                 }
-                const radial = colorMenuCtx.createRadialGradient(cx, cyWheel, 0, cx, cyWheel, radius);
+                colorMenuCtx.restore();
+
+                // Radial (Saturation)
+                const radial = colorMenuCtx.createRadialGradient(0, 0, 0, 0, 0, radius);
                 radial.addColorStop(0, 'rgba(255,255,255,1)'); radial.addColorStop(1, 'rgba(255,255,255,0)');
-                colorMenuCtx.fillStyle = radial; colorMenuCtx.fillRect(cx - radius, cyWheel - radius, radius * 2, radius * 2);
-                colorMenuCtx.fillStyle = `rgba(0,0,0,${1 - hsv.v})`; colorMenuCtx.fillRect(cx - radius, cyWheel - radius, radius * 2, radius * 2);
+                colorMenuCtx.fillStyle = radial; colorMenuCtx.fillRect(-radius, -radius, radius * 2, radius * 2);
                 colorMenuCtx.restore();
 
                 // Draw Picker Indicator
                 const px = cx + hsv.s * radius * Math.cos(hsv.h * Math.PI * 2); const py = cyWheel + hsv.s * radius * Math.sin(hsv.h * Math.PI * 2);
-                colorMenuCtx.beginPath(); colorMenuCtx.arc(px, py, 6, 0, Math.PI * 2); colorMenuCtx.strokeStyle = hsv.v > 0.5 && hsv.s < 0.5 ? '#000' : '#fff'; colorMenuCtx.lineWidth = 2; colorMenuCtx.stroke();
+                colorMenuCtx.beginPath(); colorMenuCtx.arc(px, py, 6, 0, Math.PI * 2); colorMenuCtx.strokeStyle = '#000'; colorMenuCtx.lineWidth = 3; colorMenuCtx.stroke();
+                colorMenuCtx.beginPath(); colorMenuCtx.arc(px, py, 6, 0, Math.PI * 2); colorMenuCtx.strokeStyle = '#fff'; colorMenuCtx.lineWidth = 1; colorMenuCtx.stroke();
 
                 // Draw Value Slider
                 const baseColor = hsvToRgb(hsv.h, hsv.s, 1);
