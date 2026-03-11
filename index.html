@@ -151,6 +151,42 @@
         let copyStepScale = 1.0;
         let activeSliderDrag = null; 
 
+        // --- Color Utilities ---
+        function rgbToHsv(r, g, b) {
+            let max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h, s, v = max;
+            let d = max - min;
+            s = max === 0 ? 0 : d / max;
+            if (max === min) h = 0;
+            else {
+                switch (max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    case b: h = (r - g) / d + 4; break;
+                }
+                h /= 6;
+            }
+            return { h, s, v };
+        }
+
+        function hsvToRgb(h, s, v) {
+            let r, g, b;
+            let i = Math.floor(h * 6);
+            let f = h * 6 - i;
+            let p = v * (1 - s);
+            let q = v * (1 - f * s);
+            let t = v * (1 - (1 - f) * s);
+            switch (i % 6) {
+                case 0: r = v, g = t, b = p; break;
+                case 1: r = q, g = v, b = p; break;
+                case 2: r = p, g = v, b = t; break;
+                case 3: r = p, g = q, b = v; break;
+                case 4: r = t, g = p, b = v; break;
+                case 5: r = v, g = p, b = q; break;
+            }
+            return { r, g, b };
+        }
+
         // --- Dual-Slot Material System ---
         let activeMatSlot = 0; 
         let activeColorSubSlot = 0; 
@@ -160,6 +196,18 @@
             [new THREE.Color(0x4facfe), new THREE.Color(0xff0055)],
             [new THREE.Color(0x00ffcc), new THREE.Color(0xffff00)]  
         ];
+
+        // Maintain discrete HSV states to prevent H & S collapse when V is dragged to 0
+        const slotHSV = [
+            [{h:0, s:0, v:0}, {h:0, s:0, v:0}],
+            [{h:0, s:0, v:0}, {h:0, s:0, v:0}]
+        ];
+        for (let i=0; i<2; i++) {
+            for (let j=0; j<2; j++) {
+                const c = slotColors[i][j];
+                slotHSV[i][j] = rgbToHsv(c.r, c.g, c.b);
+            }
+        }
         
         let shiftProgress = 0;
         let shiftDir = 1;
@@ -968,20 +1016,48 @@
 
         function updateColorMenuTexture() {
             colorMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; colorMenuCtx.fillRect(0, 0, 512, 512);
+            
+            const hsv = slotHSV[activeMatSlot][activeColorSubSlot];
+            const cx = 256;
+
             if (isPaletteMagnified) {
                 colorMenuCtx.fillStyle = '#4facfe'; colorMenuCtx.font = 'bold 26px sans-serif'; colorMenuCtx.textAlign = 'center'; colorMenuCtx.fillText(`Precision Picker`, 256, 36);
-                if (matTypes[activeMatSlot] === 2) {
-                    const grad = colorMenuCtx.createLinearGradient(20, 50, 492, 50); grad.addColorStop(0, '#000000'); grad.addColorStop(1, '#ffffff'); colorMenuCtx.fillStyle = grad; colorMenuCtx.fillRect(20, 50, 472, 400);
-                } else {
-                    const gradH = colorMenuCtx.createLinearGradient(20, 50, 492, 50);
-                    gradH.addColorStop(0, '#ff0000'); gradH.addColorStop(1/6, '#ffff00'); gradH.addColorStop(2/6, '#00ff00'); gradH.addColorStop(3/6, '#00ffff'); gradH.addColorStop(4/6, '#0000ff'); gradH.addColorStop(5/6, '#ff00ff'); gradH.addColorStop(1, '#ff0000');
-                    colorMenuCtx.fillStyle = gradH; colorMenuCtx.fillRect(20, 50, 472, 400);
-                    const gradV = colorMenuCtx.createLinearGradient(20, 50, 20, 450);
-                    gradV.addColorStop(0, 'rgba(255,255,255,1)'); gradV.addColorStop(0.5, 'rgba(255,255,255,0)'); gradV.addColorStop(0.5, 'rgba(0,0,0,0)'); gradV.addColorStop(1, 'rgba(0,0,0,1)');
-                    colorMenuCtx.fillStyle = gradV; colorMenuCtx.fillRect(20, 50, 472, 400);
+                
+                const cyWheel = 220; const radius = 160;
+                const sliderY = 395; const sliderH = 25; const sliderW = 360; const sliderX = 256 - sliderW / 2;
+
+                // Draw Wheel (Magnified)
+                colorMenuCtx.save();
+                colorMenuCtx.beginPath(); colorMenuCtx.arc(cx, cyWheel, radius, 0, Math.PI * 2); colorMenuCtx.clip();
+                if (colorMenuCtx.createConicGradient) {
+                    const conic = colorMenuCtx.createConicGradient(0, cx, cyWheel);
+                    conic.addColorStop(0, '#f00'); conic.addColorStop(1/6, '#ff0'); conic.addColorStop(2/6, '#0f0'); conic.addColorStop(3/6, '#0ff'); conic.addColorStop(4/6, '#00f'); conic.addColorStop(5/6, '#f0f'); conic.addColorStop(1, '#f00');
+                    colorMenuCtx.fillStyle = conic; colorMenuCtx.fillRect(cx - radius, cyWheel - radius, radius * 2, radius * 2);
                 }
-                const activeColorHex = slotColors[activeMatSlot][activeColorSubSlot].getHexString(); colorMenuCtx.fillStyle = '#' + activeColorHex; colorMenuCtx.fillRect(20, 460, 472, 40);
-                const hsl = {}; slotColors[activeMatSlot][activeColorSubSlot].getHSL(hsl); colorMenuCtx.fillStyle = hsl.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = 'bold 20px sans-serif'; colorMenuCtx.fillText(`Release trigger to apply`, 256, 487);
+                const radial = colorMenuCtx.createRadialGradient(cx, cyWheel, 0, cx, cyWheel, radius);
+                radial.addColorStop(0, 'rgba(255,255,255,1)'); radial.addColorStop(1, 'rgba(255,255,255,0)');
+                colorMenuCtx.fillStyle = radial; colorMenuCtx.fillRect(cx - radius, cyWheel - radius, radius * 2, radius * 2);
+                colorMenuCtx.fillStyle = `rgba(0,0,0,${1 - hsv.v})`; colorMenuCtx.fillRect(cx - radius, cyWheel - radius, radius * 2, radius * 2);
+                colorMenuCtx.restore();
+
+                // Draw Picker Indicator
+                const px = cx + hsv.s * radius * Math.cos(hsv.h * Math.PI * 2); const py = cyWheel + hsv.s * radius * Math.sin(hsv.h * Math.PI * 2);
+                colorMenuCtx.beginPath(); colorMenuCtx.arc(px, py, 6, 0, Math.PI * 2); colorMenuCtx.strokeStyle = hsv.v > 0.5 && hsv.s < 0.5 ? '#000' : '#fff'; colorMenuCtx.lineWidth = 2; colorMenuCtx.stroke();
+
+                // Draw Value Slider
+                const baseColor = hsvToRgb(hsv.h, hsv.s, 1);
+                const gradV = colorMenuCtx.createLinearGradient(sliderX, 0, sliderX + sliderW, 0);
+                gradV.addColorStop(0, '#000000'); gradV.addColorStop(1, `rgb(${Math.round(baseColor.r*255)}, ${Math.round(baseColor.g*255)}, ${Math.round(baseColor.b*255)})`);
+                colorMenuCtx.fillStyle = gradV; colorMenuCtx.fillRect(sliderX, sliderY, sliderW, sliderH);
+                colorMenuCtx.strokeStyle = '#fff'; colorMenuCtx.lineWidth = 2; colorMenuCtx.strokeRect(sliderX, sliderY, sliderW, sliderH);
+                
+                // Draw Value Indicator
+                const vx = sliderX + hsv.v * sliderW; colorMenuCtx.fillStyle = '#fff'; colorMenuCtx.fillRect(vx - 3, sliderY - 2, 6, sliderH + 4);
+
+                // Draw Color Preview Box
+                const activeColorHex = slotColors[activeMatSlot][activeColorSubSlot].getHexString(); colorMenuCtx.fillStyle = '#' + activeColorHex; colorMenuCtx.fillRect(50, 440, 412, 40);
+                colorMenuCtx.fillStyle = hsv.v > 0.6 && hsv.s < 0.5 ? 'black' : 'white'; colorMenuCtx.font = 'bold 20px sans-serif'; colorMenuCtx.fillText(`Release trigger to apply`, 256, 467);
+
             } else {
                 colorMenuCtx.fillStyle = '#4facfe'; colorMenuCtx.font = 'bold 22px sans-serif'; colorMenuCtx.textAlign = 'center'; colorMenuCtx.fillText(`Materials & Colors`, 256, 30);
                 
@@ -993,58 +1069,96 @@
                 drawButton(colorMenuCtx, 186, 100, 140, 45, 'GLASS', mType === 1); 
                 drawButton(colorMenuCtx, 342, 100, 140, 45, 'EMISSION', mType === 2);
                 
-                if (mType === 2) {
-                    const grad = colorMenuCtx.createLinearGradient(30, 155, 482, 155); grad.addColorStop(0, '#000000'); grad.addColorStop(1, '#ffffff'); colorMenuCtx.fillStyle = grad; colorMenuCtx.fillRect(30, 155, 452, 160);
-                    colorMenuCtx.fillStyle = 'rgba(0, 0, 0, 0.4)'; colorMenuCtx.fillRect(30, 200, 452, 60); colorMenuCtx.fillStyle = '#fff'; colorMenuCtx.font = 'bold 24px sans-serif'; colorMenuCtx.fillText(`Emission Brightness Range`, 256, 235);
-                } else {
-                    const gradH = colorMenuCtx.createLinearGradient(30, 155, 482, 155);
-                    gradH.addColorStop(0, '#ff0000'); gradH.addColorStop(1/6, '#ffff00'); gradH.addColorStop(2/6, '#00ff00'); gradH.addColorStop(3/6, '#00ffff'); gradH.addColorStop(4/6, '#0000ff'); gradH.addColorStop(5/6, '#ff00ff'); gradH.addColorStop(1, '#ff0000');
-                    colorMenuCtx.fillStyle = gradH; colorMenuCtx.fillRect(30, 155, 452, 160);
-                    const gradV = colorMenuCtx.createLinearGradient(30, 155, 30, 315);
-                    gradV.addColorStop(0, 'rgba(255,255,255,1)'); gradV.addColorStop(0.5, 'rgba(255,255,255,0)'); gradV.addColorStop(0.5, 'rgba(0,0,0,0)'); gradV.addColorStop(1, 'rgba(0,0,0,1)');
-                    colorMenuCtx.fillStyle = gradV; colorMenuCtx.fillRect(30, 155, 452, 160);
+                const cyWheel = 225; const radius = 65;
+                const sliderY = 300; const sliderH = 15; const sliderW = 240; const sliderX = 256 - sliderW / 2;
+
+                // Draw Wheel (Standard)
+                colorMenuCtx.save();
+                colorMenuCtx.beginPath(); colorMenuCtx.arc(cx, cyWheel, radius, 0, Math.PI * 2); colorMenuCtx.clip();
+                if (colorMenuCtx.createConicGradient) {
+                    const conic = colorMenuCtx.createConicGradient(0, cx, cyWheel);
+                    conic.addColorStop(0, '#f00'); conic.addColorStop(1/6, '#ff0'); conic.addColorStop(2/6, '#0f0'); conic.addColorStop(3/6, '#0ff'); conic.addColorStop(4/6, '#00f'); conic.addColorStop(5/6, '#f0f'); conic.addColorStop(1, '#f00');
+                    colorMenuCtx.fillStyle = conic; colorMenuCtx.fillRect(cx - radius, cyWheel - radius, radius * 2, radius * 2);
                 }
+                const radial = colorMenuCtx.createRadialGradient(cx, cyWheel, 0, cx, cyWheel, radius);
+                radial.addColorStop(0, 'rgba(255,255,255,1)'); radial.addColorStop(1, 'rgba(255,255,255,0)');
+                colorMenuCtx.fillStyle = radial; colorMenuCtx.fillRect(cx - radius, cyWheel - radius, radius * 2, radius * 2);
+                colorMenuCtx.fillStyle = `rgba(0,0,0,${1 - hsv.v})`; colorMenuCtx.fillRect(cx - radius, cyWheel - radius, radius * 2, radius * 2);
+                colorMenuCtx.restore();
+
+                // Draw Picker Indicator
+                const px = cx + hsv.s * radius * Math.cos(hsv.h * Math.PI * 2); const py = cyWheel + hsv.s * radius * Math.sin(hsv.h * Math.PI * 2);
+                colorMenuCtx.beginPath(); colorMenuCtx.arc(px, py, 6, 0, Math.PI * 2); colorMenuCtx.strokeStyle = hsv.v > 0.5 && hsv.s < 0.5 ? '#000' : '#fff'; colorMenuCtx.lineWidth = 2; colorMenuCtx.stroke();
+
+                // Draw Value Slider
+                const baseColor = hsvToRgb(hsv.h, hsv.s, 1);
+                const gradV = colorMenuCtx.createLinearGradient(sliderX, 0, sliderX + sliderW, 0);
+                gradV.addColorStop(0, '#000000'); gradV.addColorStop(1, `rgb(${Math.round(baseColor.r*255)}, ${Math.round(baseColor.g*255)}, ${Math.round(baseColor.b*255)})`);
+                colorMenuCtx.fillStyle = gradV; colorMenuCtx.fillRect(sliderX, sliderY, sliderW, sliderH);
+                colorMenuCtx.strokeStyle = '#fff'; colorMenuCtx.lineWidth = 2; colorMenuCtx.strokeRect(sliderX, sliderY, sliderW, sliderH);
+                
+                // Draw Value Indicator
+                const vx = sliderX + hsv.v * sliderW; colorMenuCtx.fillStyle = '#fff'; colorMenuCtx.fillRect(vx - 3, sliderY - 2, 6, sliderH + 4);
 
                 const cMode = colorModes[activeMatSlot];
-                drawButton(colorMenuCtx, 30, 325, 105, 45, 'SOLID', cMode === 'solid'); 
-                drawButton(colorMenuCtx, 145, 325, 105, 45, 'GRAD-H', cMode === 'grad_h'); 
-                drawButton(colorMenuCtx, 260, 325, 105, 45, 'GRAD-V', cMode === 'grad_v'); 
-                drawButton(colorMenuCtx, 375, 325, 107, 45, 'SHIFT', cMode === 'shift');
+                drawButton(colorMenuCtx, 30, 325, 105, 40, 'SOLID', cMode === 'solid'); 
+                drawButton(colorMenuCtx, 145, 325, 105, 40, 'GRAD-H', cMode === 'grad_h'); 
+                drawButton(colorMenuCtx, 260, 325, 105, 40, 'GRAD-V', cMode === 'grad_v'); 
+                drawButton(colorMenuCtx, 375, 325, 107, 40, 'SHIFT', cMode === 'shift');
                 
                 const cA = slotColors[activeMatSlot][0]; const cB = slotColors[activeMatSlot][1]; const showColor2 = (mType !== 2);
                 
                 if (!showColor2) {
-                    colorMenuCtx.fillStyle = '#' + cA.getHexString(); colorMenuCtx.fillRect(30, 380, 452, 60); 
-                    colorMenuCtx.strokeStyle = '#fff'; colorMenuCtx.lineWidth = 4; colorMenuCtx.strokeRect(30, 380, 452, 60);
-                    const hsl1 = {}; cA.getHSL(hsl1); colorMenuCtx.fillStyle = hsl1.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color A', 256, 410);
+                    colorMenuCtx.fillStyle = '#' + cA.getHexString(); colorMenuCtx.fillRect(30, 375, 452, 60); 
+                    colorMenuCtx.strokeStyle = '#fff'; colorMenuCtx.lineWidth = 4; colorMenuCtx.strokeRect(30, 375, 452, 60);
+                    const isBright = slotHSV[activeMatSlot][0].v > 0.6 && slotHSV[activeMatSlot][0].s < 0.5;
+                    colorMenuCtx.fillStyle = isBright ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color A', 256, 405);
                 } else {
-                    colorMenuCtx.fillStyle = '#' + cA.getHexString(); colorMenuCtx.fillRect(30, 380, 216, 60); 
-                    colorMenuCtx.strokeStyle = activeColorSubSlot === 0 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSubSlot === 0 ? 4 : 2; colorMenuCtx.strokeRect(30, 380, 216, 60);
+                    colorMenuCtx.fillStyle = '#' + cA.getHexString(); colorMenuCtx.fillRect(30, 375, 216, 60); 
+                    colorMenuCtx.strokeStyle = activeColorSubSlot === 0 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSubSlot === 0 ? 4 : 2; colorMenuCtx.strokeRect(30, 375, 216, 60);
                     
-                    colorMenuCtx.fillStyle = '#' + cB.getHexString(); colorMenuCtx.fillRect(266, 380, 216, 60); 
-                    colorMenuCtx.strokeStyle = activeColorSubSlot === 1 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSubSlot === 1 ? 4 : 2; colorMenuCtx.strokeRect(266, 380, 216, 60);
+                    colorMenuCtx.fillStyle = '#' + cB.getHexString(); colorMenuCtx.fillRect(266, 375, 216, 60); 
+                    colorMenuCtx.strokeStyle = activeColorSubSlot === 1 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSubSlot === 1 ? 4 : 2; colorMenuCtx.strokeRect(266, 375, 216, 60);
                     
-                    const hsl1 = {}; cA.getHSL(hsl1); colorMenuCtx.fillStyle = hsl1.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color A', 138, 410);
-                    const hsl2 = {}; cB.getHSL(hsl2); colorMenuCtx.fillStyle = hsl2.l > 0.6 ? 'black' : 'white'; colorMenuCtx.fillText('Color B', 374, 410);
+                    const isBrightA = slotHSV[activeMatSlot][0].v > 0.6 && slotHSV[activeMatSlot][0].s < 0.5;
+                    const isBrightB = slotHSV[activeMatSlot][1].v > 0.6 && slotHSV[activeMatSlot][1].s < 0.5;
+                    colorMenuCtx.fillStyle = isBrightA ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color A', 138, 405);
+                    colorMenuCtx.fillStyle = isBrightB ? 'black' : 'white'; colorMenuCtx.fillText('Color B', 374, 405);
                 }
             }
             colorMenuTexture.needsUpdate = true;
         }
 
         function pickColorFromCanvas(cx, cy) {
-            let minX, maxX, minY, maxY;
-            if (isPaletteMagnified) { minX = 20; maxX = 492; minY = 50; maxY = 450; } 
-            else { minX = 30; maxX = 482; minY = 155; maxY = 315; }
-            
+            const hsv = slotHSV[activeMatSlot][activeColorSubSlot];
             const targetColor = slotColors[activeMatSlot][activeColorSubSlot];
-            if (matTypes[activeMatSlot] === 2) { 
-                const gray = Math.max(0, Math.min(1, (cx - minX) / (maxX - minX))); 
-                targetColor.setRGB(gray, gray, gray); 
-            } else { 
-                const h = Math.max(0, Math.min(1, (cx - minX) / (maxX - minX))); 
-                const l = Math.max(0, Math.min(1, 1.0 - ((cy - minY) / (maxY - minY)))); 
-                targetColor.setHSL(h, 1.0, l); 
+            
+            const center_x = 256;
+            const cyWheel = isPaletteMagnified ? 220 : 225;
+            const radius = isPaletteMagnified ? 160 : 65;
+            const sliderY = isPaletteMagnified ? 395 : 300;
+            const sliderH = isPaletteMagnified ? 25 : 15;
+            const sliderW = isPaletteMagnified ? 360 : 240;
+            const sliderX = 256 - sliderW / 2;
+
+            const dx = cx - center_x;
+            const dy = cy - cyWheel;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+
+            if (dist <= radius + 10) { 
+                let h = Math.atan2(dy, dx) / (Math.PI * 2);
+                if (h < 0) h += 1;
+                let s = Math.min(1, dist / radius);
+                hsv.h = h; hsv.s = s;
+            } 
+            else if (cy >= sliderY - 10 && cy <= sliderY + sliderH + 10 && cx >= sliderX - 10 && cx <= sliderX + sliderW + 10) {
+                let v = Math.max(0, Math.min(1, (cx - sliderX) / sliderW));
+                hsv.v = v;
             }
+
+            const rgb = hsvToRgb(hsv.h, hsv.s, hsv.v);
+            targetColor.setRGB(rgb.r, rgb.g, rgb.b);
+
             updateCursors(); colorMenuNeedsUpdate = true; 
         }
 
@@ -1055,13 +1169,17 @@
             } else if (cy >= 100 && cy <= 145) {
                 if (cx >= 30 && cx <= 170) matTypes[activeMatSlot] = 0;
                 if (cx >= 186 && cx <= 326) matTypes[activeMatSlot] = 1;
-                if (cx >= 342 && cx <= 482) { matTypes[activeMatSlot] = 2; activeColorSubSlot = 0; colorModes[activeMatSlot] = 'solid'; slotColors[activeMatSlot][0].setHex(0x808080); }
-            } else if (cy >= 325 && cy <= 370) {
+                if (cx >= 342 && cx <= 482) { 
+                    matTypes[activeMatSlot] = 2; activeColorSubSlot = 0; colorModes[activeMatSlot] = 'solid'; 
+                    slotColors[activeMatSlot][0].setHex(0x808080);
+                    slotHSV[activeMatSlot][0] = rgbToHsv(0.5, 0.5, 0.5);
+                }
+            } else if (cy >= 325 && cy <= 365) {
                 if (cx >= 30 && cx <= 135) { colorModes[activeMatSlot] = 'solid'; activeColorSubSlot = 0; }
                 if (cx >= 145 && cx <= 250) colorModes[activeMatSlot] = 'grad_h'; 
                 if (cx >= 260 && cx <= 365) colorModes[activeMatSlot] = 'grad_v'; 
                 if (cx >= 375 && cx <= 482) colorModes[activeMatSlot] = 'shift';
-            } else if (cy >= 380 && cy <= 440) {
+            } else if (cy >= 375 && cy <= 435) {
                 if (matTypes[activeMatSlot] !== 2) { 
                     if (cx >= 30 && cx <= 246) activeColorSubSlot = 0; 
                     if (cx >= 266 && cx <= 482) activeColorSubSlot = 1; 
@@ -1867,7 +1985,7 @@
                     } else handleLeftMenuClick(cx, cy);
                 } else if (colorMenuHovered && colorMenuMesh.visible) {
                     const cx = Math.floor(colorMenuUV.x * 512); const cy = Math.floor((1 - colorMenuUV.y) * 512);
-                    if (cy >= 155 && cy <= 315 && cx >= 30 && cx <= 482) { isColorPicking = true; isPaletteMagnified = true; updateColorMenuTexture(); } else handleColorMenuClick(cx, cy);
+                    if (cy >= 155 && cy <= 320 && cx >= 30 && cx <= 482) { isColorPicking = true; isPaletteMagnified = true; updateColorMenuTexture(); } else handleColorMenuClick(cx, cy);
                 } else {
                     if (activeTool === 'select') {
                         if (hasSelection) { 
@@ -2060,7 +2178,7 @@
                 } else if (isColorPicking && colorMenuHovered) {
                     const cx = Math.floor(colorMenuUV.x * 512); const cy = Math.floor((1 - colorMenuUV.y) * 512);
                     let clampX, clampY;
-                    if (isPaletteMagnified) { clampX = Math.max(20, Math.min(492, cx)); clampY = Math.max(50, Math.min(450, cy)); } else { clampX = Math.max(30, Math.min(482, cx)); clampY = Math.max(155, Math.min(315, cy)); }
+                    if (isPaletteMagnified) { clampX = Math.max(0, Math.min(512, cx)); clampY = Math.max(0, Math.min(512, cy)); } else { clampX = Math.max(30, Math.min(482, cx)); clampY = Math.max(155, Math.min(320, cy)); }
                     pickColorFromCanvas(clampX, clampY);
                 }
 
