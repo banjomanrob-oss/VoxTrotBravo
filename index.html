@@ -339,6 +339,57 @@
 
         // --- Chunk System ---
         const voxelGeometry = new THREE.BoxGeometry(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
+        
+        // OPTIMIZED UNIFIED MATERIAL (Packed Attributes + Alpha Hashing)
+        const customVoxelMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                ambientLightColor: { value: new THREE.Color(0x888888) },
+                directionalLightColor: { value: new THREE.Color(0xffffff) },
+                directionalLightDir: { value: new THREE.Vector3(5, 10, 7).normalize() }
+            },
+            vertexShader: `
+                attribute vec3 instancePos;
+                attribute vec4 instanceMatData;
+                varying vec3 vColor;
+                varying float vMatType;
+                varying vec3 vNormal;
+                void main() {
+                    vColor = instanceMatData.rgb;
+                    vMatType = instanceMatData.a;
+                    vNormal = normalMatrix * normal;
+                    vec4 mvPosition = modelViewMatrix * vec4(position + instancePos, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 ambientLightColor;
+                uniform vec3 directionalLightColor;
+                uniform vec3 directionalLightDir;
+                varying vec3 vColor;
+                varying float vMatType;
+                varying vec3 vNormal;
+
+                float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+
+                void main() {
+                    vec3 normal = normalize(vNormal);
+                    float lightIntensity = max(0.0, dot(normal, directionalLightDir));
+                    vec3 lighting = ambientLightColor + directionalLightColor * lightIntensity;
+                    vec3 finalColor = vColor * lighting;
+
+                    if (vMatType > 1.5) { 
+                        finalColor = vColor * 1.5; 
+                    } else if (vMatType > 0.5) { 
+                        if (hash(gl_FragCoord.xy) > 0.35) discard; 
+                    }
+
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `,
+            transparent: false
+        });
+
+        // Legacy materials preserved for UI/Selection previews
         const matSolid = new THREE.MeshLambertMaterial(); 
         const matGlass = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.35, depthWrite: false }); 
         const matEmission = new THREE.MeshBasicMaterial(); 
@@ -346,18 +397,24 @@
         const chunks = new Map(); 
 
         class ChunkLayer {
-            constructor(cx, cy, cz, material) {
-                this.material = material;
+            constructor(cx, cy, cz) {
                 this.capacity = 4096; 
                 this.count = 0;
-                this.mesh = new THREE.InstancedMesh(voxelGeometry, material, this.capacity);
-                this.mesh.matrixAutoUpdate = false; this.mesh.updateMatrix();
+                
+                this.geometry = new THREE.InstancedBufferGeometry();
+                this.geometry.copy(voxelGeometry);
+                
+                this.instancePos = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3);
+                this.instancePos.setUsage(THREE.DynamicDrawUsage);
+                this.instanceMatData = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 4), 4);
+                this.instanceMatData.setUsage(THREE.DynamicDrawUsage);
+                
+                this.geometry.setAttribute('instancePos', this.instancePos);
+                this.geometry.setAttribute('instanceMatData', this.instanceMatData);
+                
+                this.mesh = new THREE.Mesh(this.geometry, customVoxelMaterial);
+                this.mesh.frustumCulled = false; 
                 this.mesh.visible = false; 
-                this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-                this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3);
-                this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
-                this.mesh.count = 0;
-                this.mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3((cx * CHUNK_SIZE + CHUNK_SIZE / 2) * VOXEL_SIZE, (cy * CHUNK_SIZE + CHUNK_SIZE / 2) * VOXEL_SIZE, (cz * CHUNK_SIZE + CHUNK_SIZE / 2) * VOXEL_SIZE), CHUNK_SIZE * VOXEL_SIZE * 0.87);
                 worldGroup.add(this.mesh);
 
                 this.voxelToIndex = new Uint16Array(CHUNK_VOL);
@@ -367,45 +424,58 @@
             }
 
             resizeCapacity(newCapacity) {
-                const oldMesh = this.mesh;
-                this.mesh = new THREE.InstancedMesh(voxelGeometry, this.material, newCapacity);
-                this.mesh.matrixAutoUpdate = false;
-                this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-                this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(newCapacity * 3), 3);
-                this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+                const oldPos = this.instancePos.array;
+                const oldMat = this.instanceMatData.array;
+                
+                this.instancePos = new THREE.InstancedBufferAttribute(new Float32Array(newCapacity * 3), 3);
+                this.instancePos.setUsage(THREE.DynamicDrawUsage);
+                this.instanceMatData = new THREE.InstancedBufferAttribute(new Float32Array(newCapacity * 4), 4);
+                this.instanceMatData.setUsage(THREE.DynamicDrawUsage);
                 
                 if (this.count > 0) {
-                    this.mesh.instanceMatrix.array.set(oldMesh.instanceMatrix.array.subarray(0, this.count * 16));
-                    this.mesh.instanceColor.array.set(oldMesh.instanceColor.array.subarray(0, this.count * 3));
+                    this.instancePos.array.set(oldPos.subarray(0, this.count * 3));
+                    this.instanceMatData.array.set(oldMat.subarray(0, this.count * 4));
                 }
                 
-                this.mesh.count = this.count;
-                this.mesh.boundingSphere = oldMesh.boundingSphere;
-                this.mesh.visible = oldMesh.visible;
-                worldGroup.remove(oldMesh); worldGroup.add(this.mesh);
-                oldMesh.dispose();
+                this.geometry.setAttribute('instancePos', this.instancePos);
+                this.geometry.setAttribute('instanceMatData', this.instanceMatData);
                 this.capacity = newCapacity;
             }
 
-            addVoxel(localIdx, worldPos, color) {
-                if (this.voxelToIndex[localIdx] !== 65535) {
-                    const instIdx = this.voxelToIndex[localIdx];
-                    this.mesh.getColorAt(instIdx, tempColor);
-                    if (Math.abs(tempColor.r - color.r) > 0.01 || Math.abs(tempColor.g - color.g) > 0.01 || Math.abs(tempColor.b - color.b) > 0.01) {
-                        this.mesh.setColorAt(instIdx, color);
-                        this.needsUpdate = true;
-                    }
-                } else {
-                    if (this.count >= this.capacity) this.resizeCapacity(Math.min(CHUNK_VOL, this.capacity * 2));
-                    const instIdx = this.count;
-                    this.voxelToIndex[localIdx] = instIdx;
-                    this.indexToLocal[instIdx] = localIdx;
-                    tempMatrix.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
-                    this.mesh.setMatrixAt(instIdx, tempMatrix);
-                    this.mesh.setColorAt(instIdx, color);
-                    this.count++; this.mesh.count = this.count; totalActiveVoxels++;
+            updateVoxel(localIdx, color, matType) {
+                const instIdx = this.voxelToIndex[localIdx];
+                const idx4 = instIdx * 4;
+                const r = this.instanceMatData.array[idx4];
+                const g = this.instanceMatData.array[idx4 + 1];
+                const b = this.instanceMatData.array[idx4 + 2];
+                const m = this.instanceMatData.array[idx4 + 3];
+                
+                if (Math.abs(r - color.r) > 0.01 || Math.abs(g - color.g) > 0.01 || Math.abs(b - color.b) > 0.01 || m !== matType) {
+                    this.instanceMatData.array[idx4] = color.r;
+                    this.instanceMatData.array[idx4 + 1] = color.g;
+                    this.instanceMatData.array[idx4 + 2] = color.b;
+                    this.instanceMatData.array[idx4 + 3] = matType;
                     this.needsUpdate = true;
                 }
+            }
+
+            addVoxel(localIdx, worldPos, color, matType) {
+                if (this.count >= this.capacity) this.resizeCapacity(Math.min(CHUNK_VOL, this.capacity * 2));
+                const instIdx = this.count;
+                this.voxelToIndex[localIdx] = instIdx;
+                this.indexToLocal[instIdx] = localIdx;
+                
+                this.instancePos.array[instIdx * 3] = worldPos.x;
+                this.instancePos.array[instIdx * 3 + 1] = worldPos.y;
+                this.instancePos.array[instIdx * 3 + 2] = worldPos.z;
+                
+                this.instanceMatData.array[instIdx * 4] = color.r;
+                this.instanceMatData.array[instIdx * 4 + 1] = color.g;
+                this.instanceMatData.array[instIdx * 4 + 2] = color.b;
+                this.instanceMatData.array[instIdx * 4 + 3] = matType;
+                
+                this.count++; this.geometry.instanceCount = this.count; totalActiveVoxels++;
+                this.needsUpdate = true;
             }
 
             removeVoxel(localIdx) {
@@ -415,36 +485,56 @@
 
                     if (instIdxToRemove !== lastInstIdx) {
                         const lastLocalIdx = this.indexToLocal[lastInstIdx];
-                        this.mesh.getMatrixAt(lastInstIdx, tempMatrix);
-                        this.mesh.getColorAt(lastInstIdx, tempColor);
-                        this.mesh.setMatrixAt(instIdxToRemove, tempMatrix);
-                        this.mesh.setColorAt(instIdxToRemove, tempColor);
+                        
+                        this.instancePos.array[instIdxToRemove * 3] = this.instancePos.array[lastInstIdx * 3];
+                        this.instancePos.array[instIdxToRemove * 3 + 1] = this.instancePos.array[lastInstIdx * 3 + 1];
+                        this.instancePos.array[instIdxToRemove * 3 + 2] = this.instancePos.array[lastInstIdx * 3 + 2];
+                        
+                        this.instanceMatData.array[instIdxToRemove * 4] = this.instanceMatData.array[lastInstIdx * 4];
+                        this.instanceMatData.array[instIdxToRemove * 4 + 1] = this.instanceMatData.array[lastInstIdx * 4 + 1];
+                        this.instanceMatData.array[instIdxToRemove * 4 + 2] = this.instanceMatData.array[lastInstIdx * 4 + 2];
+                        this.instanceMatData.array[instIdxToRemove * 4 + 3] = this.instanceMatData.array[lastInstIdx * 4 + 3];
+                        
                         this.voxelToIndex[lastLocalIdx] = instIdxToRemove;
                         this.indexToLocal[instIdxToRemove] = lastLocalIdx;
                     }
 
                     this.voxelToIndex[localIdx] = 65535;
-                    this.count--; this.mesh.count = this.count; totalActiveVoxels--;
+                    this.count--; this.geometry.instanceCount = this.count; totalActiveVoxels--;
                     this.needsUpdate = true;
                 }
             }
 
             updateBuffers() {
                 if (this.needsUpdate) {
-                    this.mesh.instanceMatrix.updateRange.count = this.count * 16;
-                    this.mesh.instanceColor.updateRange.count = this.count * 3;
-                    this.mesh.instanceMatrix.needsUpdate = true;
-                    this.mesh.instanceColor.needsUpdate = true;
+                    this.instancePos.updateRange.count = this.count * 3;
+                    this.instanceMatData.updateRange.count = this.count * 4;
+                    this.instancePos.needsUpdate = true;
+                    this.instanceMatData.needsUpdate = true;
                     this.needsUpdate = false;
                     this.mesh.visible = this.count > 0;
                 }
+            }
+
+            getMatrixAt(index, matrix) {
+                matrix.makeTranslation(
+                    this.instancePos.array[index * 3],
+                    this.instancePos.array[index * 3 + 1],
+                    this.instancePos.array[index * 3 + 2]
+                );
+            }
+
+            getColorAt(index, color) {
+                color.r = this.instanceMatData.array[index * 4];
+                color.g = this.instanceMatData.array[index * 4 + 1];
+                color.b = this.instanceMatData.array[index * 4 + 2];
             }
         }
 
         class Chunk {
             constructor(cx, cy, cz) {
                 this.cx = cx; this.cy = cy; this.cz = cz;
-                this.layers = new Array(3).fill(null);
+                this.layer = new ChunkLayer(cx, cy, cz);
                 this.voxelMatMap = new Int8Array(CHUNK_VOL);
                 this.voxelMatMap.fill(-1);
             }
@@ -452,22 +542,24 @@
             addVoxel(lx, ly, lz, worldPos, color, matType) {
                 const localIdx = lx + (ly * CHUNK_SIZE) + (lz * CHUNK_SIZE * CHUNK_SIZE);
                 const currentMat = this.voxelMatMap[localIdx];
-                if (currentMat !== -1 && currentMat !== matType) this.layers[currentMat].removeVoxel(localIdx);
-                if (!this.layers[matType]) this.layers[matType] = new ChunkLayer(this.cx, this.cy, this.cz, voxelMaterials[matType]);
+                if (currentMat !== -1) {
+                    this.layer.updateVoxel(localIdx, color, matType);
+                } else {
+                    this.layer.addVoxel(localIdx, worldPos, color, matType);
+                }
                 this.voxelMatMap[localIdx] = matType;
-                this.layers[matType].addVoxel(localIdx, worldPos, color);
             }
 
             removeVoxel(lx, ly, lz) {
                 const localIdx = lx + (ly * CHUNK_SIZE) + (lz * CHUNK_SIZE * CHUNK_SIZE);
                 const currentMat = this.voxelMatMap[localIdx];
                 if (currentMat !== -1) {
-                    this.layers[currentMat].removeVoxel(localIdx);
+                    this.layer.removeVoxel(localIdx);
                     this.voxelMatMap[localIdx] = -1;
                 }
             }
 
-            updateBuffers() { for (let i = 0; i < 3; i++) if (this.layers[i]) this.layers[i].updateBuffers(); }
+            updateBuffers() { this.layer.updateBuffers(); }
         }
 
         // --- Previews & Cursors ---
@@ -1402,14 +1494,17 @@
             for (let matIdx = 0; matIdx < 3; matIdx++) {
                 faceAcc.push(`\ng ${matNames[matIdx]}\nusemtl ${matNames[matIdx]}\n`);
                 chunks.forEach(chunk => {
-                    const layer = chunk.layers[matIdx];
+                    const layer = chunk.layer;
                     if (!layer || layer.count === 0) return;
                     for (let i = 0; i < layer.count; i++) {
+                        const mType = Math.round(layer.instanceMatData.array[i * 4 + 3]);
+                        if (mType !== matIdx) continue;
+
                         const localIdx = layer.indexToLocal[i]; if (localIdx === 65535) continue;
                         const lx = localIdx % CHUNK_SIZE; const ly = Math.floor(localIdx / CHUNK_SIZE) % CHUNK_SIZE; const lz = Math.floor(localIdx / (CHUNK_SIZE * CHUNK_SIZE));
                         const gx = (chunk.cx * CHUNK_SIZE) + lx; const gy = (chunk.cy * CHUNK_SIZE) + ly; const gz = (chunk.cz * CHUNK_SIZE) + lz;
 
-                        layer.mesh.getMatrixAt(i, mat4); mat4.premultiply(worldMat); layer.mesh.getColorAt(i, col);
+                        layer.getMatrixAt(i, mat4); mat4.premultiply(worldMat); layer.getColorAt(i, col);
                         const rStr = col.r.toFixed(3); const gStr = col.g.toFixed(3); const bStr = col.b.toFixed(3);
 
                         for (let d = 0; d < dirLen; d++) {
@@ -1460,7 +1555,7 @@
             const lx = gx - (cx * CHUNK_SIZE); const ly = gy - (cy * CHUNK_SIZE); const lz = gz - (cz * CHUNK_SIZE);
             const localIdx = lx + ly * CHUNK_SIZE + lz * CHUNK_SIZE * CHUNK_SIZE;
             const matType = chunk.voxelMatMap[localIdx];
-            if (matType !== -1 && outColor) { const layer = chunk.layers[matType]; const instIdx = layer.voxelToIndex[localIdx]; if (instIdx !== 65535) layer.mesh.getColorAt(instIdx, outColor); }
+            if (matType !== -1 && outColor) { const instIdx = chunk.layer.voxelToIndex[localIdx]; if (instIdx !== 65535) chunk.layer.getColorAt(instIdx, outColor); }
             return matType;
         }
         
