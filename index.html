@@ -118,6 +118,7 @@
         let icosahedronMode = 'solid';
         let icosahedronDivs = 1;
         let icosahedronLock = true;
+        let icosahedronType = 'flat';
         
         let wireWidth = 1; 
         let wireFill = false; 
@@ -930,6 +931,7 @@
                 drawButton(leftMenuCtx, 330, 60, 160, 50, 'WIRE', icosahedronMode === 'wireframe');
 
                 drawButton(leftMenuCtx, 20, 120, 220, 50, `LOCK RATIO: ${icosahedronLock ? 'ON' : 'OFF'}`, icosahedronLock);
+                drawButton(leftMenuCtx, 250, 120, 240, 50, `GEODESIC: ${icosahedronType === 'sphere' ? 'ON' : 'OFF'}`, icosahedronType === 'sphere');
 
                 drawButton(leftMenuCtx, 20, 180, 50, 50, '-', false);
                 drawButton(leftMenuCtx, 80, 180, 160, 50, `Divs: ${icosahedronDivs}`, false);
@@ -1065,6 +1067,7 @@
                     if (cx >= 330 && cx <= 490) icosahedronMode = 'wireframe';
                 } else if (cy >= 120 && cy <= 170) {
                     if (cx >= 20 && cx <= 240) icosahedronLock = !icosahedronLock;
+                    if (cx >= 250 && cx <= 490) icosahedronType = icosahedronType === 'flat' ? 'sphere' : 'flat';
                 } else if (cy >= 180 && cy <= 230) {
                     if (cx >= 20 && cx <= 70) icosahedronDivs = Math.max(1, icosahedronDivs - 1);
                     if (cx >= 250 && cx <= 300) icosahedronDivs = Math.min(20, icosahedronDivs + 1);
@@ -1955,6 +1958,10 @@
             };
 
             const isInside = (gx, gy, gz) => {
+                if (icosahedronType === 'sphere') {
+                    const nx = (gx - cX) * invRx; const ny = (gy - cY) * invRy; const nz = (gz - cZ) * invRz;
+                    return (nx*nx + ny*ny + nz*nz) <= 1.0;
+                }
                 getDistances(gx, gy, gz);
                 return Math.max(icoDists[0], icoDists[1], icoDists[2], icoDists[3]) <= 1.0;
             };
@@ -1969,37 +1976,31 @@
                     const cSec = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 1);
                     
                     getDistances(gx, gy, gz);
+                    let max1 = -Infinity; let maxIdx = -1;
+                    for (let i = 0; i < 4; i++) { if (icoDists[i] > max1) { max1 = icoDists[i]; maxIdx = i; } }
+                    
                     let isDivVoxel = false;
-                    if (icosahedronDivs > 1) {
-                        const threshold = (wireWidth * 0.5) / maxR * icosahedronDivs;
-                        for(let i=0; i<4; i++) {
-                            const dVal = icoDists[i];
-                            if (dVal > 0.05 && dVal < 0.99) { 
-                                const scaled = dVal * icosahedronDivs;
-                                const distToDiv = Math.abs(scaled - Math.round(scaled));
-                                if (distToDiv <= threshold) { isDivVoxel = true; break; }
-                            }
-                        }
+                    const threshold = (wireWidth * 0.5) / maxR * icosahedronDivs;
+                    for(let i=0; i<4; i++) {
+                        if (i === maxIdx) continue;
+                        const normalizedDist = (icoDists[i] / max1) * icosahedronDivs;
+                        const k = Math.round(normalizedDist);
+                        const distToDiv = Math.abs(icoDists[i] * icosahedronDivs - k * max1);
+                        if (distToDiv <= threshold) { isDivVoxel = true; break; }
                     }
                     
                     if (icosahedronMode === 'solid') {
-                        if (isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
+                        if (isDivVoxel && icosahedronDivs > 1) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
                         else setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
                     } else if (icosahedronMode === 'shell') {
-                        if (isSurface || isDivVoxel) setVoxel(gx, gy, gz, isPainting, (isDivVoxel && !isSurface) ? cSec : cMain, (isDivVoxel && !isSurface) ? matTypes[1] : matTypes[0]);
+                        if (isSurface) {
+                            if (isDivVoxel && icosahedronDivs > 1) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
+                            else setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                        }
                         else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null);
                     } else if (icosahedronMode === 'wireframe') {
                         if (isSurface || isDivVoxel) {
-                            let max1 = -Infinity, max2 = -Infinity;
-                            for (let i = 0; i < 4; i++) {
-                                const val = icoDists[i];
-                                if (val > max1) { max2 = max1; max1 = val; } 
-                                else if (val > max2) { max2 = val; }
-                            }
-                            const edgeDist = max1 - max2;
-                            let isEdge = (edgeDist * maxR <= (wireWidth * 0.9));
-                            
-                            if (isEdge || isDivVoxel) {
+                            if (isDivVoxel) {
                                 setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
                             } else if (wireFill && isSurface) {
                                 setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
