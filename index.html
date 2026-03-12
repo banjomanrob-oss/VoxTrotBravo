@@ -1378,7 +1378,13 @@
         
         updateLeftMenuTexture(); updateRightMenuTexture(); updateColorMenuTexture(); updateGlobalMenuTexture();
 
-        function exportToOBJ() {
+        async function exportToOBJ() {
+            const btn = document.getElementById('btn-export-obj');
+            if (btn) { btn.innerText = "EXPORTING... (PLEASE WAIT)"; btn.style.pointerEvents = "none"; btn.style.background = "#888"; }
+            
+            // Yield thread for 50ms so UI can update the button state before freezing
+            await new Promise(resolve => setTimeout(resolve, 50)); 
+
             const isMesh = exportMode === 'mesh';
             const vertBlobParts = ["# VoxTrotBravo Optimized Vertices\n"];
             const faceBlobParts = ["\n# VoxTrotBravo Faces\nmtllib voxel_materials.mtl\n"];
@@ -1408,9 +1414,14 @@
 
             for (let matIdx = 0; matIdx < 3; matIdx++) {
                 faceAcc.push(`\ng ${matNames[matIdx]}\nusemtl ${matNames[matIdx]}\n`);
-                chunks.forEach(chunk => {
+                
+                let chunksProcessed = 0;
+                for (const chunk of chunks.values()) {
+                    // Yield the thread every 10 chunks to prevent browser hangs
+                    if (++chunksProcessed % 10 === 0) await new Promise(r => setTimeout(r, 0));
+
                     const layer = chunk.layers[matIdx];
-                    if (!layer || layer.count === 0) return;
+                    if (!layer || layer.count === 0) continue;
                     for (let i = 0; i < layer.count; i++) {
                         const localIdx = layer.indexToLocal[i]; if (localIdx === 65535) continue;
                         const lx = localIdx % CHUNK_SIZE; const ly = Math.floor(localIdx / CHUNK_SIZE) % CHUNK_SIZE; const lz = Math.floor(localIdx / (CHUNK_SIZE * CHUNK_SIZE));
@@ -1438,7 +1449,7 @@
                             }
                         }
                     }
-                });
+                }
             }
             if (vertAcc.length > 0) { vertBlobParts.push(vertAcc.join("")); vertAcc = []; }
             if (faceAcc.length > 0) { faceBlobParts.push(faceAcc.join("")); faceAcc = []; }
@@ -1448,6 +1459,9 @@
             const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.style.display = 'none'; 
             a.href = url; a.download = isMesh ? 'voxtrotbravo_optimized_mesh.obj' : 'voxtrotbravo_optimized_boxes.obj'; 
             document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+
+            // Restore button
+            if (btn) { btn.innerText = "EXPORT TO .OBJ"; btn.style.pointerEvents = "auto"; btn.style.background = "#ff0055"; }
         }
 
         // --- Core Tool Algorithms & Color Handlers ---
