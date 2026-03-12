@@ -115,12 +115,12 @@
         let triangleCap = true;
         let pyramidLegs = 4;
 
-        let icosahedronMode = 'solid';
+        let icosahedronMode = 'wireframe';
         let icosahedronDivs = 1;
         let icosahedronLock = true;
         
         let wireWidth = 1; 
-        let wireFill = false; 
+        let wireFill = true; 
 
         let paintMode = 'brush'; 
         let exportMode = 'boxes'; 
@@ -1076,7 +1076,7 @@
                     if (cx >= 20 && cx <= 240) icosahedronLock = !icosahedronLock;
                 } else if (cy >= 180 && cy <= 230) {
                     if (cx >= 20 && cx <= 70) icosahedronDivs = Math.max(1, icosahedronDivs - 1);
-                    if (cx >= 250 && cx <= 300) icosahedronDivs = Math.min(20, icosahedronDivs + 1);
+                    if (cx >= 250 && cx <= 300) icosahedronDivs = Math.min(5, icosahedronDivs + 1);
                 } else if (cy >= 240 && cy <= 290 && icosahedronMode === 'wireframe') {
                     if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1);
                     if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
@@ -1946,75 +1946,166 @@
 
             if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
 
-            const rX = (maxX - minX) / 2 + 0.5; const rY = (maxY - minY) / 2 + 0.5; const rZ = (maxZ - minZ) / 2 + 0.5;
             const cX = (minX + maxX) / 2; const cY = (minY + maxY) / 2; const cZ = (minZ + maxZ) / 2;
-            const invRx = 1 / rX; const invRy = 1 / rY; const invRz = 1 / rZ;
+            const rX = (maxX - minX) / 2; const rY = (maxY - minY) / 2; const rZ = (maxZ - minZ) / 2;
 
-            const PHI = 1.618033988749895;
-            const invPHI = 0.618033988749895;
-            const invPHI2 = 0.381966011250105;
+            // Generate Base Icosphere (Unit sphere)
+            const t = (1.0 + Math.sqrt(5.0)) / 2.0;
+            let vertices = [
+                new THREE.Vector3(-1,  t,  0).normalize(), new THREE.Vector3( 1,  t,  0).normalize(), new THREE.Vector3(-1, -t,  0).normalize(), new THREE.Vector3( 1, -t,  0).normalize(),
+                new THREE.Vector3( 0, -1,  t).normalize(), new THREE.Vector3( 0,  1,  t).normalize(), new THREE.Vector3( 0, -1, -t).normalize(), new THREE.Vector3( 0,  1, -t).normalize(),
+                new THREE.Vector3( t,  0, -1).normalize(), new THREE.Vector3( t,  0,  1).normalize(), new THREE.Vector3(-t,  0, -1).normalize(), new THREE.Vector3(-t,  0,  1).normalize()
+            ];
+            let faces = [
+                [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+                [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+                [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+                [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]
+            ];
 
-            const getDistances = (gx, gy, gz) => {
-                const nx = (gx - cX) * invRx; const ny = (gy - cY) * invRy; const nz = (gz - cZ) * invRz;
-                const ax = Math.abs(nx); const ay = Math.abs(ny); const az = Math.abs(nz);
-                icoDists[0] = (ax + ay + az) * invPHI;
-                icoDists[1] = ax + ay * invPHI2;
-                icoDists[2] = ay + az * invPHI2;
-                icoDists[3] = az + ax * invPHI2;
+            let cache = new Map();
+            function getMidpoint(v1, v2) {
+                const key = v1 < v2 ? `${v1}_${v2}` : `${v2}_${v1}`;
+                if (cache.has(key)) return cache.get(key);
+                const p1 = vertices[v1]; const p2 = vertices[v2];
+                const mid = new THREE.Vector3().addVectors(p1, p2).normalize();
+                vertices.push(mid);
+                const idx = vertices.length - 1;
+                cache.set(key, idx);
+                return idx;
+            }
+
+            // Subdivide (Geodesic 1-to-4 triangle split)
+            const divs = Math.max(1, icosahedronDivs);
+            for (let i = 1; i < divs; i++) {
+                const nextFaces = [];
+                for (const face of faces) {
+                    const a = getMidpoint(face[0], face[1]);
+                    const b = getMidpoint(face[1], face[2]);
+                    const c = getMidpoint(face[2], face[0]);
+                    nextFaces.push([face[0], a, c]);
+                    nextFaces.push([face[1], b, a]);
+                    nextFaces.push([face[2], c, b]);
+                    nextFaces.push([a, b, c]);
+                }
+                faces = nextFaces;
+            }
+
+            // Scale to World Voxel Grid
+            for(let i=0; i<vertices.length; i++) {
+                vertices[i].x = cX + vertices[i].x * rX;
+                vertices[i].y = cY + vertices[i].y * rY;
+                vertices[i].z = cZ + vertices[i].z * rZ;
+            }
+
+            // Drawing Data Structures
+            const sizeX = maxX - minX + 1;
+            const sizeZ = maxZ - minZ + 1;
+            const minYGrid = new Int32Array(sizeX * sizeZ).fill(999999);
+            const maxYGrid = new Int32Array(sizeX * sizeZ).fill(-999999);
+
+            const updateGrid = (gx, gy, gz) => {
+                if (gx < minX || gx > maxX || gz < minZ || gz > maxZ) return;
+                const idx = (gx - minX) + (gz - minZ) * sizeX;
+                if (gy < minYGrid[idx]) minYGrid[idx] = gy;
+                if (gy > maxYGrid[idx]) maxYGrid[idx] = gy;
             };
 
-            const isInside = (gx, gy, gz) => {
-                getDistances(gx, gy, gz);
-                return Math.max(icoDists[0], icoDists[1], icoDists[2], icoDists[3]) <= 1.0;
+            const drawnSet = new Set();
+            const drawVoxel = (gx, gy, gz, color, matType) => {
+                if (gx < minX || gx > maxX || gy < minY || gy > maxY || gz < minZ || gz > maxZ) return;
+                const hash = (gx + 32768) + (gy + 32768) * 65536 + (gz + 32768) * 4294967296;
+                if (!drawnSet.has(hash)) {
+                    drawnSet.add(hash);
+                    setVoxel(gx, gy, gz, isPainting, color, matType);
+                }
+                if (icosahedronMode === 'solid' || clearInterior) {
+                    updateGrid(gx, gy, gz);
+                }
             };
 
-            const maxR = Math.max(rX, rY, rZ);
+            function drawLineVolumetric(p1, p2, thick, color, matType) {
+                const dist = p1.distanceTo(p2);
+                const steps = Math.max(1, Math.ceil(dist * 2.0)); 
+                const r = thick - 1;
+                const rSq = (r + 0.1) * (r + 0.1);
 
-            for (let gx = minX; gx <= maxX; gx++) for (let gy = minY; gy <= maxY; gy++) for (let gz = minZ; gz <= maxZ; gz++) {
-                if (isInside(gx, gy, gz)) {
-                    const isSurface = (!isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) || !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) || !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1));
-                    
-                    const cMain = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0); 
-                    const cSec = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 1);
-                    
-                    getDistances(gx, gy, gz);
-                    let isDivVoxel = false;
-                    if (icosahedronDivs > 1) {
-                        const threshold = (wireWidth * 0.5) / maxR * icosahedronDivs;
-                        for(let i=0; i<4; i++) {
-                            const dVal = icoDists[i];
-                            if (dVal > 0.05 && dVal < 0.99) { 
-                                const scaled = dVal * icosahedronDivs;
-                                const distToDiv = Math.abs(scaled - Math.round(scaled));
-                                if (distToDiv <= threshold) { isDivVoxel = true; break; }
-                            }
+                for (let i = 0; i <= steps; i++) {
+                    tempPos.lerpVectors(p1, p2, i / steps);
+                    const cx = Math.round(tempPos.x); const cy = Math.round(tempPos.y); const cz = Math.round(tempPos.z);
+                    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
+                        if (dx*dx + dy*dy + dz*dz <= rSq) {
+                            drawVoxel(cx+dx, cy+dy, cz+dz, color, matType);
                         }
                     }
-                    
-                    if (icosahedronMode === 'solid') {
-                        if (isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
-                        else setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
-                    } else if (icosahedronMode === 'shell') {
-                        if (isSurface || isDivVoxel) setVoxel(gx, gy, gz, isPainting, (isDivVoxel && !isSurface) ? cSec : cMain, (isDivVoxel && !isSurface) ? matTypes[1] : matTypes[0]);
-                        else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null);
-                    } else if (icosahedronMode === 'wireframe') {
-                        if (isSurface || isDivVoxel) {
-                            let max1 = -Infinity, max2 = -Infinity;
-                            for (let i = 0; i < 4; i++) {
-                                const val = icoDists[i];
-                                if (val > max1) { max2 = max1; max1 = val; } 
-                                else if (val > max2) { max2 = val; }
+                }
+            }
+
+            function drawFaceVolumetric(p1, p2, p3, color, matType) {
+                const d12 = p1.distanceTo(p2);
+                const d23 = p2.distanceTo(p3);
+                const d31 = p3.distanceTo(p1);
+                const maxD = Math.max(d12, d23, d31);
+                const steps = Math.max(1, Math.ceil(maxD * 2.0)); 
+
+                for (let u = 0; u <= steps; u++) {
+                    for (let v = 0; v <= steps - u; v++) {
+                        const w = steps - u - v;
+                        const fU = u / steps; const fV = v / steps; const fW = w / steps;
+                        const px = Math.round(p1.x * fU + p2.x * fV + p3.x * fW);
+                        const py = Math.round(p1.y * fU + p2.y * fV + p3.y * fW);
+                        const pz = Math.round(p1.z * fU + p2.z * fV + p3.z * fW);
+                        
+                        drawVoxel(px, py, pz, color, matType);
+                    }
+                }
+            }
+
+            // Draw sequence
+            const drawnEdges = new Set();
+            for (const face of faces) {
+                const p1 = vertices[face[0]]; const p2 = vertices[face[1]]; const p3 = vertices[face[2]];
+                
+                // Draw filled face if needed
+                if (icosahedronMode === 'solid' || icosahedronMode === 'shell' || (icosahedronMode === 'wireframe' && wireFill)) {
+                    const cMain = getDrawColor(Math.round((p1.x+p2.x+p3.x)/3), Math.round((p1.y+p2.y+p3.y)/3), Math.round((p1.z+p2.z+p3.z)/3), minX, maxX, minY, maxY, 0);
+                    drawFaceVolumetric(p1, p2, p3, cMain, matTypes[0]);
+                }
+
+                // Always draw edges for aesthetic structure
+                const edges = [ [face[0], face[1]], [face[1], face[2]], [face[2], face[0]] ];
+                for (const edge of edges) {
+                    const key = edge[0] < edge[1] ? `${edge[0]}_${edge[1]}` : `${edge[1]}_${edge[0]}`;
+                    if (!drawnEdges.has(key)) {
+                        drawnEdges.add(key);
+                        const ep1 = vertices[edge[0]]; const ep2 = vertices[edge[1]];
+                        const eColor = getDrawColor(Math.round((ep1.x+ep2.x)/2), Math.round((ep1.y+ep2.y)/2), Math.round((ep1.z+ep2.z)/2), minX, maxX, minY, maxY, 1);
+                        
+                        drawLineVolumetric(ep1, ep2, wireWidth, eColor, matTypes[1]);
+                    }
+                }
+            }
+
+            // Fill solid interior using scanline limits
+            if (icosahedronMode === 'solid' || (clearInterior && isPainting)) {
+                for (let gx = minX; gx <= maxX; gx++) {
+                    for (let gz = minZ; gz <= maxZ; gz++) {
+                        const idx = (gx - minX) + (gz - minZ) * sizeX;
+                        const min_y = minYGrid[idx];
+                        const max_y = maxYGrid[idx];
+                        if (min_y <= max_y) {
+                            for (let gy = min_y; gy <= max_y; gy++) {
+                                const hash = (gx + 32768) + (gy + 32768) * 65536 + (gz + 32768) * 4294967296;
+                                if (!drawnSet.has(hash)) {
+                                    if (icosahedronMode === 'solid') {
+                                        drawnSet.add(hash);
+                                        const cMain = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
+                                        setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                                    } else if (clearInterior && isPainting) {
+                                        setVoxel(gx, gy, gz, false, null);
+                                    }
+                                }
                             }
-                            const edgeDist = max1 - max2;
-                            let isEdge = (edgeDist * maxR <= (wireWidth * 0.9));
-                            
-                            if (isEdge || isDivVoxel) {
-                                setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
-                            } else if (wireFill && isSurface) {
-                                setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
-                            }
-                        } else if (clearInterior && isPainting) {
-                            setVoxel(gx, gy, gz, false, null);
                         }
                     }
                 }
