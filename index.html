@@ -116,9 +116,6 @@
         let pyramidLegs = 4;
 
         let icosahedronMode = 'solid';
-        let icosahedronDivs = 1;
-        let icosahedronLock = true;
-        let icosahedronType = 'flat';
         
         let wireWidth = 1; 
         let wireFill = false; 
@@ -263,8 +260,6 @@
         const leftPointerPos = new THREE.Vector3();
         const sheetPosL = new THREE.Vector3();
         const sheetPosR = new THREE.Vector3();
-        const boxPreviewEffEnd = new THREE.Vector3();
-        const icoDists = new Float32Array(4);
         const tempHSL = { h: 0, s: 0, l: 0 }; 
         const cursorGeos = {}; 
         
@@ -694,19 +689,11 @@
         updateCursors();
 
         function updateBoxPreview(start, end, isPainting) {
-            boxPreviewEffEnd.copy(end);
-            if (activeTool === 'icosahedron' && typeof icosahedronLock !== 'undefined' && icosahedronLock) {
-                const diffX = Math.abs(end.x - start.x); const diffY = Math.abs(end.y - start.y); const diffZ = Math.abs(end.z - start.z);
-                const maxDiff = Math.max(diffX, diffY, diffZ);
-                boxPreviewEffEnd.x = start.x + Math.sign(end.x - start.x || 1) * maxDiff;
-                boxPreviewEffEnd.y = start.y + Math.sign(end.y - start.y || 1) * maxDiff;
-                boxPreviewEffEnd.z = start.z + Math.sign(end.z - start.z || 1) * maxDiff;
-            }
             boxPreviewMesh.visible = true;
-            boxPreviewMesh.position.copy(start).add(boxPreviewEffEnd).multiplyScalar(0.5);
-            const sizeX = Math.abs(boxPreviewEffEnd.x - start.x) + VOXEL_SIZE;
-            const sizeY = Math.abs(boxPreviewEffEnd.y - start.y) + VOXEL_SIZE;
-            const sizeZ = Math.abs(boxPreviewEffEnd.z - start.z) + VOXEL_SIZE;
+            boxPreviewMesh.position.copy(start).add(end).multiplyScalar(0.5);
+            const sizeX = Math.abs(end.x - start.x) + VOXEL_SIZE;
+            const sizeY = Math.abs(end.y - start.y) + VOXEL_SIZE;
+            const sizeZ = Math.abs(end.z - start.z) + VOXEL_SIZE;
             boxPreviewMesh.scale.set(sizeX, sizeY, sizeZ);
             boxPreviewMesh.updateMatrix();
             boxPreviewMat.wireframe = (boxMode === 'wireframe' && activeTool === 'box') || (cylinderMode === 'wireframe' && activeTool === 'cylinder') || (icosahedronMode === 'wireframe' && activeTool === 'icosahedron');
@@ -930,18 +917,11 @@
                 drawButton(leftMenuCtx, 170, 60, 150, 50, 'SHELL', icosahedronMode === 'shell');
                 drawButton(leftMenuCtx, 330, 60, 160, 50, 'WIRE', icosahedronMode === 'wireframe');
 
-                drawButton(leftMenuCtx, 20, 120, 220, 50, `LOCK RATIO: ${icosahedronLock ? 'ON' : 'OFF'}`, icosahedronLock);
-                drawButton(leftMenuCtx, 250, 120, 240, 50, `GEODESIC: ${icosahedronType === 'sphere' ? 'ON' : 'OFF'}`, icosahedronType === 'sphere');
-
-                drawButton(leftMenuCtx, 20, 180, 50, 50, '-', false);
-                drawButton(leftMenuCtx, 80, 180, 160, 50, `Divs: ${icosahedronDivs}`, false);
-                drawButton(leftMenuCtx, 250, 180, 50, 50, '+', false);
-
                 if (icosahedronMode === 'wireframe') {
-                    drawButton(leftMenuCtx, 20, 240, 50, 50, '-', false);
-                    drawButton(leftMenuCtx, 80, 240, 160, 50, `Thick: ${wireWidth}`, false);
-                    drawButton(leftMenuCtx, 250, 240, 50, 50, '+', false);
-                    drawButton(leftMenuCtx, 330, 240, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill);
+                    drawButton(leftMenuCtx, 20, 140, 50, 50, '-', false);
+                    drawButton(leftMenuCtx, 80, 140, 160, 50, `Thick: ${wireWidth}`, false);
+                    drawButton(leftMenuCtx, 250, 140, 50, 50, '+', false);
+                    drawButton(leftMenuCtx, 330, 140, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill);
                 }
             } else if (activeTool === 'plane') {
                 drawButton(leftMenuCtx, 30, 70, 150, 50, `OUTLINE: ${planeOutline?'ON':'OFF'}`, planeOutline); drawButton(leftMenuCtx, 190, 70, 50, 50, '-', false); drawButton(leftMenuCtx, 250, 70, 160, 50, `O-Thick: ${planeOutlineThick}`, false); drawButton(leftMenuCtx, 420, 70, 50, 50, '+', false);
@@ -1065,13 +1045,7 @@
                     if (cx >= 20 && cx <= 160) icosahedronMode = 'solid';
                     if (cx >= 170 && cx <= 320) icosahedronMode = 'shell';
                     if (cx >= 330 && cx <= 490) icosahedronMode = 'wireframe';
-                } else if (cy >= 120 && cy <= 170) {
-                    if (cx >= 20 && cx <= 240) icosahedronLock = !icosahedronLock;
-                    if (cx >= 250 && cx <= 490) icosahedronType = icosahedronType === 'flat' ? 'sphere' : 'flat';
-                } else if (cy >= 180 && cy <= 230) {
-                    if (cx >= 20 && cx <= 70) icosahedronDivs = Math.max(1, icosahedronDivs - 1);
-                    if (cx >= 250 && cx <= 300) icosahedronDivs = Math.min(20, icosahedronDivs + 1);
-                } else if (cy >= 240 && cy <= 290 && icosahedronMode === 'wireframe') {
+                } else if (cy >= 140 && cy <= 190 && icosahedronMode === 'wireframe') {
                     if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1);
                     if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
                     if (cx >= 330 && cx <= 490) wireFill = !wireFill;
@@ -1292,13 +1266,13 @@
                 { id: 'icosahedron', label: 'Icosahedron (Platonic)' },
                 { id: 'select', label: 'Select & Transform' }
             ];
-            for (let i = 0; i < tools.length; i++) drawButton(rightMenuCtx, 50, 36 + i * 39, 412, 33, tools[i].label, activeTool === tools[i].id);
+            for (let i = 0; i < tools.length; i++) drawButton(rightMenuCtx, 50, 40 + i * 42, 412, 36, tools[i].label, activeTool === tools[i].id);
             rightMenuTexture.needsUpdate = true;
         }
 
         function handleRightMenuClick(cx, cy) {
-            if (cx >= 50 && cx <= 462 && cy >= 36 && cy <= 36 + 11 * 39) {
-                const idx = Math.floor((cy - 36) / 39);
+            if (cx >= 50 && cx <= 462 && cy >= 40 && cy <= 40 + 11 * 42) {
+                const idx = Math.floor((cy - 40) / 42);
                 if (idx >= 0 && idx < 11) {
                     if (hasSelection) applySelection();
                     isPreviewingBox = false; isPreviewingSphere = false; isPreviewingPlane = false; isPreviewingTriangle = false; isPreviewingCylinder = false; isPreviewingIcosahedron = false;
@@ -1922,22 +1896,9 @@
         }
         
         function executeIcosahedronTool(startPos, endPos, isPainting) {
-            let rawMinX = Math.round(startPos.x / VOXEL_SIZE); let rawMaxX = Math.round(endPos.x / VOXEL_SIZE);
-            let rawMinY = Math.round(startPos.y / VOXEL_SIZE); let rawMaxY = Math.round(endPos.y / VOXEL_SIZE);
-            let rawMinZ = Math.round(startPos.z / VOXEL_SIZE); let rawMaxZ = Math.round(endPos.z / VOXEL_SIZE);
-
-            if (typeof icosahedronLock !== 'undefined' && icosahedronLock) {
-                const diffX = Math.abs(rawMaxX - rawMinX); const diffY = Math.abs(rawMaxY - rawMinY); const diffZ = Math.abs(rawMaxZ - rawMinZ);
-                const maxDiff = Math.max(diffX, diffY, diffZ);
-                rawMaxX = rawMinX + Math.sign(rawMaxX - rawMinX || 1) * maxDiff;
-                rawMaxY = rawMinY + Math.sign(rawMaxY - rawMinY || 1) * maxDiff;
-                rawMaxZ = rawMinZ + Math.sign(rawMaxZ - rawMinZ || 1) * maxDiff;
-            }
-
-            const minX = Math.min(rawMinX, rawMaxX); const maxX = Math.max(rawMinX, rawMaxX);
-            const minY = Math.min(rawMinY, rawMaxY); const maxY = Math.max(rawMinY, rawMaxY);
-            const minZ = Math.min(rawMinZ, rawMaxZ); const maxZ = Math.max(rawMinZ, rawMaxZ);
-
+            const minX = Math.min(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE)); const maxX = Math.max(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE));
+            const minY = Math.min(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE)); const maxY = Math.max(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE));
+            const minZ = Math.min(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE)); const maxZ = Math.max(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE));
             if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
 
             const rX = (maxX - minX) / 2 + 0.5; const rY = (maxY - minY) / 2 + 0.5; const rZ = (maxZ - minZ) / 2 + 0.5;
@@ -1951,19 +1912,17 @@
             const getDistances = (gx, gy, gz) => {
                 const nx = (gx - cX) * invRx; const ny = (gy - cY) * invRy; const nz = (gz - cZ) * invRz;
                 const ax = Math.abs(nx); const ay = Math.abs(ny); const az = Math.abs(nz);
-                icoDists[0] = (ax + ay + az) * invPHI;
-                icoDists[1] = ax + ay * invPHI2;
-                icoDists[2] = ay + az * invPHI2;
-                icoDists[3] = az + ax * invPHI2;
+                return [
+                    (ax + ay + az) * invPHI,
+                    ax + ay * invPHI2,
+                    ay + az * invPHI2,
+                    az + ax * invPHI2
+                ];
             };
 
             const isInside = (gx, gy, gz) => {
-                if (icosahedronType === 'sphere') {
-                    const nx = (gx - cX) * invRx; const ny = (gy - cY) * invRy; const nz = (gz - cZ) * invRz;
-                    return (nx*nx + ny*ny + nz*nz) <= 1.0;
-                }
-                getDistances(gx, gy, gz);
-                return Math.max(icoDists[0], icoDists[1], icoDists[2], icoDists[3]) <= 1.0;
+                const d = getDistances(gx, gy, gz);
+                return Math.max(d[0], d[1], d[2], d[3]) <= 1.0;
             };
 
             const maxR = Math.max(rX, rY, rZ);
@@ -1975,34 +1934,19 @@
                     const cMain = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0); 
                     const cSec = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 1);
                     
-                    getDistances(gx, gy, gz);
-                    let max1 = -Infinity; let maxIdx = -1;
-                    for (let i = 0; i < 4; i++) { if (icoDists[i] > max1) { max1 = icoDists[i]; maxIdx = i; } }
-                    
-                    let isDivVoxel = false;
-                    const threshold = (wireWidth * 0.5) / maxR * icosahedronDivs;
-                    for(let i=0; i<4; i++) {
-                        if (i === maxIdx) continue;
-                        const normalizedDist = (icoDists[i] / max1) * icosahedronDivs;
-                        const k = Math.round(normalizedDist);
-                        const distToDiv = Math.abs(icoDists[i] * icosahedronDivs - k * max1);
-                        if (distToDiv <= threshold) { isDivVoxel = true; break; }
-                    }
-                    
                     if (icosahedronMode === 'solid') {
-                        if (isDivVoxel && icosahedronDivs > 1) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
-                        else setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                        setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
                     } else if (icosahedronMode === 'shell') {
-                        if (isSurface) {
-                            if (isDivVoxel && icosahedronDivs > 1) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
-                            else setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
-                        }
+                        if (isSurface) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
                         else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null);
                     } else if (icosahedronMode === 'wireframe') {
-                        if (isSurface || isDivVoxel) {
-                            if (isDivVoxel) {
+                        if (isSurface) {
+                            const d = getDistances(gx, gy, gz).sort((a, b) => b - a);
+                            const edgeDist = d[0] - d[1];
+                            
+                            if (edgeDist * maxR <= (wireWidth * 0.9)) {
                                 setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
-                            } else if (wireFill && isSurface) {
+                            } else if (wireFill) {
                                 setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
                             }
                         } else if (clearInterior && isPainting) {
