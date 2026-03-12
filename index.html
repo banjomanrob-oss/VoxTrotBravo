@@ -322,10 +322,6 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.xr.enabled = true;
 
-        // OPTIMIZATION: Maximize Fixed Foveated Rendering (FFR). 
-        // Drops peripheral pixel count drastically. Pure GPU fill-rate savings.
-        renderer.xr.setFoveation(1.0);
-
         document.body.appendChild(VRButton.createButton(renderer));
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -1414,11 +1410,21 @@
             const matNames = ["Voxel_Solid", "Voxel_Glass", "Voxel_Emission"];
             let vertAcc = []; let faceAcc = []; const vertMap = new Map(); let vertexOffset = 1;
             const worldMat = worldGroup.matrixWorld; const dirLen = dirs.length;
+            
+            let lastYieldTime = performance.now();
 
             for (let matIdx = 0; matIdx < 3; matIdx++) {
                 faceAcc.push(`\ng ${matNames[matIdx]}\nusemtl ${matNames[matIdx]}\n`);
                 
                 for (const chunk of chunks.values()) {
+                    // OPTIMIZATION: Time-Based Yielding.
+                    // This lets the heavy string concatenation run at absolute max CPU speed,
+                    // but pauses for 1 millisecond every 30 milliseconds so the browser never hangs.
+                    if (performance.now() - lastYieldTime > 30) {
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                        lastYieldTime = performance.now();
+                    }
+
                     const layer = chunk.layers[matIdx];
                     if (!layer || layer.count === 0) continue;
                     for (let i = 0; i < layer.count; i++) {
