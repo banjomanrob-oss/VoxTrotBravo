@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VoxTrotBravo</title>
+    <title>VoxTrotBravo PCVR</title>
     <style>
         body {
             margin: 0;
@@ -59,13 +59,13 @@
 </head>
 <body>
     <div id="loading-overlay">
-        <h2>VoxTrotBravo</h2>
-        <p>Initializing WebXR Engine...</p>
+        <h2>VoxTrotBravo PCVR</h2>
+        <p>Initializing Optimized WebXR Engine...</p>
         <div class="spinner"></div>
     </div>
 
     <div id="ui-container">
-        <h1>VoxTrotBravo</h1>
+        <h1>VoxTrotBravo PCVR</h1>
         <p><b>Right Trigger:</b> Draw / Select / Sliders | <b>Left Trigger:</b> Erase / Drop Selection</p>
         <p><b>Grips:</b> Grab to Move, Scale & Rotate World</p>
         <p><b>A & B (Right):</b> Tools & Settings | <b>X & Y (Left):</b> Tool Options & Materials</p>
@@ -177,6 +177,7 @@
         
         let polarCos = new Float32Array([1]);
         let polarSin = new Float32Array([0]);
+        let activeSymmetries = []; // Pre-cached matrices to avoid allocation in voxel loops
         
         function updatePolarArrays() {
             polarCos = new Float32Array(polarSymmetry);
@@ -186,7 +187,29 @@
                 polarCos[i] = Math.cos(angle);
                 polarSin[i] = Math.sin(angle);
             }
+            updateActiveSymmetries();
         }
+
+        function updateActiveSymmetries() {
+            activeSymmetries = [];
+            const mirrors = [{sx: 1, sz: 1}];
+            if (mirrorX) mirrors.push({sx: -1, sz: 1});
+            if (mirrorZ) mirrors.push({sx: 1, sz: -1});
+            if (mirrorX && mirrorZ) mirrors.push({sx: -1, sz: -1});
+
+            for (let m = 0; m < mirrors.length; m++) {
+                for (let p = 0; p < polarSymmetry; p++) {
+                    activeSymmetries.push({
+                        sx: mirrors[m].sx,
+                        sz: mirrors[m].sz,
+                        p: p,
+                        cos: p > 0 ? polarCos[p] : 1,
+                        sin: p > 0 ? polarSin[p] : 0
+                    });
+                }
+            }
+        }
+        
         updatePolarArrays();
 
         let isPreviewingBox = false;
@@ -227,8 +250,12 @@
         const leftPointerPos = new THREE.Vector3();
         const sheetPosL = new THREE.Vector3();
         const sheetPosR = new THREE.Vector3();
-        const tempHSL = { h: 0, s: 0, l: 0 }; // Used heavily in UI mapping
+        const tempHSL = { h: 0, s: 0, l: 0 }; 
         const cursorGeos = {}; 
+        
+        // Global constants for fill/select algorithms to prevent array allocation spam
+        const FILL_NEIGHBORS = [1,0,0, -1,0,0, 0,1,0, 0,-1,0, 0,0,1, 0,0,-1];
+        const SEL_DIRS = [1,0,0, -1,0,0, 0,1,0, 0,-1,0, 0,0,1, 0,0,-1, 1,1,0, -1,-1,0, 1,-1,0, -1,1,0, 1,0,1, -1,0,-1, 1,0,-1, -1,0,1, 0,1,1, 0,-1,-1, 0,1,-1, 0,-1,1, 1,1,1, -1,-1,-1, 1,-1,1, -1,1,-1, 1,1,-1, -1,-1,1, 1,-1,-1, -1,1,1];
 
         // --- Scene Setup ---
         const canvas = document.createElement('canvas');
@@ -277,7 +304,8 @@
         class ChunkLayer {
             constructor(cx, cy, cz, material) {
                 this.material = material;
-                this.capacity = 64; 
+                // Optimized for PCVR/Large Blocks: Starts at 4096 instead of 64 to drastically reduce reallocation GC spikes.
+                this.capacity = 4096; 
                 this.count = 0;
                 this.mesh = new THREE.InstancedMesh(voxelGeometry, material, this.capacity);
                 this.mesh.matrixAutoUpdate = false; this.mesh.updateMatrix();
@@ -325,7 +353,7 @@
                         this.needsUpdate = true;
                     }
                 } else {
-                    if (this.count >= this.capacity) this.resizeCapacity(Math.min(CHUNK_VOL, Math.max(256, this.capacity * 2)));
+                    if (this.count >= this.capacity) this.resizeCapacity(Math.min(CHUNK_VOL, this.capacity * 2));
                     const instIdx = this.count;
                     this.voxelToIndex[localIdx] = instIdx;
                     this.indexToLocal[instIdx] = localIdx;
@@ -360,7 +388,6 @@
 
             updateBuffers() {
                 if (this.needsUpdate) {
-                    // Optimized VRAM updates: only sync the portion of the array that is active
                     this.mesh.instanceMatrix.updateRange.count = this.count * 16;
                     this.mesh.instanceColor.updateRange.count = this.count * 3;
                     this.mesh.instanceMatrix.needsUpdate = true;
@@ -428,6 +455,9 @@
         const linePreviewMesh = new THREE.InstancedMesh(voxelGeometry, linePreviewMat, 30000);
         linePreviewMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); linePreviewMesh.matrixAutoUpdate = false; linePreviewMesh.visible = false;
         worldGroup.add(linePreviewMesh);
+        
+        // Cache object for line previews to prevent regenerating the mesh buffer constantly during hand jitter
+        let lastLinePreviewGridHash = "";
 
         const selectionGroup = new THREE.Group();
         selectionGroup.visible = false; worldGroup.add(selectionGroup);
@@ -733,7 +763,6 @@
             linePreviewMesh.count = instCount; linePreviewMesh.instanceMatrix.needsUpdate = true;
             if (isPainting) linePreviewMat.color.copy(slotColors[activeMatSlot][activeColorSubSlot]); 
             else linePreviewMat.color.setHex(0xff0055);
-            linePreviewMesh.visible = true;
         }
 
         // --- PCVR CONTROLLERS ---
@@ -1095,6 +1124,7 @@
             }
 
             updateCursors(); colorMenuNeedsUpdate = true;
+            lastLinePreviewGridHash = ""; // Ensure preview meshes update with new color
         }
 
         function handleColorMenuClick(cx, cy) {
@@ -1117,6 +1147,7 @@
                 }
             }
             updateCursors(); colorMenuNeedsUpdate = true;
+            lastLinePreviewGridHash = ""; // Ensure preview meshes update with new color
         }
 
         const rightMenuCanvas = document.createElement('canvas'); rightMenuCanvas.width = 512; rightMenuCanvas.height = 512;
@@ -1159,6 +1190,7 @@
                     const toolsList = ['brush', 'stroke', 'sheet', 'paint', 'plane', 'box', 'quadsphere', 'triangle', 'select'];
                     activeTool = toolsList[idx];
                     updateCursors(); rightMenuNeedsUpdate = true; leftMenuNeedsUpdate = true; 
+                    lastLinePreviewGridHash = "";
                 }
             }
         }
@@ -1197,8 +1229,8 @@
                 if (cx >= 272 && cx <= 472) clearInterior = !clearInterior;
             }
             if (cy >= 140 && cy <= 190) {
-                if (cx >= 40 && cx <= 240) mirrorX = !mirrorX;
-                if (cx >= 272 && cx <= 472) mirrorZ = !mirrorZ;
+                if (cx >= 40 && cx <= 240) { mirrorX = !mirrorX; updateActiveSymmetries(); }
+                if (cx >= 272 && cx <= 472) { mirrorZ = !mirrorZ; updateActiveSymmetries(); }
             }
             if (cy >= 210 && cy <= 260) {
                 if (cx >= 40 && cx <= 90) polarSymmetry = Math.max(1, polarSymmetry - 1);
@@ -1305,7 +1337,8 @@
             const cx = Math.floor(gx / CHUNK_SIZE); const cy = Math.floor(gy / CHUNK_SIZE); const cz = Math.floor(gz / CHUNK_SIZE);
             const chunkKey = (cx + 65536) + ((cy + 65536) * 131072) + ((cz + 65536) * 17179869184);
             const chunk = chunks.get(chunkKey); if (!chunk) return -1;
-            const localIdx = (gx - (cx * CHUNK_SIZE)) + ((gy - (cy * CHUNK_SIZE)) * CHUNK_SIZE) + ((gz - (cz * CHUNK_SIZE)) * CHUNK_SIZE * CHUNK_SIZE);
+            const lx = gx - (cx * CHUNK_SIZE); const ly = gy - (cy * CHUNK_SIZE); const lz = gz - (cz * CHUNK_SIZE);
+            const localIdx = lx + ly * CHUNK_SIZE + lz * CHUNK_SIZE * CHUNK_SIZE;
             const matType = chunk.voxelMatMap[localIdx];
             if (matType !== -1 && outColor) { const layer = chunk.layers[matType]; const instIdx = layer.voxelToIndex[localIdx]; if (instIdx !== 65535) layer.mesh.getColorAt(instIdx, outColor); }
             return matType;
@@ -1335,35 +1368,34 @@
             }
         }
 
-        // Apply all active symmetries (Mirrors + Polar) without redundant hashing allocations
-        function applySymmetry(gx, gy, gz, actionFn) {
-            const mirrors = [[1, 1]];
-            if (mirrorX) mirrors.push([-1, 1]);
-            if (mirrorZ) mirrors.push([1, -1]);
-            if (mirrorX && mirrorZ) mirrors.push([-1, -1]);
-
-            for (let m = 0; m < mirrors.length; m++) {
-                const mx = gx * mirrors[m][0];
-                const mz = gz * mirrors[m][1];
-
-                for (let p = 0; p < polarSymmetry; p++) {
-                    let px = mx, pz = mz;
-                    if (p > 0) {
-                        px = Math.round(mx * polarCos[p] + mz * polarSin[p]);
-                        pz = Math.round(-mx * polarSin[p] + mz * polarCos[p]);
-                    }
-                    actionFn(px, gy, pz);
-                }
-            }
-        }
-
+        // Apply all active symmetries using pre-cached math values
         function setVoxel(gx, gy, gz, isPainting, color, matOverride = -1) {
-            applySymmetry(gx, gy, gz, (x, y, z) => { setVoxelCore(x, y, z, isPainting, color, matOverride); });
+            for (let i = 0; i < activeSymmetries.length; i++) {
+                const sym = activeSymmetries[i];
+                const mx = gx * sym.sx;
+                const mz = gz * sym.sz;
+                let px = mx, pz = mz;
+                if (sym.p > 0) {
+                    px = Math.round(mx * sym.cos + mz * sym.sin);
+                    pz = Math.round(-mx * sym.sin + mz * sym.cos);
+                }
+                setVoxelCore(px, gy, pz, isPainting, color, matOverride);
+            }
         }
 
         function recolorVoxelSet(gx, gy, gz, color) {
             const drawMatType = matTypes[0]; 
-            applySymmetry(gx, gy, gz, (x, y, z) => { recolorVoxel(x, y, z, color, drawMatType); });
+            for (let i = 0; i < activeSymmetries.length; i++) {
+                const sym = activeSymmetries[i];
+                const mx = gx * sym.sx;
+                const mz = gz * sym.sz;
+                let px = mx, pz = mz;
+                if (sym.p > 0) {
+                    px = Math.round(mx * sym.cos + mz * sym.sin);
+                    pz = Math.round(-mx * sym.sin + mz * sym.cos);
+                }
+                recolorVoxel(px, gy, pz, color, drawMatType);
+            }
         }
 
         // --- Select Tool Functions ---
@@ -1472,15 +1504,14 @@
             const targetMat = getVoxelMatAndColor(startX, startY, startZ, targetQueryColor); if (targetMat === -1) return; 
             selVisited.clear(); selQueue.length = 0; selQueue.push(startX, startY, startZ); selVisited.add((startX + 32768) + (startY + 32768) * 65536 + (startZ + 32768) * 4294967296);
             baseSelection.length = 0;
-            const selDirs = [1,0,0, -1,0,0, 0,1,0, 0,-1,0, 0,0,1, 0,0,-1, 1,1,0, -1,-1,0, 1,-1,0, -1,1,0, 1,0,1, -1,0,-1, 1,0,-1, -1,0,1, 0,1,1, 0,-1,-1, 0,1,-1, 0,-1,1, 1,1,1, -1,-1,-1, 1,-1,1, -1,1,-1, 1,1,-1, -1,-1,1, 1,-1,-1, -1,1,1];
             let qHead = 0;
             while(qHead < selQueue.length && baseSelection.length < SEL_LIMIT) {
                 const x = selQueue[qHead++]; const y = selQueue[qHead++]; const z = selQueue[qHead++];
                 const matType = getVoxelMatAndColor(x, y, z, tempColor);
                 if (matType !== -1) {
                     baseSelection.push({ x: x, y: y, z: z, color: tempColor.clone(), mat: matType });
-                    for(let i=0; i < selDirs.length; i+=3) {
-                        const nx = x + selDirs[i]; const ny = y + selDirs[i+1]; const nz = z + selDirs[i+2];
+                    for(let i=0; i < SEL_DIRS.length; i+=3) {
+                        const nx = x + SEL_DIRS[i]; const ny = y + SEL_DIRS[i+1]; const nz = z + SEL_DIRS[i+2];
                         const key = (nx + 32768) + (ny + 32768) * 65536 + (nz + 32768) * 4294967296;
                         if (!selVisited.has(key)) {
                             selVisited.add(key);
@@ -1659,12 +1690,12 @@
         function calculateFloodFill(startX, startY, startZ) {
             hoveredFillCoords.length = 0; const targetMat = getVoxelMatAndColor(startX, startY, startZ, targetQueryColor); if (targetMat === -1) return;
             fillVisited.clear(); fillQueue.length = 0; fillQueue.push(startX, startY, startZ); fillVisited.add((startX + 32768) + (startY + 32768) * 65536 + (startZ + 32768) * 4294967296);
-            let qHead = 0; const neighbors = [1,0,0, -1,0,0, 0,1,0, 0,-1,0, 0,0,1, 0,0,-1];
+            let qHead = 0; 
             while(qHead < fillQueue.length && hoveredFillCoords.length < 12000) {
                 const x = fillQueue[qHead++]; const y = fillQueue[qHead++]; const z = fillQueue[qHead++];
                 hoveredFillCoords.push(x, y, z);
-                for (let i=0; i < neighbors.length; i+=3) {
-                    const nx = x + neighbors[i]; const ny = y + neighbors[i+1]; const nz = z + neighbors[i+2];
+                for (let i=0; i < FILL_NEIGHBORS.length; i+=3) {
+                    const nx = x + FILL_NEIGHBORS[i]; const ny = y + FILL_NEIGHBORS[i+1]; const nz = z + FILL_NEIGHBORS[i+2];
                     const key = (nx + 32768) + (ny + 32768) * 65536 + (nz + 32768) * 4294967296;
                     if (!fillVisited.has(key)) {
                         fillVisited.add(key);
@@ -1929,9 +1960,9 @@
                             } else { isDrawing = true; dragStartCtrlPos.copy(rightTargetLocal); dragStartOffset.copy(selectionGroup.position); }
                         } else { if (selectMode === 'box') { isDrawing = true; drawStartPos.copy(rightTargetLocal); isPreviewingBox = true; } else if (selectMode === 'connected') executeSelectConnected(rightTargetLocal); }
                     } else if (activeTool === 'stroke' && strokeMode === 'line') {
-                        if (isPreviewingLineLeft) { drawLineVoxels(lineStartLeft, rightTargetLocal, false); isPreviewingLineLeft = false; lineStartLeft.set(Infinity, Infinity, Infinity); } 
+                        if (isPreviewingLineLeft) { drawLineVoxels(lineStartLeft, rightTargetLocal, false); isPreviewingLineLeft = false; lineStartLeft.set(Infinity, Infinity, Infinity); lastLinePreviewGridHash = ""; } 
                         else if (!isPreviewingLineRight) { lineStartRight.copy(rightTargetLocal); isPreviewingLineRight = true; } 
-                        else { drawLineVoxels(lineStartRight, rightTargetLocal, true); lineStartRight.copy(rightTargetLocal); }
+                        else { drawLineVoxels(lineStartRight, rightTargetLocal, true); lineStartRight.copy(rightTargetLocal); lastLinePreviewGridHash = ""; }
                     } else {
                         isDrawing = true; drawStartPos.copy(rightTargetLocal); 
                         if (activeTool === 'paint' && paintMode === 'bucket' && hoveredFillCoords.length > 0) {
@@ -1950,9 +1981,9 @@
                 else {
                     if (activeTool === 'select' && hasSelection) applySelection();
                     else if (activeTool === 'stroke' && strokeMode === 'line') {
-                        if (isPreviewingLineRight) { drawLineVoxels(lineStartRight, leftTargetLocal, true); isPreviewingLineRight = false; lineStartRight.set(Infinity, Infinity, Infinity); } 
+                        if (isPreviewingLineRight) { drawLineVoxels(lineStartRight, leftTargetLocal, true); isPreviewingLineRight = false; lineStartRight.set(Infinity, Infinity, Infinity); lastLinePreviewGridHash = ""; } 
                         else if (!isPreviewingLineLeft) { lineStartLeft.copy(leftTargetLocal); isPreviewingLineLeft = true; } 
-                        else { drawLineVoxels(lineStartLeft, leftTargetLocal, false); lineStartLeft.copy(leftTargetLocal); }
+                        else { drawLineVoxels(lineStartLeft, leftTargetLocal, false); lineStartLeft.copy(leftTargetLocal); lastLinePreviewGridHash = ""; }
                     } else {
                         isErasing = true; drawStartPos.copy(leftTargetLocal);
                         if (activeTool === 'box') isPreviewingBox = true; if (activeTool === 'quadsphere') isPreviewingSphere = true; if (activeTool === 'plane') isPreviewingPlane = true;
@@ -2280,6 +2311,7 @@
                     else if (activeTool === 'triangle' && isPreviewingTriangle) updateBoxPreview(drawStartPos, leftTargetLocal, false);
                 }
 
+                // Caching optimization for line preview computation to prevent frame drops
                 let previewLineStart = null; let previewLineEnd = null; let previewLinePainting = false;
                 if (activeTool === 'stroke' && strokeMode === 'line') {
                     if (isPreviewingLineRight) { previewLineStart = lineStartRight; previewLineEnd = rightTargetLocal; previewLinePainting = true; }
@@ -2290,9 +2322,18 @@
                 }
 
                 if (previewLineStart && previewLineEnd) {
-                    updateLinePreviewMesh(previewLineStart, previewLineEnd, previewLinePainting);
+                    const startX = Math.round(previewLineStart.x / VOXEL_SIZE); const startY = Math.round(previewLineStart.y / VOXEL_SIZE); const startZ = Math.round(previewLineStart.z / VOXEL_SIZE);
+                    const endX = Math.round(previewLineEnd.x / VOXEL_SIZE); const endY = Math.round(previewLineEnd.y / VOXEL_SIZE); const endZ = Math.round(previewLineEnd.z / VOXEL_SIZE);
+                    const gridHash = `${startX}_${startY}_${startZ}_${endX}_${endY}_${endZ}`;
+                    
+                    if (gridHash !== lastLinePreviewGridHash) {
+                        updateLinePreviewMesh(previewLineStart, previewLineEnd, previewLinePainting);
+                        lastLinePreviewGridHash = gridHash;
+                    }
+                    linePreviewMesh.visible = true;
                 } else {
                     linePreviewMesh.visible = false;
+                    lastLinePreviewGridHash = "";
                 }
 
                 if (hasSelection) updatePreviews();
