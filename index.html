@@ -262,6 +262,8 @@
         const leftPointerPos = new THREE.Vector3();
         const sheetPosL = new THREE.Vector3();
         const sheetPosR = new THREE.Vector3();
+        const boxPreviewEffEnd = new THREE.Vector3();
+        const icoDists = new Float32Array(4);
         const tempHSL = { h: 0, s: 0, l: 0 }; 
         const cursorGeos = {}; 
         
@@ -691,19 +693,19 @@
         updateCursors();
 
         function updateBoxPreview(start, end, isPainting) {
-            let effEnd = end.clone();
+            boxPreviewEffEnd.copy(end);
             if (activeTool === 'icosahedron' && typeof icosahedronLock !== 'undefined' && icosahedronLock) {
                 const diffX = Math.abs(end.x - start.x); const diffY = Math.abs(end.y - start.y); const diffZ = Math.abs(end.z - start.z);
                 const maxDiff = Math.max(diffX, diffY, diffZ);
-                effEnd.x = start.x + Math.sign(end.x - start.x || 1) * maxDiff;
-                effEnd.y = start.y + Math.sign(end.y - start.y || 1) * maxDiff;
-                effEnd.z = start.z + Math.sign(end.z - start.z || 1) * maxDiff;
+                boxPreviewEffEnd.x = start.x + Math.sign(end.x - start.x || 1) * maxDiff;
+                boxPreviewEffEnd.y = start.y + Math.sign(end.y - start.y || 1) * maxDiff;
+                boxPreviewEffEnd.z = start.z + Math.sign(end.z - start.z || 1) * maxDiff;
             }
             boxPreviewMesh.visible = true;
-            boxPreviewMesh.position.copy(start).add(effEnd).multiplyScalar(0.5);
-            const sizeX = Math.abs(effEnd.x - start.x) + VOXEL_SIZE;
-            const sizeY = Math.abs(effEnd.y - start.y) + VOXEL_SIZE;
-            const sizeZ = Math.abs(effEnd.z - start.z) + VOXEL_SIZE;
+            boxPreviewMesh.position.copy(start).add(boxPreviewEffEnd).multiplyScalar(0.5);
+            const sizeX = Math.abs(boxPreviewEffEnd.x - start.x) + VOXEL_SIZE;
+            const sizeY = Math.abs(boxPreviewEffEnd.y - start.y) + VOXEL_SIZE;
+            const sizeZ = Math.abs(boxPreviewEffEnd.z - start.z) + VOXEL_SIZE;
             boxPreviewMesh.scale.set(sizeX, sizeY, sizeZ);
             boxPreviewMesh.updateMatrix();
             boxPreviewMat.wireframe = (boxMode === 'wireframe' && activeTool === 'box') || (cylinderMode === 'wireframe' && activeTool === 'cylinder') || (icosahedronMode === 'wireframe' && activeTool === 'icosahedron');
@@ -1946,17 +1948,15 @@
             const getDistances = (gx, gy, gz) => {
                 const nx = (gx - cX) * invRx; const ny = (gy - cY) * invRy; const nz = (gz - cZ) * invRz;
                 const ax = Math.abs(nx); const ay = Math.abs(ny); const az = Math.abs(nz);
-                return [
-                    (ax + ay + az) * invPHI,
-                    ax + ay * invPHI2,
-                    ay + az * invPHI2,
-                    az + ax * invPHI2
-                ];
+                icoDists[0] = (ax + ay + az) * invPHI;
+                icoDists[1] = ax + ay * invPHI2;
+                icoDists[2] = ay + az * invPHI2;
+                icoDists[3] = az + ax * invPHI2;
             };
 
             const isInside = (gx, gy, gz) => {
-                const d = getDistances(gx, gy, gz);
-                return Math.max(d[0], d[1], d[2], d[3]) <= 1.0;
+                getDistances(gx, gy, gz);
+                return Math.max(icoDists[0], icoDists[1], icoDists[2], icoDists[3]) <= 1.0;
             };
 
             const maxR = Math.max(rX, rY, rZ);
@@ -1968,13 +1968,14 @@
                     const cMain = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0); 
                     const cSec = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 1);
                     
-                    const d = getDistances(gx, gy, gz);
+                    getDistances(gx, gy, gz);
                     let isDivVoxel = false;
                     if (icosahedronDivs > 1) {
                         const threshold = (wireWidth * 0.5) / maxR * icosahedronDivs;
                         for(let i=0; i<4; i++) {
-                            if (d[i] > 0.05 && d[i] < 0.99) { 
-                                const scaled = d[i] * icosahedronDivs;
+                            const dVal = icoDists[i];
+                            if (dVal > 0.05 && dVal < 0.99) { 
+                                const scaled = dVal * icosahedronDivs;
                                 const distToDiv = Math.abs(scaled - Math.round(scaled));
                                 if (distToDiv <= threshold) { isDivVoxel = true; break; }
                             }
@@ -1989,8 +1990,13 @@
                         else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null);
                     } else if (icosahedronMode === 'wireframe') {
                         if (isSurface || isDivVoxel) {
-                            const d_sorted = [...d].sort((a, b) => b - a);
-                            const edgeDist = d_sorted[0] - d_sorted[1];
+                            let max1 = -Infinity, max2 = -Infinity;
+                            for (let i = 0; i < 4; i++) {
+                                const val = icoDists[i];
+                                if (val > max1) { max2 = max1; max1 = val; } 
+                                else if (val > max2) { max2 = val; }
+                            }
+                            const edgeDist = max1 - max2;
                             let isEdge = (edgeDist * maxR <= (wireWidth * 0.9));
                             
                             if (isEdge || isDivVoxel) {
