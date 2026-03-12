@@ -335,12 +335,13 @@
         scene.add(worldGroup);
 
         const gridHelper = new THREE.GridHelper(20, 40, 0x444444, 0x222222);
-        gridHelper.position.y = -0.01; 
+        gridHelper.position.y = -(VOXEL_SIZE / 2) - 0.001; // Push exactly below the first voxel layer to stop clipping
         gridHelper.matrixAutoUpdate = false; gridHelper.updateMatrix();
         worldGroup.add(gridHelper);
 
         // --- Chunk System ---
-        const voxelGeometry = new THREE.BoxGeometry(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
+        // Expand geometry by 0.1% to seal sub-pixel cracks and eliminate jagged light bleeding
+        const voxelGeometry = new THREE.BoxGeometry(VOXEL_SIZE * 1.001, VOXEL_SIZE * 1.001, VOXEL_SIZE * 1.001);
         const matSolid = new THREE.MeshLambertMaterial(); 
         const matGlass = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.35, depthWrite: false }); 
         const matEmission = new THREE.MeshBasicMaterial(); 
