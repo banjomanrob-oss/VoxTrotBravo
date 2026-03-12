@@ -283,7 +283,7 @@
         document.body.appendChild(canvas);
         
         let gl;
-        try { gl = canvas.getContext('webgl2', { xrCompatible: true, powerPreference: "high-performance" }); } 
+        try { gl = canvas.getContext('webgl2', { xrCompatible: true, powerPreference: "high-performance", antialias: true }); } 
         catch(e) { console.warn("WebGL2 xrCompatible request failed, falling back."); }
 
         const scene = new THREE.Scene();
@@ -295,8 +295,7 @@
         const renderer = new THREE.WebGLRenderer({ 
             canvas: canvas, 
             context: gl, 
-            antialias: false, 
-            logarithmicDepthBuffer: true,
+            antialias: true, 
             powerPreference: "high-performance" 
         });
         renderer.setPixelRatio(window.devicePixelRatio);
@@ -340,8 +339,8 @@
         worldGroup.add(gridHelper);
 
         // --- Chunk System ---
-        // Expand geometry by 0.1% to seal sub-pixel cracks and eliminate jagged light bleeding
-        const voxelGeometry = new THREE.BoxGeometry(VOXEL_SIZE * 1.001, VOXEL_SIZE * 1.001, VOXEL_SIZE * 1.001);
+        // Use exact VOXEL_SIZE. Overlapping geometry causes severe Z-fighting at long distances.
+        const voxelGeometry = new THREE.BoxGeometry(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
         const matSolid = new THREE.MeshLambertMaterial(); 
         const matGlass = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.35, depthWrite: false }); 
         const matEmission = new THREE.MeshBasicMaterial(); 
