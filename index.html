@@ -2549,16 +2549,28 @@
             for (let i = 0; i < session.inputSources.length; i++) {
                 const source = session.inputSources[i];
                 if (source && source.gamepad) {
+                    // Right controller buttons open Left/Color Menus (on the left hand) while held
                     if (source.handedness === 'right') {
                         const btnA = source.gamepad.buttons[4]?.pressed || false; const btnB = source.gamepad.buttons[5]?.pressed || false; 
-                        if (btnA && !lastRightBtnA) { if(rightMenuMesh) rightMenuMesh.visible = !rightMenuMesh.visible; if (rightMenuMesh && rightMenuMesh.visible) { if(globalMenuMesh) globalMenuMesh.visible = false; rightMenuNeedsUpdate = true; } }
-                        if (btnB && !lastRightBtnB) { if(globalMenuMesh) globalMenuMesh.visible = !globalMenuMesh.visible; if (globalMenuMesh && globalMenuMesh.visible) { if(rightMenuMesh) rightMenuMesh.visible = false; globalMenuNeedsUpdate = true; } }
+                        
+                        if (leftMenuMesh) leftMenuMesh.visible = btnA && !btnB;
+                        if (colorMenuMesh) colorMenuMesh.visible = btnB;
+                        
+                        if (btnA && !lastRightBtnA) leftMenuNeedsUpdate = true;
+                        if (btnB && !lastRightBtnB) colorMenuNeedsUpdate = true;
+                        
                         lastRightBtnA = btnA; lastRightBtnB = btnB;
                     }
+                    // Left controller buttons open Right/Global Menus (on the right hand) while held
                     if (source.handedness === 'left') {
                         const btnX = source.gamepad.buttons[4]?.pressed || false; const btnY = source.gamepad.buttons[5]?.pressed || false; 
-                        if (btnX && !lastLeftBtnX) { if(leftMenuMesh) leftMenuMesh.visible = !leftMenuMesh.visible; if (leftMenuMesh && leftMenuMesh.visible) { if(colorMenuMesh) colorMenuMesh.visible = false; leftMenuNeedsUpdate = true; } }
-                        if (btnY && !lastLeftBtnY) { if(colorMenuMesh) colorMenuMesh.visible = !colorMenuMesh.visible; if (colorMenuMesh && colorMenuMesh.visible) { if(leftMenuMesh) leftMenuMesh.visible = false; colorMenuNeedsUpdate = true; } }
+                        
+                        if (rightMenuMesh) rightMenuMesh.visible = btnX && !btnY;
+                        if (globalMenuMesh) globalMenuMesh.visible = btnY;
+                        
+                        if (btnX && !lastLeftBtnX) rightMenuNeedsUpdate = true;
+                        if (btnY && !lastLeftBtnY) globalMenuNeedsUpdate = true;
+                        
                         lastLeftBtnX = btnX; lastLeftBtnY = btnY;
                     }
 
