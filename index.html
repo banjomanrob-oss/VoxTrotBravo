@@ -266,7 +266,7 @@
         const sheetPosL = new THREE.Vector3();
         const sheetPosR = new THREE.Vector3();
         const boxPreviewEffEnd = new THREE.Vector3();
-        const icoDists = new Float32Array(8);
+        const icoDists = new Float32Array(10);
         const tempHSL = { h: 0, s: 0, l: 0 }; 
         const cursorGeos = {}; 
         
@@ -1175,10 +1175,11 @@
                 drawColorPickerUI(colorMenuCtx, 256, 235, 75, 40, 315, 432, 15, targetColor, false);
 
                 const cMode = colorModes[activeMatSlot];
-                drawButton(colorMenuCtx, 30, 340, 105, 40, 'SOLID', cMode === 'solid'); 
-                drawButton(colorMenuCtx, 145, 340, 105, 40, 'GRAD-H', cMode === 'grad_h'); 
-                drawButton(colorMenuCtx, 260, 340, 105, 40, 'GRAD-V', cMode === 'grad_v'); 
-                drawButton(colorMenuCtx, 375, 340, 107, 40, 'SHIFT', cMode === 'shift');
+                drawButton(colorMenuCtx, 30, 340, 85, 40, 'SOLID', cMode === 'solid'); 
+                drawButton(colorMenuCtx, 120, 340, 85, 40, 'GRAD-H', cMode === 'grad_h'); 
+                drawButton(colorMenuCtx, 210, 340, 85, 40, 'GRAD-V', cMode === 'grad_v'); 
+                drawButton(colorMenuCtx, 300, 340, 85, 40, 'SHIFT', cMode === 'shift');
+                drawButton(colorMenuCtx, 390, 340, 92, 40, 'RAND', cMode === 'random');
                 
                 const cA = slotColors[activeMatSlot][0]; const cB = slotColors[activeMatSlot][1]; const showColor2 = (mType !== 2);
                 
@@ -1239,10 +1240,11 @@
                 if (cx >= 186 && cx <= 326) matTypes[activeMatSlot] = 1;
                 if (cx >= 342 && cx <= 482) { matTypes[activeMatSlot] = 2; activeColorSubSlot = 0; colorModes[activeMatSlot] = 'solid'; slotColors[activeMatSlot][0].setHex(0x808080); }
             } else if (cy >= 340 && cy <= 380) {
-                if (cx >= 30 && cx <= 135) { colorModes[activeMatSlot] = 'solid'; activeColorSubSlot = 0; }
-                if (cx >= 145 && cx <= 250) colorModes[activeMatSlot] = 'grad_h'; 
-                if (cx >= 260 && cx <= 365) colorModes[activeMatSlot] = 'grad_v'; 
-                if (cx >= 375 && cx <= 482) colorModes[activeMatSlot] = 'shift';
+                if (cx >= 30 && cx <= 115) { colorModes[activeMatSlot] = 'solid'; activeColorSubSlot = 0; }
+                if (cx >= 120 && cx <= 205) colorModes[activeMatSlot] = 'grad_h'; 
+                if (cx >= 210 && cx <= 295) colorModes[activeMatSlot] = 'grad_v'; 
+                if (cx >= 300 && cx <= 385) colorModes[activeMatSlot] = 'shift';
+                if (cx >= 390 && cx <= 482) colorModes[activeMatSlot] = 'random';
             } else if (cy >= 390 && cy <= 445) {
                 if (matTypes[activeMatSlot] !== 2) { 
                     if (cx >= 30 && cx <= 246) activeColorSubSlot = 0; 
@@ -1435,6 +1437,7 @@
             else if (mode === 'grad_h') { let t = 0; if (maxX > minX) t = (gx - minX) / (maxX - minX); return tempColorForDraw[slotIndex].copy(cA).lerp(cB, t); } 
             else if (mode === 'grad_v') { let t = 0; if (maxY > minY) t = (gy - minY) / (maxY - minY); return tempColorForDraw[slotIndex].copy(cA).lerp(cB, t); } 
             else if (mode === 'shift') { return tempColorForDraw[slotIndex].copy(cA).lerp(cB, shiftProgress); }
+            else if (mode === 'random') { return tempColorForDraw[slotIndex].setHex(Math.floor(Math.random() * 0xffffff)); }
             return cA;
         }
 
@@ -1930,21 +1933,22 @@
             const cX = (minX + maxX) / 2; const cY = (minY + maxY) / 2; const cZ = (minZ + maxZ) / 2;
             const invRx = 1 / rX; const invRy = 1 / rY; const invRz = 1 / rZ;
 
-            const PHI = 1.618033988749895;
-            const invPHI = 0.618033988749895;
-            const invPHI2 = 0.381966011250105;
+            const s1 = 0.381966011250105;
+            const sPHI = 0.618033988749895;
+            const sInvPHI = 0.236067977499790;
 
             const getDistances = (gx, gy, gz) => {
                 const nx = (gx - cX) * invRx; const ny = (gy - cY) * invRy; const nz = (gz - cZ) * invRz;
-                const ax = Math.abs(nx); const ay = Math.abs(ny); const az = Math.abs(nz);
-                icoDists[0] = (ax + ay + az) * invPHI;
-                icoDists[1] = (ax + ay + az - 2 * Math.min(ax, Math.min(ay, az))) * invPHI;
-                icoDists[2] = ax + ay * invPHI2;
-                icoDists[3] = Math.abs(ax - ay * invPHI2);
-                icoDists[4] = ay + az * invPHI2;
-                icoDists[5] = Math.abs(ay - az * invPHI2);
-                icoDists[6] = az + ax * invPHI2;
-                icoDists[7] = Math.abs(az - ax * invPHI2);
+                icoDists[0] = Math.abs(nx + ny + nz) * s1;
+                icoDists[1] = Math.abs(-nx + ny + nz) * s1;
+                icoDists[2] = Math.abs(nx - ny + nz) * s1;
+                icoDists[3] = Math.abs(nx + ny - nz) * s1;
+                icoDists[4] = Math.abs(ny * sPHI + nz * sInvPHI);
+                icoDists[5] = Math.abs(ny * sPHI - nz * sInvPHI);
+                icoDists[6] = Math.abs(nx * sInvPHI + nz * sPHI);
+                icoDists[7] = Math.abs(nx * sInvPHI - nz * sPHI);
+                icoDists[8] = Math.abs(nx * sPHI + ny * sInvPHI);
+                icoDists[9] = Math.abs(nx * sPHI - ny * sInvPHI);
             };
 
             const isInside = (gx, gy, gz) => {
@@ -1953,7 +1957,8 @@
                     return (nx*nx + ny*ny + nz*nz) <= 1.0;
                 }
                 getDistances(gx, gy, gz);
-                return Math.max(icoDists[0], icoDists[2], icoDists[4], icoDists[6]) <= 1.0;
+                let m = 0; for(let i=0; i<10; i++) if(icoDists[i] > m) m = icoDists[i];
+                return m <= 1.0;
             };
 
             const maxR = Math.max(rX, rY, rZ);
@@ -1967,11 +1972,11 @@
                     
                     getDistances(gx, gy, gz);
                     let max1 = -Infinity; let maxIdx = -1;
-                    for (let i = 0; i < 8; i+=2) { if (icoDists[i] > max1) { max1 = icoDists[i]; maxIdx = i; } }
+                    for (let i = 0; i < 10; i++) { if (icoDists[i] > max1) { max1 = icoDists[i]; maxIdx = i; } }
                     
                     let isDivVoxel = false;
                     const threshold = (wireWidth * 0.5) / maxR * icosahedronDivs;
-                    for(let i=0; i<8; i+=2) {
+                    for(let i=0; i<10; i++) {
                         if (i === maxIdx) continue;
                         const normalizedDist = (icoDists[i] / max1) * icosahedronDivs;
                         const k = Math.round(normalizedDist);
@@ -1991,7 +1996,7 @@
                     } else if (icosahedronMode === 'wireframe') {
                         if (isSurface || isDivVoxel) {
                             let wMax1 = -Infinity, wMax2 = -Infinity;
-                            for (let i = 0; i < 8; i++) {
+                            for (let i = 0; i < 10; i++) {
                                 const val = icoDists[i];
                                 if (val > wMax1) { wMax2 = wMax1; wMax1 = val; } 
                                 else if (val > wMax2) { wMax2 = val; }
