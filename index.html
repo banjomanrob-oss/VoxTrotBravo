@@ -48,36 +48,31 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        /* Desktop Export UI */
-        #desktop-controls {
+        /* Web UI Styles */
+        #web-ui-container {
             position: absolute;
             bottom: 20px;
-            left: calc(50% + 70px); /* Position right next to the VRButton */
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.2);
             z-index: 100;
             display: flex;
+            flex-direction: column;
             gap: 10px;
+            pointer-events: auto;
         }
-        #desktop-controls select, #desktop-controls button {
-            background: rgba(0, 0, 0, 0.8);
-            color: #fff;
-            border: 1px solid rgba(255,255,255,0.5);
-            padding: 12px 16px;
-            font-size: 14px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-family: 'Segoe UI', sans-serif;
+        .web-btn {
+            background: #333; color: #fff; border: 1px solid #888;
+            padding: 10px 15px; border-radius: 6px; cursor: pointer;
+            font-family: 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold;
             transition: all 0.2s;
         }
-        #desktop-controls button {
-            background: #4facfe;
-            color: #000;
-            font-weight: bold;
-            border-color: #4facfe;
-        }
-        #desktop-controls button:hover {
-            background: #fff;
-            color: #4facfe;
-        }
+        .web-btn:hover { background: #444; }
+        .web-btn.active { background: #4facfe; border-color: #fff; }
+        .web-btn.export-action { background: #ff0055; border-color: #fff; margin-top: 5px; }
+        .web-btn.export-action:hover { background: #ff3377; }
     </style>
     <script type="importmap">
         {
@@ -103,12 +98,13 @@
         <p style="color: #00ffcc;"><b>Joysticks:</b> Shift Colors (Slot 1) — Right (Color A), Left (Color B)</p>
     </div>
 
-    <div id="desktop-controls">
-        <select id="export-mode-select">
-            <option value="boxes">Export as Boxes</option>
-            <option value="mesh">Export as Mesh</option>
-        </select>
-        <button id="btn-export">Export to .OBJ</button>
+    <div id="web-ui-container">
+        <h3 style="margin: 0 0 5px 0; color: #4facfe; font-size: 16px; text-align: center;">Export Settings</h3>
+        <div style="display: flex; gap: 10px;">
+            <button id="btn-export-boxes" class="web-btn active">BOXES</button>
+            <button id="btn-export-mesh" class="web-btn">MESH</button>
+        </div>
+        <button id="btn-export-obj" class="web-btn export-action">EXPORT TO .OBJ</button>
     </div>
 
     <script type="module">
@@ -1349,8 +1345,6 @@
             drawButton(globalMenuCtx, 100, 210, 312, 50, `Polar Symmetry: ${polarSymmetry}`, polarSymmetry > 1);
             drawButton(globalMenuCtx, 422, 210, 50, 50, '+', false);
 
-            globalMenuCtx.fillStyle = '#aaa'; globalMenuCtx.font = '16px sans-serif'; globalMenuCtx.fillText('Export to OBJ moved to Desktop UI (next to Enter VR)', 256, 310);
-            
             globalMenuTexture.needsUpdate = true;
         }
 
@@ -1447,12 +1441,6 @@
             a.href = url; a.download = isMesh ? 'voxtrotbravo_optimized_mesh.obj' : 'voxtrotbravo_optimized_boxes.obj'; 
             document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         }
-
-        // --- Hook up Desktop Export UI ---
-        document.getElementById('btn-export').addEventListener('click', () => {
-            exportMode = document.getElementById('export-mode-select').value;
-            exportToOBJ();
-        });
 
         // --- Core Tool Algorithms & Color Handlers ---
         function getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, slotIndex) {
@@ -2726,6 +2714,27 @@
 
         const loadOverlay = document.getElementById('loading-overlay');
         if (loadOverlay) { loadOverlay.style.opacity = '0'; setTimeout(() => { loadOverlay.style.display = 'none'; }, 500); }
+
+        // --- Web UI Event Listeners ---
+        const btnExportBoxes = document.getElementById('btn-export-boxes');
+        const btnExportMesh = document.getElementById('btn-export-mesh');
+        const btnExportObj = document.getElementById('btn-export-obj');
+
+        btnExportBoxes.addEventListener('click', () => {
+            exportMode = 'boxes';
+            btnExportBoxes.classList.add('active');
+            btnExportMesh.classList.remove('active');
+        });
+
+        btnExportMesh.addEventListener('click', () => {
+            exportMode = 'mesh';
+            btnExportMesh.classList.add('active');
+            btnExportBoxes.classList.remove('active');
+        });
+
+        btnExportObj.addEventListener('click', () => {
+            exportToOBJ();
+        });
 
         }); 
     </script>
