@@ -289,6 +289,8 @@
         const midPos = new THREE.Vector3();
         const currentHandVec = new THREE.Vector3(); 
         const panDelta = new THREE.Vector3();
+        const tempVecA = new THREE.Vector3(); // OPTIMIZATION: Prevent GC leaks in VR world movement
+        const tempVecB = new THREE.Vector3(); // OPTIMIZATION: Prevent GC leaks in VR world movement
         const queryColor = new THREE.Color();
         const targetQueryColor = new THREE.Color();
         const rightPointerPos = new THREE.Vector3();
@@ -573,7 +575,8 @@
                 });
 
                 const bMesh = pivotGroup.children[3];
-                bMesh.position.copy(selBoxMesh.position).sub(new THREE.Vector3(pCX, pCY, pCZ));
+                // OPTIMIZATION: Removed 'new THREE.Vector3' to prevent 10,000+ GC object allocations per second during symmetric drawing
+                bMesh.position.copy(selBoxMesh.position).sub(tempPos.set(pCX, pCY, pCZ));
                 bMesh.scale.copy(selBoxMesh.scale);
                 bMesh.updateMatrix();
 
@@ -1422,8 +1425,9 @@
                     if (!layer || layer.count === 0) continue;
                     for (let i = 0; i < layer.count; i++) {
                         // OPTIMIZATION: Deep inner-loop time slicing prevents long chunk freezes
+                        // Switched to setTimeout(0) to run uncoupled from the headset refresh rate, unlocking maximum CPU processing speed
                         if (i % 500 === 0 && performance.now() - exportYieldTime > 15) {
-                            await new Promise(r => requestAnimationFrame(r));
+                            await new Promise(r => setTimeout(r, 0));
                             exportYieldTime = performance.now();
                         }
 
@@ -2592,8 +2596,9 @@
                     if (prevGripDist > 0 && prevHandVec.lengthSq() > 0) {
                         const scaleDelta = dist / prevGripDist; panDelta.copy(midPos).sub(prevMid);
                         if (isVerticalLock) {
-                            const pXZ = new THREE.Vector3(prevHandVec.x, 0, prevHandVec.z); const cXZ = new THREE.Vector3(currentHandVec.x, 0, currentHandVec.z);
-                            if (pXZ.lengthSq() > 0.001 && cXZ.lengthSq() > 0.001) tempQuat.setFromUnitVectors(pXZ.normalize(), cXZ.normalize()); else tempQuat.identity();
+                            // OPTIMIZATION: Pre-allocated vectors to prevent continuous GC stutters while gripping and turning the world
+                            tempVecA.set(prevHandVec.x, 0, prevHandVec.z); tempVecB.set(currentHandVec.x, 0, currentHandVec.z);
+                            if (tempVecA.lengthSq() > 0.001 && tempVecB.lengthSq() > 0.001) tempQuat.setFromUnitVectors(tempVecA.normalize(), tempVecB.normalize()); else tempQuat.identity();
                         } else tempQuat.setFromUnitVectors(prevHandVec, currentHandVec);
                         worldGroup.position.add(panDelta); worldGroup.position.sub(midPos); worldGroup.position.multiplyScalar(scaleDelta);
                         worldGroup.scale.multiplyScalar(scaleDelta); worldGroup.position.applyQuaternion(tempQuat); worldGroup.quaternion.premultiply(tempQuat); worldGroup.position.add(midPos);
