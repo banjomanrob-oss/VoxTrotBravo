@@ -253,6 +253,12 @@
         const tempColor = new THREE.Color();
         const tempPos = new THREE.Vector3();
         const tempQuat = new THREE.Quaternion(); 
+        const tempPXZ = new THREE.Vector3();
+        const tempCXZ = new THREE.Vector3();
+        const tempSEuler = new THREE.Euler();
+        const tempSMat = new THREE.Matrix4();
+        const tempScaleMat = new THREE.Matrix4();
+        const tempInvMat = new THREE.Matrix4();
         const midPos = new THREE.Vector3();
         const currentHandVec = new THREE.Vector3(); 
         const panDelta = new THREE.Vector3();
@@ -290,6 +296,25 @@
         renderer.xr.enabled = true;
 
         document.body.appendChild(VRButton.createButton(renderer));
+
+        // --- Quest 3 PCVR Specific Optimizations ---
+        renderer.xr.addEventListener('sessionstart', () => {
+            const session = renderer.xr.getSession();
+            if (session) {
+                // Fixed Foveation dramatically increases resolution & frame stability on Quest headsets
+                if (session.renderState.baseLayer) {
+                    session.renderState.baseLayer.fixedFoveation = 1; // 1 = Max Foveation
+                }
+                // Push for 90hz or 120hz frame rate target
+                if (session.supportedFrameRates) {
+                    if (session.supportedFrameRates.includes(120)) {
+                        session.updateTargetFrameRate(120);
+                    } else if (session.supportedFrameRates.includes(90)) {
+                        session.updateTargetFrameRate(90);
+                    }
+                }
+            }
+        });
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambientLight);
@@ -572,24 +597,16 @@
                 const by = pCY + offY * step;
                 const bz = pCZ + offZ * step;
 
-                const mirrors = [
-                    {sx: 1, sz: 1},
-                    ...(mirrorX ? [{sx: -1, sz: 1}] : []),
-                    ...(mirrorZ ? [{sx: 1, sz: -1}] : []),
-                    ...(mirrorX && mirrorZ ? [{sx: -1, sz: -1}] : [])
-                ];
-
-                for (let m of mirrors) {
-                    for (let p = 0; p < polarSymmetry; p++) {
-                        let fx = bx * m.sx, fz = bz * m.sz;
-                        let rot = 0;
-                        if (p > 0) {
-                            rot = p * 2 * Math.PI / polarSymmetry;
-                            fx = (bx * m.sx) * polarCos[p] + (bz * m.sz) * polarSin[p];
-                            fz = -(bx * m.sx) * polarSin[p] + (bz * m.sz) * polarCos[p];
-                        }
-                        getPreviewGroup(fx, by, fz, m.sx, m.sz, step, rot);
+                for (let i = 0; i < activeSymmetries.length; i++) {
+                    const sym = activeSymmetries[i];
+                    let fx = bx * sym.sx, fz = bz * sym.sz;
+                    let rot = 0;
+                    if (sym.p > 0) {
+                        rot = sym.p * 2 * Math.PI / polarSymmetry;
+                        fx = (bx * sym.sx) * sym.cos + (bz * sym.sz) * sym.sin;
+                        fz = -(bx * sym.sx) * sym.sin + (bz * sym.sz) * sym.cos;
                     }
+                    getPreviewGroup(fx, by, fz, sym.sx, sym.sz, step, rot);
                 }
             }
         }
@@ -626,47 +643,39 @@
             }
 
             let pIdx = 0;
-            const mirrors = [[1, 1]];
-            if (mirrorX) mirrors.push([-1, 1]);
-            if (mirrorZ) mirrors.push([1, -1]);
-            if (mirrorX && mirrorZ) mirrors.push([-1, -1]);
 
-            for (let m = 0; m < mirrors.length; m++) {
-                const sx = mirrors[m][0];
-                const sz = mirrors[m][1];
+            for (let i = 0; i < activeSymmetries.length; i++) {
+                const sym = activeSymmetries[i];
+                if (sym.sx === 1 && sym.sz === 1 && sym.p === 0) continue; // Skip the original
+                if (pIdx >= proxies.length) break;
 
-                for (let p = 0; p < polarSymmetry; p++) {
-                    if (m === 0 && p === 0) continue; 
-                    if (pIdx >= proxies.length) break;
+                const proxy = proxies[pIdx++];
+                proxy.visible = true;
 
-                    const proxy = proxies[pIdx++];
-                    proxy.visible = true;
-
-                    const mx = baseMesh.position.x * sx;
-                    const mz = baseMesh.position.z * sz;
-                    let fx = mx, fz = mz, rotAngle = 0;
-                    
-                    if (p > 0) {
-                        fx = mx * polarCos[p] + mz * polarSin[p];
-                        fz = -mx * polarSin[p] + mz * polarCos[p];
-                        rotAngle = p * 2 * Math.PI / polarSymmetry;
-                    }
-
-                    proxy.position.set(fx, baseMesh.position.y, fz);
-                    
-                    proxy.scale.copy(baseMesh.scale);
-                    proxy.scale.x *= sx;
-                    proxy.scale.z *= sz;
-
-                    proxy.quaternion.copy(baseMesh.quaternion);
-                    if (rotAngle !== 0) {
-                        tempQuat.setFromAxisAngle(tempPos.set(0, 1, 0), rotAngle);
-                        proxy.quaternion.premultiply(tempQuat);
-                    }
-
-                    proxy.updateMatrix();
-                    if (baseMesh.isInstancedMesh) proxy.count = baseMesh.count;
+                const mx = baseMesh.position.x * sym.sx;
+                const mz = baseMesh.position.z * sym.sz;
+                let fx = mx, fz = mz, rotAngle = 0;
+                
+                if (sym.p > 0) {
+                    fx = mx * sym.cos + mz * sym.sin;
+                    fz = -mx * sym.sin + mz * sym.cos;
+                    rotAngle = sym.p * 2 * Math.PI / polarSymmetry;
                 }
+
+                proxy.position.set(fx, baseMesh.position.y, fz);
+                
+                proxy.scale.copy(baseMesh.scale);
+                proxy.scale.x *= sym.sx;
+                proxy.scale.z *= sym.sz;
+
+                proxy.quaternion.copy(baseMesh.quaternion);
+                if (rotAngle !== 0) {
+                    tempQuat.setFromAxisAngle(tempPos.set(0, 1, 0), rotAngle);
+                    proxy.quaternion.premultiply(tempQuat);
+                }
+
+                proxy.updateMatrix();
+                if (baseMesh.isInstancedMesh) proxy.count = baseMesh.count;
             }
 
             for (; pIdx < proxies.length; pIdx++) proxies[pIdx].visible = false;
@@ -1652,23 +1661,23 @@
                 for (let v of selectedVoxels) origMap.set((v.x + 32768) + (v.y + 32768) * 65536 + (v.z + 32768) * 4294967296, v);
 
                 for (let step = 1; step <= numCopies; step++) {
-                    const sEuler = new THREE.Euler( THREE.MathUtils.degToRad(copyStepRotX * step), THREE.MathUtils.degToRad(copyStepRotY * step), THREE.MathUtils.degToRad(copyStepRotZ * step), 'XYZ');
+                    tempSEuler.set(THREE.MathUtils.degToRad(copyStepRotX * step), THREE.MathUtils.degToRad(copyStepRotY * step), THREE.MathUtils.degToRad(copyStepRotZ * step), 'XYZ');
                     const stScale = Math.pow(copyStepScale, step);
-                    const sMat = new THREE.Matrix4().makeRotationFromEuler(sEuler);
-                    const scaleMat = new THREE.Matrix4().makeScale(stScale, stScale, stScale);
-                    sMat.multiply(scaleMat);
-                    const invMat = new THREE.Matrix4().copy(sMat).invert();
+                    tempSMat.makeRotationFromEuler(tempSEuler);
+                    tempScaleMat.makeScale(stScale, stScale, stScale);
+                    tempSMat.multiply(tempScaleMat);
+                    tempInvMat.copy(tempSMat).invert();
                     
                     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
                     for(let v of selectedVoxels) {
                         tempPos.set(v.x - pCX, v.y - pCY, v.z - pCZ);
-                        tempPos.applyMatrix4(sMat);
+                        tempPos.applyMatrix4(tempSMat);
                         const rx = pCX + offX * step + tempPos.x; const ry = pCY + offY * step + tempPos.y; const rz = pCZ + offZ * step + tempPos.z;
                         if (rx < minX) minX = rx; if (rx > maxX) maxX = rx; if (ry < minY) minY = ry; if (ry > maxY) maxY = ry; if (rz < minZ) minZ = rz; if (rz > maxZ) maxZ = rz;
                     }
                     minX = Math.floor(minX) - 1; maxX = Math.ceil(maxX) + 1; minY = Math.floor(minY) - 1; maxY = Math.ceil(maxY) + 1; minZ = Math.floor(minZ) - 1; maxZ = Math.ceil(maxZ) + 1;
                     
-                    const e = invMat.elements; const inv0 = e[0], inv4 = e[4], inv8 = e[8]; const inv1 = e[1], inv5 = e[5], inv9 = e[9]; const inv2 = e[2], inv6 = e[6], inv10 = e[10];
+                    const e = tempInvMat.elements; const inv0 = e[0], inv4 = e[4], inv8 = e[8]; const inv1 = e[1], inv5 = e[5], inv9 = e[9]; const inv2 = e[2], inv6 = e[6], inv10 = e[10];
                     const tgtCX = pCX + offX * step; const tgtCY = pCY + offY * step; const tgtCZ = pCZ + offZ * step;
 
                     for (let x = minX; x <= maxX; x++) {
@@ -2595,8 +2604,8 @@
                     if (prevGripDist > 0 && prevHandVec.lengthSq() > 0) {
                         const scaleDelta = dist / prevGripDist; panDelta.copy(midPos).sub(prevMid);
                         if (isVerticalLock) {
-                            const pXZ = new THREE.Vector3(prevHandVec.x, 0, prevHandVec.z); const cXZ = new THREE.Vector3(currentHandVec.x, 0, currentHandVec.z);
-                            if (pXZ.lengthSq() > 0.001 && cXZ.lengthSq() > 0.001) tempQuat.setFromUnitVectors(pXZ.normalize(), cXZ.normalize()); else tempQuat.identity();
+                            tempPXZ.set(prevHandVec.x, 0, prevHandVec.z); tempCXZ.set(currentHandVec.x, 0, currentHandVec.z);
+                            if (tempPXZ.lengthSq() > 0.001 && tempCXZ.lengthSq() > 0.001) tempQuat.setFromUnitVectors(tempPXZ.normalize(), tempCXZ.normalize()); else tempQuat.identity();
                         } else tempQuat.setFromUnitVectors(prevHandVec, currentHandVec);
                         worldGroup.position.add(panDelta); worldGroup.position.sub(midPos); worldGroup.position.multiplyScalar(scaleDelta);
                         worldGroup.scale.multiplyScalar(scaleDelta); worldGroup.position.applyQuaternion(tempQuat); worldGroup.quaternion.premultiply(tempQuat); worldGroup.position.add(midPos);
