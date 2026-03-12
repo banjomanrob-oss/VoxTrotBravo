@@ -2061,18 +2061,9 @@
                 }
             }
 
-            // Draw sequence
+            // Draw sequence - Pass 1: Edges (highest priority)
             const drawnEdges = new Set();
             for (const face of faces) {
-                const p1 = vertices[face[0]]; const p2 = vertices[face[1]]; const p3 = vertices[face[2]];
-                
-                // Draw filled face if needed
-                if (icosahedronMode === 'solid' || icosahedronMode === 'shell' || (icosahedronMode === 'wireframe' && wireFill)) {
-                    const cMain = getDrawColor(Math.round((p1.x+p2.x+p3.x)/3), Math.round((p1.y+p2.y+p3.y)/3), Math.round((p1.z+p2.z+p3.z)/3), minX, maxX, minY, maxY, 0);
-                    drawFaceVolumetric(p1, p2, p3, cMain, matTypes[0]);
-                }
-
-                // Always draw edges for aesthetic structure
                 const edges = [ [face[0], face[1]], [face[1], face[2]], [face[2], face[0]] ];
                 for (const edge of edges) {
                     const key = edge[0] < edge[1] ? `${edge[0]}_${edge[1]}` : `${edge[1]}_${edge[0]}`;
@@ -2083,6 +2074,15 @@
                         
                         drawLineVolumetric(ep1, ep2, wireWidth, eColor, matTypes[1]);
                     }
+                }
+            }
+
+            // Draw sequence - Pass 2: Faces
+            if (icosahedronMode === 'solid' || icosahedronMode === 'shell' || (icosahedronMode === 'wireframe' && wireFill)) {
+                for (const face of faces) {
+                    const p1 = vertices[face[0]]; const p2 = vertices[face[1]]; const p3 = vertices[face[2]];
+                    const cMain = getDrawColor(Math.round((p1.x+p2.x+p3.x)/3), Math.round((p1.y+p2.y+p3.y)/3), Math.round((p1.z+p2.z+p3.z)/3), minX, maxX, minY, maxY, 0);
+                    drawFaceVolumetric(p1, p2, p3, cMain, matTypes[0]);
                 }
             }
 
