@@ -91,6 +91,10 @@
         let brushShape = 'cube'; 
         let brushVolume = 'shell';
         let brushSize = 1; 
+
+        // Soft Sculpt config
+        let sculptSize = 3;
+        let sculptDensity = 5;
         
         let boxMode = 'shell'; 
         let boxGridMode = 'internal';
@@ -712,9 +716,11 @@
             let effSize = brushSize;
             if (activeTool === 'box' || activeTool === 'quadsphere' || activeTool === 'cylinder' || activeTool === 'select' || activeTool === 'plane' || activeTool === 'triangle' || activeTool === 'icosahedron' || (activeTool === 'paint' && paintMode === 'bucket')) {
                 effSize = 1;
+            } else if (activeTool === 'sculpt') {
+                effSize = sculptSize;
             }
             const width = ((effSize - 1) * 2 + 1) * VOXEL_SIZE;
-            const isBoxShape = (brushShape === 'cube' || activeTool === 'box' || activeTool === 'select' || activeTool === 'cylinder' || activeTool === 'quadsphere' || activeTool === 'plane' || activeTool === 'triangle' || activeTool === 'icosahedron' || (activeTool === 'paint' && paintMode === 'bucket'));
+            const isBoxShape = (brushShape === 'cube' && activeTool !== 'sculpt') || activeTool === 'box' || activeTool === 'select' || activeTool === 'cylinder' || activeTool === 'quadsphere' || activeTool === 'plane' || activeTool === 'triangle' || activeTool === 'icosahedron' || (activeTool === 'paint' && paintMode === 'bucket');
             
             const shapeKey = (isBoxShape ? 'box_' : 'sph_') + width;
             if (!cursorGeos[shapeKey]) cursorGeos[shapeKey] = isBoxShape ? new THREE.BoxGeometry(width, width, width) : new THREE.SphereGeometry(width / 2, 16, 16);
@@ -904,6 +910,9 @@
                     drawButton(leftMenuCtx, 50, 210, 200, 50, 'SOLID', brushVolume === 'solid'); drawButton(leftMenuCtx, 262, 210, 200, 50, 'SHELL', brushVolume === 'shell');
                     drawButton(leftMenuCtx, 50, 280, 80, 50, '[-]', false); drawButton(leftMenuCtx, 140, 280, 232, 50, `Radius: ${brushSize}`, false); drawButton(leftMenuCtx, 382, 280, 80, 50, '[+]', false);
                 }
+            } else if (activeTool === 'sculpt') {
+                drawButton(leftMenuCtx, 50, 70, 80, 50, '[-]', false); drawButton(leftMenuCtx, 140, 70, 232, 50, `Radius: ${sculptSize}`, false); drawButton(leftMenuCtx, 382, 70, 80, 50, '[+]', false);
+                drawButton(leftMenuCtx, 50, 140, 80, 50, '[-]', false); drawButton(leftMenuCtx, 140, 140, 232, 50, `Density: ${sculptDensity}`, false); drawButton(leftMenuCtx, 382, 140, 80, 50, '[+]', false);
             } else if (activeTool === 'box') {
                 drawButton(leftMenuCtx, 20, 70, 140, 50, 'SOLID', boxMode === 'solid'); drawButton(leftMenuCtx, 170, 70, 150, 50, 'SHELL', boxMode === 'shell'); drawButton(leftMenuCtx, 330, 70, 160, 50, 'WIRE', boxMode === 'wireframe');
                 if (boxMode === 'wireframe') {
@@ -986,7 +995,7 @@
             } else if (activeTool === 'select') {
                 if (!hasSelection) {
                     drawButton(leftMenuCtx, 50, 70, 200, 40, 'BOX MODE', selectMode === 'box'); drawButton(leftMenuCtx, 262, 70, 200, 40, 'CONNECTED', selectMode === 'connected');
-                    drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'color'); drawButton(leftMenuCtx, 330, 120, 132, 40, 'MATERIAL', selectFilter === 'material');
+                    drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'material'); drawButton(leftMenuCtx, 330, 120, 132, 40, 'MATERIAL', selectFilter === 'material');
                     leftMenuCtx.fillStyle = '#aaa'; leftMenuCtx.font = '16px sans-serif'; leftMenuCtx.fillText('Use Right Trigger on target to start selecting.', 256, 190);
                 } else {
                     drawButton(leftMenuCtx, 50, 60, 130, 30, 'MOVE', transformMode === 'move' && !isSettingPivot);
@@ -1108,6 +1117,15 @@
                     if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1);
                     if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
                     if (cx >= 330 && cx <= 490) wireFill = !wireFill;
+                }
+            } else if (activeTool === 'sculpt') {
+                if (cy >= 70 && cy <= 120) {
+                    if (cx >= 50 && cx <= 130) sculptSize = Math.max(1, sculptSize - 1);
+                    if (cx >= 382 && cx <= 462) sculptSize = Math.min(10, sculptSize + 1);
+                }
+                if (cy >= 140 && cy <= 190) {
+                    if (cx >= 50 && cx <= 130) sculptDensity = Math.max(1, sculptDensity - 1);
+                    if (cx >= 382 && cx <= 462) sculptDensity = Math.min(10, sculptDensity + 1);
                 }
             } else if (cy >= 70 && cy <= 120) {
                 if (activeTool === 'brush') { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; } 
@@ -1317,6 +1335,7 @@
                 { id: 'stroke', label: 'Stroke (Continuous)' },
                 { id: 'sheet', label: 'Sheet (Two-Handed)' },
                 { id: 'paint', label: 'Paint (Recolor)' },
+                { id: 'sculpt', label: 'Soft Sculpt' },
                 { id: 'plane', label: 'Plane (2D Grid/Shape)' },
                 { id: 'box', label: 'Box / Volumes' },
                 { id: 'quadsphere', label: 'Quad Sphere (Shell)' },
@@ -1330,9 +1349,9 @@
         }
 
         function handleRightMenuClick(cx, cy) {
-            if (cx >= 50 && cx <= 462 && cy >= 36 && cy <= 36 + 11 * 39) {
+            if (cx >= 50 && cx <= 462 && cy >= 36 && cy <= 36 + 12 * 39) {
                 const idx = Math.floor((cy - 36) / 39);
-                if (idx >= 0 && idx < 11) {
+                if (idx >= 0 && idx < 12) {
                     if (hasSelection) applySelection();
                     isPreviewingBox = false; isPreviewingSphere = false; isPreviewingPlane = false; isPreviewingTriangle = false; isPreviewingCylinder = false; isPreviewingIcosahedron = false;
                     boxPreviewMesh.visible = false; spherePreviewMesh.visible = false; bucketPreviewMesh.visible = false;
@@ -1340,7 +1359,7 @@
                     lastHoveredVoxel.set(Infinity, Infinity, Infinity); hoveredFillCoords.length = 0; lastPaintedPos.set(Infinity, Infinity, Infinity); lastErasedPos.set(Infinity, Infinity, Infinity);
                     lastSheetLeftPos.set(Infinity, Infinity, Infinity); lastSheetRightPos.set(Infinity, Infinity, Infinity);
 
-                    const toolsList = ['brush', 'stroke', 'sheet', 'paint', 'plane', 'box', 'quadsphere', 'cylinder', 'triangle', 'icosahedron', 'select'];
+                    const toolsList = ['brush', 'stroke', 'sheet', 'paint', 'sculpt', 'plane', 'box', 'quadsphere', 'cylinder', 'triangle', 'icosahedron', 'select'];
                     activeTool = toolsList[idx];
                     updateCursors(); rightMenuNeedsUpdate = true; leftMenuNeedsUpdate = true; 
                     lastLinePreviewGridHash = "";
@@ -1726,6 +1745,45 @@
         function deleteSelection() { baseSelection.length = 0; selectedVoxels.length = 0; hasSelection = false; selectionGroup.visible = false; selectionGroup.position.set(0,0,0); selectionOffset.set(0,0,0); pivotIndicator.visible = false; isSettingPivot = false; leftMenuNeedsUpdate = true; }
 
         // --- Brushes & Shapes ---
+        function executeSculpt(targetPos, isPainting) {
+            const r = sculptSize; 
+            const rSq = (r + 0.5) * (r + 0.5); 
+            const centerGx = Math.round(targetPos.x / VOXEL_SIZE); 
+            const centerGy = Math.round(targetPos.y / VOXEL_SIZE); 
+            const centerGz = Math.round(targetPos.z / VOXEL_SIZE);
+            const minX = centerGx - r; const maxX = centerGx + r; 
+            const minY = centerGy - r; const maxY = centerGy + r;
+
+            const densityFactor = (sculptDensity / 10.0) * 0.15; 
+
+            for (let dx = -r; dx <= r; dx++) {
+                for (let dy = -r; dy <= r; dy++) {
+                    const dxySq = dx*dx + dy*dy;
+                    if (dxySq > rSq) continue;
+                    
+                    const maxDz = Math.floor(Math.sqrt(rSq - dxySq));
+                    for (let dz = -maxDz; dz <= maxDz; dz++) {
+                        const distSq = dxySq + dz*dz;
+                        const dist = Math.sqrt(distSq);
+                        
+                        const falloff = Math.max(0, 1.0 - (dist / (r + 0.1)));
+                        const prob = falloff * falloff * densityFactor;
+
+                        if (Math.random() < prob) {
+                            const gx = centerGx + dx; const gy = centerGy + dy; const gz = centerGz + dz;
+                            if (isPainting) {
+                                const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
+                                setVoxel(gx, gy, gz, true, color, matTypes[0]);
+                            } else {
+                                setVoxel(gx, gy, gz, false, null);
+                            }
+                        }
+                    }
+                }
+            }
+            leftMenuNeedsUpdate = true;
+        }
+
         function placeBrushVoxels(targetPos, isPainting) {
             const r = brushSize - 1; const rSq = (r + 0.1) * (r + 0.1); 
             const centerGx = Math.round(targetPos.x / VOXEL_SIZE); const centerGy = Math.round(targetPos.y / VOXEL_SIZE); const centerGz = Math.round(targetPos.z / VOXEL_SIZE);
@@ -2789,6 +2847,7 @@
                     } 
                     else if (activeTool === 'select' && selectMode === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, rightTargetLocal, true);
                     else if (activeTool === 'brush') { if (!rightTargetLocal.equals(lastPaintedPos)) { placeBrushVoxels(rightTargetLocal, true); lastPaintedPos.copy(rightTargetLocal); } }
+                    else if (activeTool === 'sculpt') { executeSculpt(rightTargetLocal, true); }
                     else if (activeTool === 'stroke' && strokeMode === 'continuous') {
                         if (lastPaintedPos.x === Infinity) { placeBrushVoxels(rightTargetLocal, true); lastPaintedPos.copy(rightTargetLocal); }
                         else if (!rightTargetLocal.equals(lastPaintedPos)) { drawLineVoxels(lastPaintedPos, rightTargetLocal, true); lastPaintedPos.copy(rightTargetLocal); }
@@ -2820,6 +2879,7 @@
 
                 if (xrLeft && isErasing && !isColorPicking) {
                     if (activeTool === 'brush') { if (!leftTargetLocal.equals(lastErasedPos)) { placeBrushVoxels(leftTargetLocal, false); lastErasedPos.copy(leftTargetLocal); } }
+                    else if (activeTool === 'sculpt') { executeSculpt(leftTargetLocal, false); }
                     else if (activeTool === 'stroke' && strokeMode === 'continuous') {
                         if (lastErasedPos.x === Infinity) { placeBrushVoxels(leftTargetLocal, false); lastErasedPos.copy(leftTargetLocal); }
                         else if (!leftTargetLocal.equals(lastErasedPos)) { drawLineVoxels(lastErasedPos, leftTargetLocal, false); lastErasedPos.copy(leftTargetLocal); }
