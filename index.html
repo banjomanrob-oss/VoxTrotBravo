@@ -122,6 +122,7 @@
         let icosahedronMode = 'wireframe';
         let icosahedronDivs = 1;
         let icosahedronLock = true;
+        let platonicType = 'icosahedron'; // 'icosahedron' or 'dodecahedron'
         
         let wireWidth = 1; 
         let wireFill = true; 
@@ -436,7 +437,7 @@
                     }
 
                     this.voxelToIndex[localIdx] = 65535;
-                    this.count--; this.mesh.count = this.count; totalActiveVoxels--;
+                    this.count--; this.mesh.count = this.count; totalActiveVoxels++;
                     this.needsUpdate = true;
                 }
             }
@@ -970,15 +971,20 @@
                 drawButton(leftMenuCtx, 270, 360, 50, 50, '-', false); drawButton(leftMenuCtx, 330, 360, 100, 50, `DThk: ${triangleDivThick}`, false); drawButton(leftMenuCtx, 440, 360, 50, 50, '+', false);
                 drawButton(leftMenuCtx, 20, 420, 220, 50, `Divs: ${triangleGridMode.toUpperCase()}`, false);
             } else if (activeTool === 'icosahedron') {
-                drawButton(leftMenuCtx, 20, 60, 140, 50, 'SOLID', icosahedronMode === 'solid');
-                drawButton(leftMenuCtx, 170, 60, 150, 50, 'SHELL', icosahedronMode === 'shell');
-                drawButton(leftMenuCtx, 330, 60, 160, 50, 'WIRE', icosahedronMode === 'wireframe');
+                drawButton(leftMenuCtx, 20, 60, 225, 50, 'ICOSAHEDRON', platonicType === 'icosahedron');
+                drawButton(leftMenuCtx, 265, 60, 225, 50, 'DODECAHEDRON', platonicType === 'dodecahedron');
 
-                drawButton(leftMenuCtx, 20, 120, 220, 50, `LOCK RATIO: ${icosahedronLock ? 'ON' : 'OFF'}`, icosahedronLock);
+                drawButton(leftMenuCtx, 20, 120, 140, 50, 'SOLID', icosahedronMode === 'solid');
+                drawButton(leftMenuCtx, 170, 120, 150, 50, 'SHELL', icosahedronMode === 'shell');
+                drawButton(leftMenuCtx, 330, 120, 160, 50, 'WIRE', icosahedronMode === 'wireframe');
 
-                drawButton(leftMenuCtx, 20, 180, 50, 50, '-', false);
-                drawButton(leftMenuCtx, 80, 180, 160, 50, `Divs: ${icosahedronDivs}`, false);
-                drawButton(leftMenuCtx, 250, 180, 50, 50, '+', false);
+                drawButton(leftMenuCtx, 20, 180, 220, 50, `LOCK RATIO: ${icosahedronLock ? 'ON' : 'OFF'}`, icosahedronLock);
+
+                if (platonicType === 'icosahedron') {
+                    drawButton(leftMenuCtx, 250, 180, 50, 50, '-', false);
+                    drawButton(leftMenuCtx, 310, 180, 130, 50, `Divs: ${icosahedronDivs}`, false);
+                    drawButton(leftMenuCtx, 450, 180, 42, 50, '+', false);
+                }
 
                 if (icosahedronMode === 'wireframe') {
                     drawButton(leftMenuCtx, 20, 240, 50, 50, '-', false);
@@ -1119,14 +1125,18 @@
                 }
             } else if (activeTool === 'icosahedron') {
                 if (cy >= 60 && cy <= 110) {
+                    if (cx >= 20 && cx <= 245) platonicType = 'icosahedron';
+                    if (cx >= 265 && cx <= 490) platonicType = 'dodecahedron';
+                } else if (cy >= 120 && cy <= 170) {
                     if (cx >= 20 && cx <= 160) icosahedronMode = 'solid';
                     if (cx >= 170 && cx <= 320) icosahedronMode = 'shell';
                     if (cx >= 330 && cx <= 490) icosahedronMode = 'wireframe';
-                } else if (cy >= 120 && cy <= 170) {
-                    if (cx >= 20 && cx <= 240) icosahedronLock = !icosahedronLock;
                 } else if (cy >= 180 && cy <= 230) {
-                    if (cx >= 20 && cx <= 70) icosahedronDivs = Math.max(1, icosahedronDivs - 1);
-                    if (cx >= 250 && cx <= 300) icosahedronDivs = Math.min(5, icosahedronDivs + 1);
+                    if (cx >= 20 && cx <= 240) icosahedronLock = !icosahedronLock;
+                    if (platonicType === 'icosahedron') {
+                        if (cx >= 250 && cx <= 300) icosahedronDivs = Math.max(1, icosahedronDivs - 1);
+                        if (cx >= 450 && cx <= 492) icosahedronDivs = Math.min(5, icosahedronDivs + 1);
+                    }
                 } else if (cy >= 240 && cy <= 290 && icosahedronMode === 'wireframe') {
                     if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1);
                     if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
@@ -1347,7 +1357,7 @@
                 { id: 'quadsphere', label: 'Quad Sphere (Shell)' },
                 { id: 'cylinder', label: 'Cylinder / Prism' },
                 { id: 'triangle', label: 'Cone / Pyramid' },
-                { id: 'icosahedron', label: 'Icosahedron (Platonic)' },
+                { id: 'icosahedron', label: 'Poly / Platonic' },
                 { id: 'select', label: 'Select & Transform' }
             ];
             for (let i = 0; i < tools.length; i++) drawButton(rightMenuCtx, 50, 36 + i * 39, 412, 33, tools[i].label, activeTool === tools[i].id);
@@ -1439,7 +1449,7 @@
                 nx: [new THREE.Vector3(-hs, -hs, -hs), new THREE.Vector3(-hs, -hs,  hs), new THREE.Vector3(-hs,  hs,  hs), new THREE.Vector3(-hs,  hs, -hs)],
                 py: [new THREE.Vector3(-hs,  hs,  hs), new THREE.Vector3( hs,  hs,  hs), new THREE.Vector3( hs,  hs, -hs), new THREE.Vector3(-hs,  hs, -hs)],
                 ny: [new THREE.Vector3(-hs, -hs, -hs), new THREE.Vector3( hs, -hs, -hs), new THREE.Vector3( hs, -hs,  hs), new THREE.Vector3(-hs, -hs,  hs)],
-                pz: [new THREE.Vector3(-hs, -hs,  hs), new THREE.Vector3( hs,  hs,  hs), new THREE.Vector3( hs,  hs,  hs), new THREE.Vector3(-hs,  hs,  hs)],
+                pz: [new THREE.Vector3(-hs, -hs,  hs), new THREE.Vector3( hs, -hs,  hs), new THREE.Vector3( hs,  hs,  hs), new THREE.Vector3(-hs,  hs,  hs)],
                 nz: [new THREE.Vector3( hs, -hs, -hs), new THREE.Vector3(-hs, -hs, -hs), new THREE.Vector3(-hs,  hs, -hs), new THREE.Vector3( hs,  hs, -hs)]
             };
             const dirs = [{ d: [1, 0, 0], v: faceVerts.px }, { d: [-1, 0, 0], v: faceVerts.nx }, { d: [0, 1, 0], v: faceVerts.py }, { d: [0, -1, 0], v: faceVerts.ny }, { d: [0, 0, 1], v: faceVerts.pz }, { d: [0, 0, -1], v: faceVerts.nz }];
@@ -1813,7 +1823,7 @@
             const minX = centerGx - r; const maxX = centerGx + r; const minY = centerGy - r; const maxY = centerGy + r;
             
             const isInside = (dx, dy, dz) => {
-                if (brushShape === 'sphere') return (dx*dx + dy*dy + dz*dz <= rSq);
+                if (brushShape === 'sphere') return (dx*dx + dy*dy + dz*rz <= rSq);
                 return (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
             };
 
@@ -2054,46 +2064,69 @@
             const cX = (minX + maxX) / 2; const cY = (minY + maxY) / 2; const cZ = (minZ + maxZ) / 2;
             const rX = (maxX - minX) / 2; const rY = (maxY - minY) / 2; const rZ = (maxZ - minZ) / 2;
 
-            // Generate Base Icosphere (Unit sphere)
-            const t = (1.0 + Math.sqrt(5.0)) / 2.0;
-            let vertices = [
-                new THREE.Vector3(-1,  t,  0).normalize(), new THREE.Vector3( 1,  t,  0).normalize(), new THREE.Vector3(-1, -t,  0).normalize(), new THREE.Vector3( 1, -t,  0).normalize(),
-                new THREE.Vector3( 0, -1,  t).normalize(), new THREE.Vector3( 0,  1,  t).normalize(), new THREE.Vector3( 0, -1, -t).normalize(), new THREE.Vector3( 0,  1, -t).normalize(),
-                new THREE.Vector3( t,  0, -1).normalize(), new THREE.Vector3( t,  0,  1).normalize(), new THREE.Vector3(-t,  0, -1).normalize(), new THREE.Vector3(-t,  0,  1).normalize()
-            ];
-            let faces = [
-                [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
-                [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
-                [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
-                [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]
-            ];
+            let vertices = [];
+            let faces = [];
 
-            let cache = new Map();
-            function getMidpoint(v1, v2) {
-                const key = v1 < v2 ? (v1 << 16) | v2 : (v2 << 16) | v1;
-                if (cache.has(key)) return cache.get(key);
-                const p1 = vertices[v1]; const p2 = vertices[v2];
-                const mid = new THREE.Vector3().addVectors(p1, p2).normalize();
-                vertices.push(mid);
-                const idx = vertices.length - 1;
-                cache.set(key, idx);
-                return idx;
-            }
+            if (platonicType === 'icosahedron') {
+                const t = (1.0 + Math.sqrt(5.0)) / 2.0;
+                vertices = [
+                    new THREE.Vector3(-1,  t,  0).normalize(), new THREE.Vector3( 1,  t,  0).normalize(), new THREE.Vector3(-1, -t,  0).normalize(), new THREE.Vector3( 1, -t,  0).normalize(),
+                    new THREE.Vector3( 0, -1,  t).normalize(), new THREE.Vector3( 0,  1,  t).normalize(), new THREE.Vector3( 0, -1, -t).normalize(), new THREE.Vector3( 0,  1, -t).normalize(),
+                    new THREE.Vector3( t,  0, -1).normalize(), new THREE.Vector3( t,  0,  1).normalize(), new THREE.Vector3(-t,  0, -1).normalize(), new THREE.Vector3(-t,  0,  1).normalize()
+                ];
+                faces = [
+                    [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+                    [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+                    [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+                    [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]
+                ];
 
-            // Subdivide (Geodesic 1-to-4 triangle split)
-            const divs = Math.max(1, icosahedronDivs);
-            for (let i = 1; i < divs; i++) {
-                const nextFaces = [];
-                for (const face of faces) {
-                    const a = getMidpoint(face[0], face[1]);
-                    const b = getMidpoint(face[1], face[2]);
-                    const c = getMidpoint(face[2], face[0]);
-                    nextFaces.push([face[0], a, c]);
-                    nextFaces.push([face[1], b, a]);
-                    nextFaces.push([face[2], c, b]);
-                    nextFaces.push([a, b, c]);
+                let cache = new Map();
+                function getMidpoint(v1, v2) {
+                    const key = v1 < v2 ? (v1 << 16) | v2 : (v2 << 16) | v1;
+                    if (cache.has(key)) return cache.get(key);
+                    const p1 = vertices[v1]; const p2 = vertices[v2];
+                    const mid = new THREE.Vector3().addVectors(p1, p2).normalize();
+                    vertices.push(mid);
+                    const idx = vertices.length - 1;
+                    cache.set(key, idx);
+                    return idx;
                 }
-                faces = nextFaces;
+
+                const divs = Math.max(1, icosahedronDivs);
+                for (let i = 1; i < divs; i++) {
+                    const nextFaces = [];
+                    for (const face of faces) {
+                        const a = getMidpoint(face[0], face[1]);
+                        const b = getMidpoint(face[1], face[2]);
+                        const c = getMidpoint(face[2], face[0]);
+                        nextFaces.push([face[0], a, c]);
+                        nextFaces.push([face[1], b, a]);
+                        nextFaces.push([face[2], c, b]);
+                        nextFaces.push([a, b, c]);
+                    }
+                    faces = nextFaces;
+                }
+            } else {
+                // Dodecahedron
+                const phi = (1 + Math.sqrt(5)) / 2;
+                const invPhi = 1 / phi;
+                vertices = [
+                    new THREE.Vector3( 1,  1,  1).normalize(), new THREE.Vector3( 1,  1, -1).normalize(), new THREE.Vector3( 1, -1,  1).normalize(), new THREE.Vector3( 1, -1, -1).normalize(),
+                    new THREE.Vector3(-1,  1,  1).normalize(), new THREE.Vector3(-1,  1, -1).normalize(), new THREE.Vector3(-1, -1,  1).normalize(), new THREE.Vector3(-1, -1, -1).normalize(),
+                    new THREE.Vector3( 0,  invPhi,  phi).normalize(), new THREE.Vector3( 0,  invPhi, -phi).normalize(), new THREE.Vector3( 0, -invPhi,  phi).normalize(), new THREE.Vector3( 0, -invPhi, -phi).normalize(),
+                    new THREE.Vector3( invPhi,  phi,  0).normalize(), new THREE.Vector3( invPhi, -phi,  0).normalize(), new THREE.Vector3(-invPhi,  phi,  0).normalize(), new THREE.Vector3(-invPhi, -phi,  0).normalize(),
+                    new THREE.Vector3( phi,  0,  invPhi).normalize(), new THREE.Vector3( phi,  0, -invPhi).normalize(), new THREE.Vector3(-phi,  0,  invPhi).normalize(), new THREE.Vector3(-phi,  0, -invPhi).normalize()
+                ];
+                // Pentagonal faces decomposed to triangles
+                const pentagons = [
+                    [0, 12, 14, 4, 8], [0, 8, 10, 2, 16], [0, 16, 17, 1, 12], [1, 9, 11, 3, 17], [1, 12, 14, 5, 9],
+                    [2, 13, 15, 6, 10], [2, 16, 17, 3, 13], [3, 11, 7, 15, 13], [4, 14, 5, 19, 18], [4, 18, 6, 10, 8],
+                    [5, 19, 7, 11, 9], [6, 18, 19, 7, 15]
+                ];
+                for(let p of pentagons) {
+                    faces.push([p[0], p[1], p[2]], [p[0], p[2], p[3]], [p[0], p[3], p[4]]);
+                }
             }
 
             // Scale to World Voxel Grid
@@ -2408,7 +2441,7 @@
                 for (let i = 1; i < triangleDivs; i++) {
                     const center = Math.round(isFlipped ? ax.maxW - i * step : ax.minW + i * step);
                     const half = (triangleDivThick - 1) / 2;
-                    for(let v = Math.ceil(center - h); v <= Math.floor(center + h + 0.001); v++) { const idx = v - ax.minW; if (idx >= 0 && idx < divW.length) divW[idx] = 1; }
+                    for(let v = Math.ceil(center - half); v <= Math.floor(center + half + 0.001); v++) { const idx = v - ax.minW; if (idx >= 0 && idx < divW.length) divW[idx] = 1; }
                 }
             }
 
