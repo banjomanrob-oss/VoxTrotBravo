@@ -956,7 +956,7 @@
                 
                 if (triangleType === 'pyramid') {
                     drawButton(leftMenuCtx, 20, 240, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 240, 160, 50, `Legs: ${pyramidLegs}`, false); drawButton(leftMenuCtx, 250, 240, 50, 50, '+', false);
-                    if (triangleMode !== 'solid') drawButton(leftMenuCtx, 310, 240, 150, 50, `CAP: ${triangleCap?'ON':'OFF'}`, triangleCap);
+                    if (triangleMode !== 'solid' && cx >= 310 && cx <= 460) triangleCap = !triangleCap;
                 } else if (triangleMode !== 'solid') {
                     drawButton(leftMenuCtx, 170, 240, 150, 50, `CAP: ${triangleCap?'ON':'OFF'}`, triangleCap);
                 }
@@ -998,10 +998,12 @@
                     drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'material'); drawButton(leftMenuCtx, 330, 120, 132, 40, 'MATERIAL', selectFilter === 'material');
                     leftMenuCtx.fillStyle = '#aaa'; leftMenuCtx.font = '16px sans-serif'; leftMenuCtx.fillText('Use Right Trigger on target to start selecting.', 256, 190);
                 } else {
-                    drawButton(leftMenuCtx, 50, 60, 95, 30, 'MOVE', transformMode === 'move' && !isSettingPivot);
-                    drawButton(leftMenuCtx, 155, 60, 95, 30, 'COPY', transformMode === 'copy' && !isSettingPivot);
-                    drawButton(leftMenuCtx, 260, 60, 95, 30, 'DRAW', transformMode === 'draw' && !isSettingPivot);
-                    drawButton(leftMenuCtx, 365, 60, 97, 30, isSettingPivot ? 'PICK PIVOT' : 'SET PIVOT', isSettingPivot);
+                    const btnW = 80;
+                    drawButton(leftMenuCtx, 50, 60, btnW, 30, 'MOVE', transformMode === 'move' && !isSettingPivot);
+                    drawButton(leftMenuCtx, 135, 60, btnW, 30, 'COPY', transformMode === 'copy' && !isSettingPivot);
+                    drawButton(leftMenuCtx, 220, 60, btnW, 30, 'DRAW', transformMode === 'draw' && !isSettingPivot);
+                    drawButton(leftMenuCtx, 305, 60, btnW, 30, 'PAINT', transformMode === 'paint' && !isSettingPivot);
+                    drawButton(leftMenuCtx, 390, 60, 85, 30, isSettingPivot ? 'PICK' : 'PIVOT', isSettingPivot);
 
                     drawSlider(leftMenuCtx, 50, 100, 412, 30, 'ROT X', selectionRotX, -180, 180); 
                     drawSlider(leftMenuCtx, 50, 140, 412, 30, 'ROT Y', selectionRotY, -180, 180); 
@@ -1015,8 +1017,6 @@
                         drawSlider(leftMenuCtx, 50, 370, 412, 30, 'STEP ROT Z', copyStepRotZ, -180, 180);
                         drawSlider(leftMenuCtx, 50, 405, 412, 30, 'STEP SCALE', copyStepScale, 0.1, 5.0, 'STEP SCL: %vx');
                         drawButton(leftMenuCtx, 50, 445, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 445, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 445, 132, 40, 'DELETE', false);
-                    } else if (transformMode === 'draw') {
-                        drawButton(leftMenuCtx, 50, 270, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 270, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 270, 132, 40, 'DELETE', false);
                     } else {
                         drawButton(leftMenuCtx, 50, 270, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 270, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 270, 132, 40, 'DELETE', false);
                     }
@@ -1033,20 +1033,21 @@
             if (activeTool === 'select' && hasSelection) {
                 if (cy >= 60 && cy <= 90) {
                     let newMode = transformMode; 
-                    if (cx >= 50 && cx <= 145) { newMode = 'move'; isSettingPivot = false; }
-                    else if (cx >= 155 && cx <= 250) { newMode = 'copy'; isSettingPivot = false; }
-                    else if (cx >= 260 && cx <= 355) { newMode = 'draw'; isSettingPivot = false; }
-                    else if (cx >= 365 && cx <= 462) { isSettingPivot = !isSettingPivot; }
+                    if (cx >= 50 && cx <= 130) { newMode = 'move'; isSettingPivot = false; }
+                    else if (cx >= 135 && cx <= 215) { newMode = 'copy'; isSettingPivot = false; }
+                    else if (cx >= 220 && cx <= 300) { newMode = 'draw'; isSettingPivot = false; }
+                    else if (cx >= 305 && cx <= 385) { newMode = 'paint'; isSettingPivot = false; }
+                    else if (cx >= 390 && cx <= 475) { isSettingPivot = !isSettingPivot; }
                     
                     if (newMode !== transformMode) {
                         transformMode = newMode;
-                        if (transformMode === 'copy' || transformMode === 'draw') { 
+                        if (transformMode === 'copy' || transformMode === 'draw' || transformMode === 'paint') { 
                             for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat); 
                         } 
                         else { 
                             for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, false, null); 
                         }
-                        if (transformMode !== 'draw') {
+                        if (transformMode !== 'draw' && transformMode !== 'paint') {
                             selectionGroup.position.set(0,0,0);
                             selectionGroup.updateMatrix();
                             selectionOffset.set(0,0,0);
@@ -1564,8 +1565,8 @@
             }
         }
 
-        function recolorVoxelSet(gx, gy, gz, color) {
-            const drawMatType = matTypes[0]; 
+        function recolorVoxelSet(gx, gy, gz, color, matOverride = -1) {
+            const drawMatType = matOverride !== -1 ? matOverride : matTypes[0]; 
             for (let i = 0; i < activeSymmetries.length; i++) {
                 const sym = activeSymmetries[i];
                 const mx = gx * sym.sx;
@@ -1716,6 +1717,13 @@
             leftMenuNeedsUpdate = true;
         }
 
+        function paintSelection(offX, offY, offZ) {
+            for(let v of selectedVoxels) {
+                recolorVoxelSet(v.x + offX, v.y + offY, v.z + offZ, v.color, v.mat);
+            }
+            leftMenuNeedsUpdate = true;
+        }
+
         function applySelection() {
             const offX = Math.round(selectionGroup.position.x / VOXEL_SIZE); const offY = Math.round(selectionGroup.position.y / VOXEL_SIZE); const offZ = Math.round(selectionGroup.position.z / VOXEL_SIZE);
             if (transformMode === 'copy') { 
@@ -1757,9 +1765,8 @@
                     }
                 }
             } 
-            else if (transformMode === 'draw') {
-                 // In draw mode, the mesh acts as a brush cursor and stamps its copies manually using trigger.
-                 // Applying just clears the selection tool, no automatic merging is needed.
+            else if (transformMode === 'draw' || transformMode === 'paint') {
+                 // Manual stamping by trigger
             }
             else { for(let v of selectedVoxels) setVoxel(v.x + offX, v.y + offY, v.z + offZ, true, v.color, v.mat); }
             baseSelection.length = 0; selectedVoxels.length = 0; hasSelection = false; selectionGroup.visible = false; selectionGroup.position.set(0,0,0); selectionOffset.set(0,0,0); pivotIndicator.visible = false; isSettingPivot = false; leftMenuNeedsUpdate = true;
@@ -2409,7 +2416,7 @@
                 for (let i = 1; i < triangleDivs; i++) {
                     const center = Math.round(isFlipped ? ax.maxW - i * step : ax.minW + i * step);
                     const half = (triangleDivThick - 1) / 2;
-                    for(let v = Math.ceil(center - half); v <= Math.floor(center + half + 0.001); v++) { const idx = v - ax.minW; if (idx >= 0 && idx < divW.length) divW[idx] = 1; }
+                    for(let v = Math.ceil(center - h); v <= Math.floor(center + h + 0.001); v++) { const idx = v - ax.minW; if (idx >= 0 && idx < divW.length) divW[idx] = 1; }
                 }
             }
 
@@ -2544,7 +2551,7 @@
                                 pivotIndicator.updateMatrix(); isSettingPivot = false; updateRotatedSelection(); updatePreviews(); leftMenuNeedsUpdate = true;
                             } else { 
                                 isDrawing = true; 
-                                if (transformMode !== 'draw') {
+                                if (transformMode !== 'draw' && transformMode !== 'paint') {
                                     dragStartCtrlPos.copy(rightTargetLocal); dragStartOffset.copy(selectionGroup.position); 
                                 } else {
                                     lastPaintedPos.set(Infinity, Infinity, Infinity);
@@ -2852,8 +2859,8 @@
                     rightTargetLocal.set(Math.round(rightTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(rightTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(rightTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE);
                     cursorRight.position.copy(rightTargetLocal); cursorRight.updateMatrix(); cursorRight.visible = true;
                     
-                    // In draw mode, map the selection's group position to follow the brush
-                    if (activeTool === 'select' && hasSelection && transformMode === 'draw' && !isSettingPivot) {
+                    // Position synchronization for DRAW and PAINT modes
+                    if (activeTool === 'select' && hasSelection && (transformMode === 'draw' || transformMode === 'paint') && !isSettingPivot) {
                         const targetX = Math.round(rightTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE - Math.round(selectionCenter.x) * VOXEL_SIZE;
                         const targetY = Math.round(rightTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE - Math.round(selectionCenter.y) * VOXEL_SIZE;
                         const targetZ = Math.round(rightTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE - Math.round(selectionCenter.z) * VOXEL_SIZE;
@@ -2887,6 +2894,14 @@
                                 const offY = Math.round(rightTargetLocal.y / VOXEL_SIZE) - Math.round(selectionCenter.y);
                                 const offZ = Math.round(rightTargetLocal.z / VOXEL_SIZE) - Math.round(selectionCenter.z);
                                 stampSelection(offX, offY, offZ);
+                                lastPaintedPos.copy(rightTargetLocal);
+                            }
+                        } else if (transformMode === 'paint') {
+                            if (!rightTargetLocal.equals(lastPaintedPos)) {
+                                const offX = Math.round(rightTargetLocal.x / VOXEL_SIZE) - Math.round(selectionCenter.x);
+                                const offY = Math.round(rightTargetLocal.y / VOXEL_SIZE) - Math.round(selectionCenter.y);
+                                const offZ = Math.round(rightTargetLocal.z / VOXEL_SIZE) - Math.round(selectionCenter.z);
+                                paintSelection(offX, offY, offZ);
                                 lastPaintedPos.copy(rightTargetLocal);
                             }
                         } else {
