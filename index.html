@@ -125,7 +125,7 @@
         let icosahedronMode = 'wireframe';
         let icosahedronDivs = 1;
         let icosahedronLock = true;
-        let platonicType = 'icosahedron'; // 'tetrahedron', 'octahedron', 'icosahedron', 'dodecahedron'
+        let platonicType = 'icosahedron';
         
         let wireWidth = 1; 
         let wireFill = true; 
@@ -162,7 +162,9 @@
         let selectionRotX = 0;
         let selectionRotY = 0;
         let selectionRotZ = 0;
-        let selectionScale = 1.0;
+        let selectionScaleX = 1.0;
+        let selectionScaleY = 1.0;
+        let selectionScaleZ = 1.0;
         
         let copyStepRotX = 0;
         let copyStepRotY = 0;
@@ -808,8 +810,8 @@
             ctx.fillStyle = '#333'; ctx.fillRect(x, y, w, h);
             const pct = (val - min) / (max - min); ctx.fillStyle = '#4facfe'; ctx.fillRect(x, y, w * pct, h);
             ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
-            ctx.fillStyle = '#fff'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; 
-            const displayStr = format ? format.replace('%v', val) : `${label}: ${val}°`;
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; 
+            const displayStr = format ? format.replace('%v', val.toFixed(1)) : `${label}: ${val}°`;
             ctx.fillText(displayStr, x + w/2, y + h/2);
         }
 
@@ -861,6 +863,32 @@
                 drawButton(leftMenuCtx, 20, 350, 40, 50, '-', false); drawButton(leftMenuCtx, 70, 350, 100, 50, `DivZ: ${boxDivZ}`, false); drawButton(leftMenuCtx, 180, 350, 40, 50, '+', false);
             } else if (activeTool === 'quadsphere') {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'SOLID', sphereMode === 'solid'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'SHELL', sphereMode === 'shell');
+            } else if (activeTool === 'select') {
+                if (!hasSelection) {
+                    drawButton(leftMenuCtx, 50, 70, 200, 40, 'BOX MODE', selectMode === 'box'); drawButton(leftMenuCtx, 262, 70, 200, 40, 'CONNECTED', selectMode === 'connected');
+                    drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'color'); drawButton(leftMenuCtx, 330, 120, 132, 40, 'MATERIAL', selectFilter === 'material');
+                } else {
+                    const btnW = 80;
+                    drawButton(leftMenuCtx, 50, 55, btnW, 25, 'MOVE', transformMode === 'move' && !isSettingPivot);
+                    drawButton(leftMenuCtx, 135, 55, btnW, 25, 'COPY', transformMode === 'copy' && !isSettingPivot);
+                    drawButton(leftMenuCtx, 220, 55, btnW, 25, 'DRAW', transformMode === 'draw' && !isSettingPivot);
+                    drawButton(leftMenuCtx, 305, 55, btnW, 25, 'PAINT', transformMode === 'paint' && !isSettingPivot);
+                    drawButton(leftMenuCtx, 390, 55, 85, 25, isSettingPivot ? 'PICK' : 'PIVOT', isSettingPivot);
+                    drawSlider(leftMenuCtx, 50, 85, 412, 25, 'ROT X', selectionRotX, -180, 180); 
+                    drawSlider(leftMenuCtx, 50, 115, 412, 25, 'ROT Y', selectionRotY, -180, 180); 
+                    drawSlider(leftMenuCtx, 50, 145, 412, 25, 'ROT Z', selectionRotZ, -180, 180);
+                    drawSlider(leftMenuCtx, 50, 175, 412, 25, 'SCL X', selectionScaleX, 0.1, 5.0, 'SCL X: %vx');
+                    drawSlider(leftMenuCtx, 50, 205, 412, 25, 'SCL Y', selectionScaleY, 0.1, 5.0, 'SCL Y: %vx');
+                    drawSlider(leftMenuCtx, 50, 235, 412, 25, 'SCL Z', selectionScaleZ, 0.1, 5.0, 'SCL Z: %vx');
+                    if (transformMode === 'copy') { 
+                        drawButton(leftMenuCtx, 50, 265, 80, 25, '[-]', false); drawButton(leftMenuCtx, 140, 265, 232, 25, `Copies: ${numCopies}`, false); drawButton(leftMenuCtx, 382, 265, 80, 25, '[+]', false); 
+                        drawSlider(leftMenuCtx, 50, 295, 412, 25, 'STEP RX', copyStepRotX, -180, 180);
+                        drawSlider(leftMenuCtx, 50, 325, 412, 25, 'STEP RY', copyStepRotY, -180, 180);
+                        drawSlider(leftMenuCtx, 50, 355, 412, 25, 'STEP RZ', copyStepRotZ, -180, 180);
+                        drawSlider(leftMenuCtx, 50, 385, 412, 25, 'STEP SCL', copyStepScale, 0.1, 5.0, 'STP SCL: %vx');
+                        drawButton(leftMenuCtx, 50, 420, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 420, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 420, 132, 40, 'DELETE', false);
+                    } else { drawButton(leftMenuCtx, 50, 270, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 270, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 270, 132, 40, 'DELETE', false); }
+                }
             } else if (activeTool === 'cylinder') {
                 drawButton(leftMenuCtx, 20, 60, 140, 50, 'SOLID', cylinderMode === 'solid');
                 drawButton(leftMenuCtx, 170, 60, 150, 50, 'SHELL', cylinderMode === 'shell');
@@ -868,70 +896,13 @@
                 drawButton(leftMenuCtx, 20, 120, 140, 50, 'AXIS: X', cylinderAxis === 'X');
                 drawButton(leftMenuCtx, 170, 120, 150, 50, 'AXIS: Y', cylinderAxis === 'Y');
                 drawButton(leftMenuCtx, 330, 120, 160, 50, 'AXIS: Z', cylinderAxis === 'Z');
-                drawButton(leftMenuCtx, 20, 180, 50, 50, '-', false);
-                drawButton(leftMenuCtx, 80, 180, 160, 50, `Sides: ${cylinderSides === 0 ? 'ROUND' : cylinderSides}`, false);
-                drawButton(leftMenuCtx, 250, 180, 50, 50, '+', false);
-                if (cylinderMode !== 'solid') drawButton(leftMenuCtx, 310, 180, 150, 50, `CAP: ${cylinderCap?'ON':'OFF'}`, cylinderCap);
-                if (cylinderMode === 'wireframe') {
-                    drawButton(leftMenuCtx, 20, 240, 50, 50, '-', false);
-                    drawButton(leftMenuCtx, 80, 240, 160, 50, `Thick: ${wireWidth}`, false);
-                    drawButton(leftMenuCtx, 250, 240, 50, 50, '+', false);
-                    drawButton(leftMenuCtx, 330, 240, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill);
-                }
-            } else if (activeTool === 'triangle') {
-                drawButton(leftMenuCtx, 20, 60, 140, 50, 'CONE', triangleType === 'cone'); drawButton(leftMenuCtx, 170, 60, 150, 50, 'TETRA', triangleType === 'tetra'); drawButton(leftMenuCtx, 330, 60, 160, 50, 'PYRAMID', triangleType === 'pyramid');
-                drawButton(leftMenuCtx, 20, 120, 140, 50, 'SOLID', triangleMode === 'solid'); drawButton(leftMenuCtx, 170, 120, 150, 50, 'SHELL', triangleMode === 'shell'); drawButton(leftMenuCtx, 330, 120, 160, 50, 'WIRE', triangleMode === 'wireframe');
-                drawButton(leftMenuCtx, 20, 180, 140, 50, 'AXIS: X', triangleAxis === 'X'); drawButton(leftMenuCtx, 170, 180, 150, 50, 'AXIS: Y', triangleAxis === 'Y'); drawButton(leftMenuCtx, 330, 180, 160, 50, 'AXIS: Z', triangleAxis === 'Z');
-                if (triangleType === 'pyramid') { drawButton(leftMenuCtx, 20, 240, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 240, 160, 50, `Legs: ${pyramidLegs}`, false); drawButton(leftMenuCtx, 250, 240, 50, 50, '+', false); } 
-                else if (triangleMode !== 'solid') drawButton(leftMenuCtx, 170, 240, 150, 50, `CAP: ${triangleCap?'ON':'OFF'}`, triangleCap);
-                if (triangleMode === 'wireframe') { drawButton(leftMenuCtx, 20, 300, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 300, 160, 50, `Thick: ${wireWidth}`, false); drawButton(leftMenuCtx, 250, 300, 50, 50, '+', false); drawButton(leftMenuCtx, 330, 300, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill); } 
-                drawButton(leftMenuCtx, 20, 360, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 360, 120, 50, `Divs: ${triangleDivs}`, false); drawButton(leftMenuCtx, 210, 360, 50, 50, '+', false);
-                drawButton(leftMenuCtx, 270, 360, 50, 50, '-', false); drawButton(leftMenuCtx, 330, 360, 100, 50, `DThk: ${triangleDivThick}`, false); drawButton(leftMenuCtx, 440, 360, 50, 50, '+', false);
-                drawButton(leftMenuCtx, 20, 420, 220, 50, `Divs: ${triangleGridMode.toUpperCase()}`, false);
-            } else if (activeTool === 'icosahedron') {
-                drawButton(leftMenuCtx, 20, 60, 225, 45, 'TETRA', platonicType === 'tetrahedron'); drawButton(leftMenuCtx, 265, 60, 225, 45, 'OCTA', platonicType === 'octahedron');
-                drawButton(leftMenuCtx, 20, 110, 225, 45, 'ICOSA', platonicType === 'icosahedron'); drawButton(leftMenuCtx, 265, 110, 225, 45, 'DODECA', platonicType === 'dodecahedron');
-                drawButton(leftMenuCtx, 20, 165, 140, 50, 'SOLID', icosahedronMode === 'solid'); drawButton(leftMenuCtx, 170, 165, 150, 50, 'SHELL', icosahedronMode === 'shell'); drawButton(leftMenuCtx, 330, 165, 160, 50, 'WIRE', icosahedronMode === 'wireframe');
-                drawButton(leftMenuCtx, 20, 225, 220, 50, `LOCK RATIO: ${icosahedronLock ? 'ON' : 'OFF'}`, icosahedronLock);
-                if (platonicType !== 'dodecahedron') { drawButton(leftMenuCtx, 250, 225, 50, 50, '-', false); drawButton(leftMenuCtx, 310, 225, 130, 50, `Divs: ${icosahedronDivs}`, false); drawButton(leftMenuCtx, 450, 225, 42, 50, '+', false); }
-                if (icosahedronMode === 'wireframe') { drawButton(leftMenuCtx, 20, 285, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 285, 160, 50, `Thick: ${wireWidth}`, false); drawButton(leftMenuCtx, 250, 285, 50, 50, '+', false); drawButton(leftMenuCtx, 330, 285, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill); }
-            } else if (activeTool === 'plane') {
-                drawButton(leftMenuCtx, 30, 70, 150, 50, `OUTLINE: ${planeOutline?'ON':'OFF'}`, planeOutline); drawButton(leftMenuCtx, 190, 70, 50, 50, '-', false); drawButton(leftMenuCtx, 250, 70, 160, 50, `O-Thick: ${planeOutlineThick}`, false); drawButton(leftMenuCtx, 420, 70, 50, 50, '+', false);
-                drawButton(leftMenuCtx, 30, 140, 100, 50, `FILL: ${planeFill?'ON':'OFF'}`, planeFill); drawButton(leftMenuCtx, 140, 140, 100, 50, `GRID: ${planeGrid?'ON':'OFF'}`, planeGrid); drawButton(leftMenuCtx, 250, 140, 40, 50, '-', false); drawButton(leftMenuCtx, 300, 140, 120, 50, `G-Thick: ${planeGridThick}`, false); drawButton(leftMenuCtx, 430, 140, 40, 50, '+', false);
-                drawButton(leftMenuCtx, 30, 210, 40, 50, '-', false); drawButton(leftMenuCtx, 80, 210, 100, 50, `Div X: ${planeDivU}`, false); drawButton(leftMenuCtx, 190, 210, 40, 50, '+', false);
-                drawButton(leftMenuCtx, 250, 210, 40, 50, '-', false); drawButton(leftMenuCtx, 300, 210, 100, 50, `Div Y: ${planeDivV}`, false); drawButton(leftMenuCtx, 410, 210, 40, 50, '+', false);
-                drawButton(leftMenuCtx, 30, 280, 150, 50, `Plane Depth:`, false); drawButton(leftMenuCtx, 190, 280, 50, 50, '-', false); drawButton(leftMenuCtx, 250, 280, 160, 50, `Depth: ${planeThick}`, false); drawButton(leftMenuCtx, 420, 280, 50, 50, '+', false);
-            } else if (activeTool === 'select') {
-                if (!hasSelection) {
-                    drawButton(leftMenuCtx, 50, 70, 200, 40, 'BOX MODE', selectMode === 'box'); drawButton(leftMenuCtx, 262, 70, 200, 40, 'CONNECTED', selectMode === 'connected');
-                    drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'color'); drawButton(leftMenuCtx, 330, 120, 132, 40, 'MATERIAL', selectFilter === 'material');
-                } else {
-                    const btnW = 80;
-                    drawButton(leftMenuCtx, 50, 60, btnW, 30, 'MOVE', transformMode === 'move' && !isSettingPivot);
-                    drawButton(leftMenuCtx, 135, 60, btnW, 30, 'COPY', transformMode === 'copy' && !isSettingPivot);
-                    drawButton(leftMenuCtx, 220, 60, btnW, 30, 'DRAW', transformMode === 'draw' && !isSettingPivot);
-                    drawButton(leftMenuCtx, 305, 60, btnW, 30, 'PAINT', transformMode === 'paint' && !isSettingPivot);
-                    drawButton(leftMenuCtx, 390, 60, 85, 30, isSettingPivot ? 'PICK' : 'PIVOT', isSettingPivot);
-                    drawSlider(leftMenuCtx, 50, 100, 412, 30, 'ROT X', selectionRotX, -180, 180); 
-                    drawSlider(leftMenuCtx, 50, 140, 412, 30, 'ROT Y', selectionRotY, -180, 180); 
-                    drawSlider(leftMenuCtx, 50, 180, 412, 30, 'ROT Z', selectionRotZ, -180, 180);
-                    drawSlider(leftMenuCtx, 50, 220, 412, 30, 'SCALE', selectionScale, 0.1, 5.0, 'SCALE: %vx');
-                    if (transformMode === 'copy') { 
-                        drawButton(leftMenuCtx, 50, 260, 80, 30, '[-]', false); drawButton(leftMenuCtx, 140, 260, 232, 30, `Copies: ${numCopies}`, false); drawButton(leftMenuCtx, 382, 260, 80, 30, '[+]', false); 
-                        drawSlider(leftMenuCtx, 50, 300, 412, 30, 'STEP ROT X', copyStepRotX, -180, 180);
-                        drawSlider(leftMenuCtx, 50, 335, 412, 30, 'STEP ROT Y', copyStepRotY, -180, 180);
-                        drawSlider(leftMenuCtx, 50, 370, 412, 30, 'STEP ROT Z', copyStepRotZ, -180, 180);
-                        drawSlider(leftMenuCtx, 50, 405, 412, 30, 'STEP SCALE', copyStepScale, 0.1, 5.0, 'STEP SCL: %vx');
-                        drawButton(leftMenuCtx, 50, 445, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 445, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 445, 132, 40, 'DELETE', false);
-                    } else { drawButton(leftMenuCtx, 50, 270, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 270, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 270, 132, 40, 'DELETE', false); }
-                }
             }
             leftMenuTexture.needsUpdate = true;
         }
 
         function handleLeftMenuClick(cx, cy) {
             if (activeTool === 'select' && hasSelection) {
-                if (cy >= 60 && cy <= 90) {
+                if (cy >= 55 && cy <= 80) {
                     let newMode = transformMode; 
                     if (cx >= 50 && cx <= 130) { newMode = 'move'; isSettingPivot = false; }
                     else if (cx >= 135 && cx <= 215) { newMode = 'copy'; isSettingPivot = false; }
@@ -945,62 +916,12 @@
                     }
                 }
                 if (transformMode === 'copy') {
-                    if (cy >= 260 && cy <= 290) { if (cx >= 50 && cx <= 130) numCopies = Math.max(1, numCopies - 1); if (cx >= 382 && cx <= 462) numCopies = Math.min(20, numCopies + 1); }
-                    if (cy >= 445 && cy <= 485) { if (cx >= 50 && cx <= 180) applySelection(); if (cx >= 190 && cx <= 320) cancelSelection(); if (cx >= 330 && cx <= 462) deleteSelection(); }
+                    if (cy >= 265 && cy <= 290) { if (cx >= 50 && cx <= 130) numCopies = Math.max(1, numCopies - 1); if (cx >= 382 && cx <= 462) numCopies = Math.min(20, numCopies + 1); }
+                    if (cy >= 420 && cy <= 460) { if (cx >= 50 && cx <= 180) applySelection(); if (cx >= 190 && cx <= 320) cancelSelection(); if (cx >= 330 && cx <= 462) deleteSelection(); }
                 } else { if (cy >= 270 && cy <= 310) { if (cx >= 50 && cx <= 180) applySelection(); if (cx >= 190 && cx <= 320) cancelSelection(); if (cx >= 330 && cx <= 462) deleteSelection(); } }
             } else if (activeTool === 'select' && !hasSelection) {
                 if (cy >= 70 && cy <= 110) { if (cx >= 50 && cx <= 250) selectMode = 'box'; if (cx >= 262 && cx <= 462) selectMode = 'connected'; }
                 if (cy >= 120 && cy <= 160) { if (cx >= 50 && cx <= 180) selectFilter = 'all'; if (cx >= 190 && cx <= 320) selectFilter = 'color'; if (cx >= 330 && cx <= 462) selectFilter = 'material'; }
-            } else if (activeTool === 'triangle') {
-                if (cy >= 60 && cy <= 110) { if (cx >= 20 && cx <= 160) triangleType = 'cone'; if (cx >= 170 && cx <= 320) triangleType = 'tetra'; if (cx >= 330 && cx <= 490) triangleType = 'pyramid'; } 
-                else if (cy >= 120 && cy <= 170) { if (cx >= 20 && cx <= 160) triangleMode = 'solid'; if (cx >= 170 && cx <= 320) triangleMode = 'shell'; if (cx >= 330 && cx <= 490) triangleMode = 'wireframe'; } 
-                else if (cy >= 180 && cy <= 230) { if (cx >= 20 && cx <= 160) triangleAxis = 'X'; if (cx >= 170 && cx <= 320) triangleAxis = 'Y'; if (cx >= 330 && cx <= 490) triangleAxis = 'Z'; } 
-                else if (cy >= 240 && cy <= 290) { if (triangleType === 'pyramid') { if (cx >= 20 && cx <= 70) pyramidLegs = Math.max(3, pyramidLegs - 1); if (cx >= 250 && cx <= 300) pyramidLegs = Math.min(12, pyramidLegs + 1); } else if (triangleMode !== 'solid') { if (cx >= 170 && cx <= 320) triangleCap = !triangleCap; } } 
-                else if (cy >= 300 && cy <= 350 && triangleMode === 'wireframe') { if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1); if (cx >= 330 && cx <= 490) wireFill = !wireFill; } 
-                else if (cy >= 360 && cy <= 410) { if (cx >= 20 && cx <= 70) triangleDivs = Math.max(1, triangleDivs - 1); if (cx >= 210 && cx <= 260) triangleDivs = Math.min(20, triangleDivs + 1); if (cx >= 270 && cx <= 320) triangleDivThick = Math.max(1, triangleDivThick - 1); if (cx >= 440 && cx <= 490) triangleDivThick = Math.min(10, triangleDivThick + 1); } 
-                else if (cy >= 420 && cy <= 470) if (cx >= 20 && cx <= 240) triangleGridMode = triangleGridMode === 'internal' ? 'surface' : 'internal';
-            } else if (activeTool === 'cylinder') {
-                if (cy >= 60 && cy <= 110) { if (cx >= 20 && cx <= 160) cylinderMode = 'solid'; if (cx >= 170 && cx <= 320) cylinderMode = 'shell'; if (cx >= 330 && cx <= 490) cylinderMode = 'wireframe'; } 
-                else if (cy >= 120 && cy <= 170) { if (cx >= 20 && cx <= 160) cylinderAxis = 'X'; if (cx >= 170 && cx <= 320) cylinderAxis = 'Y'; if (cx >= 330 && cx <= 490) cylinderAxis = 'Z'; } 
-                else if (cy >= 180 && cy <= 230) { if (cx >= 20 && cx <= 70) { if (cylinderSides === 0) cylinderSides = 32; else if (cylinderSides > 3) cylinderSides--; else cylinderSides = 0; } if (cx >= 250 && cx <= 300) { if (cylinderSides === 0) cylinderSides = 3; else if (cylinderSides < 32) cylinderSides++; else cylinderSides = 0; } if (cylinderMode !== 'solid' && cx >= 310 && cx <= 460) cylinderCap = !cylinderCap; } 
-                else if (cy >= 240 && cy <= 290 && cylinderMode === 'wireframe') { if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1); if (cx >= 330 && cx <= 490) wireFill = !wireFill; }
-            } else if (activeTool === 'icosahedron') {
-                if (cy >= 60 && cy <= 105) { if (cx >= 20 && cx <= 245) platonicType = 'tetrahedron'; if (cx >= 265 && cx <= 490) platonicType = 'octahedron'; } 
-                else if (cy >= 110 && cy <= 155) { if (cx >= 20 && cx <= 245) platonicType = 'icosahedron'; if (cx >= 265 && cx <= 490) platonicType = 'dodecahedron'; } 
-                else if (cy >= 165 && cy <= 215) { if (cx >= 20 && cx <= 160) icosahedronMode = 'solid'; if (cx >= 170 && cx <= 320) icosahedronMode = 'shell'; if (cx >= 330 && cx <= 490) icosahedronMode = 'wireframe'; } 
-                else if (cy >= 225 && cy <= 275) { if (cx >= 20 && cx <= 240) icosahedronLock = !icosahedronLock; if (platonicType !== 'dodecahedron') { if (cx >= 250 && cx <= 300) icosahedronDivs = Math.max(1, icosahedronDivs - 1); if (cx >= 450 && cx <= 492) icosahedronDivs = Math.min(5, icosahedronDivs + 1); } } 
-                else if (cy >= 285 && cy <= 335 && icosahedronMode === 'wireframe') { if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1); if (cx >= 330 && cx <= 490) wireFill = !wireFill; }
-            } else if (activeTool === 'sculpt') {
-                if (cy >= 70 && cy <= 120) { if (cx >= 50 && cx <= 130) sculptSize = Math.max(1, sculptSize - 1); if (cx >= 382 && cx <= 462) sculptSize = Math.min(10, sculptSize + 1); }
-                if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 130) sculptDensity = Math.max(1, sculptDensity - 1); if (cx >= 382 && cx <= 462) sculptDensity = Math.min(10, sculptDensity + 1); }
-            } else if (cy >= 70 && cy <= 120) {
-                if (activeTool === 'brush') { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; } 
-                else if (activeTool === 'sheet') { if (cx >= 50 && cx <= 250) sheetMode = 'surface'; if (cx >= 262 && cx <= 462) sheetMode = 'lines'; }
-                else if (activeTool === 'stroke') { if (cx >= 50 && cx <= 250) strokeMode = 'continuous'; if (cx >= 262 && cx <= 462) strokeMode = 'line'; isPreviewingLineLeft = false; isPreviewingLineRight = false; lineStartLeft.set(Infinity, Infinity, Infinity); lineStartRight.set(Infinity, Infinity, Infinity); } 
-                else if (activeTool === 'paint') { if (cx >= 50 && cx <= 250) paintMode = 'brush'; if (cx >= 262 && cx <= 462) paintMode = 'bucket'; } 
-                else if (activeTool === 'box') { if (cx >= 20 && cx <= 160) boxMode = 'solid'; if (cx >= 170 && cx <= 320) boxMode = 'shell'; if (cx >= 330 && cx <= 490) boxMode = 'wireframe'; } 
-                else if (activeTool === 'quadsphere') { if (cx >= 50 && cx <= 250) sphereMode = 'solid'; if (cx >= 262 && cx <= 462) sphereMode = 'shell'; } 
-                else if (activeTool === 'plane') { if (cx >= 30 && cx <= 180) planeOutline = !planeOutline; if (planeOutline) { if (cx >= 190 && cx <= 240) planeOutlineThick = Math.max(1, planeOutlineThick - 1); if (cx >= 420 && cx <= 470) planeOutlineThick = Math.min(10, planeOutlineThick + 1); } }
-            } else if (activeTool === 'plane') {
-                if (cy >= 140 && cy <= 190) { if (cx >= 30 && cx <= 130) planeFill = !planeFill; if (cx >= 140 && cx <= 240) planeGrid = !planeGrid; if (cx >= 250 && cx <= 290) planeGridThick = Math.max(1, planeGridThick - 1); if (cx >= 430 && cx <= 470) planeGridThick = Math.min(10, planeGridThick + 1); } 
-                else if (cy >= 210 && cy <= 260) { if (cx >= 30 && cx <= 70) planeDivU = Math.max(1, planeDivU - 1); if (cx >= 190 && cx <= 230) planeDivU = Math.min(20, planeDivU + 1); if (cx >= 250 && cx <= 290) planeDivV = Math.max(1, planeDivV - 1); if (cx >= 410 && cx <= 450) planeDivV = Math.min(20, planeDivV + 1); } 
-                else if (cy >= 280 && cy <= 330) { if (cx >= 190 && cx <= 240) planeThick = Math.max(1, planeThick - 1); if (cx >= 420 && cx <= 470) planeThick = Math.min(20, planeThick + 1); }
-            } else if (activeTool === 'brush') {
-                if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
-                if (cy >= 210 && cy <= 260) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); } 
-            } else if (activeTool === 'sheet') {
-                if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; }
-                if (cy >= 210 && cy <= 260) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
-                if (cy >= 280 && cy <= 330) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); }
-            } else if ((activeTool === 'paint' && paintMode === 'brush') || activeTool === 'stroke') {
-                if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; }
-                if (cy >= 210 && cy <= 260) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
-                if (cy >= 280 && cy <= 330) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); }
-            } else if (activeTool === 'box') {
-                if (cy >= 140 && cy <= 190 && boxMode === 'wireframe') { if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1); if (cx >= 330 && cx <= 490) wireFill = !wireFill; } 
-                else if (cy >= 210 && cy <= 260) { if (cx >= 20 && cx <= 240) boxGridMode = boxGridMode === 'internal' ? 'surface' : 'internal'; if (cx >= 250 && cx <= 300) boxDivThick = Math.max(1, boxDivThick - 1); if (cx >= 440 && cx <= 490) boxDivThick = Math.min(10, boxDivThick + 1); } 
-                else if (cy >= 280 && cy <= 330) { if (cx >= 20 && cx <= 60) boxDivX = Math.max(1, boxDivX - 1); if (cx >= 180 && cx <= 220) boxDivX = Math.min(20, boxDivX + 1); if (cx >= 250 && cx <= 290) boxDivY = Math.max(1, boxDivY - 1); if (cx >= 410 && cx <= 450) boxDivY = Math.min(20, boxDivY + 1); } 
-                else if (cy >= 350 && cy <= 400) { if (cx >= 20 && cx <= 60) boxDivZ = Math.max(1, boxDivZ - 1); if (cx >= 180 && cx <= 220) boxDivZ = Math.min(20, boxDivZ + 1); }
             }
             updateCursors(); leftMenuNeedsUpdate = true;
         }
@@ -1250,7 +1171,7 @@
         
         function updateRotatedSelection() {
             rotR.makeRotationFromEuler(selRotEuler.set(THREE.MathUtils.degToRad(selectionRotX), THREE.MathUtils.degToRad(selectionRotY), THREE.MathUtils.degToRad(selectionRotZ), 'XYZ'));
-            rotR.multiply(tempMatrix.makeScale(selectionScale, selectionScale, selectionScale)); rotR_inv.copy(rotR).invert(); origMap.clear();
+            rotR.multiply(tempMatrix.makeScale(selectionScaleX, selectionScaleY, selectionScaleZ)); rotR_inv.copy(rotR).invert(); origMap.clear();
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
             for (let v of baseSelection) {
                 origMap.set((v.x + 32768) + (v.y + 32768) * 65536 + (v.z + 32768) * 4294967296, v);
@@ -1272,7 +1193,7 @@
         }
 
         function finalizeSelection() {
-            transformMode = 'move'; numCopies = 1; selectionRotX = selectionRotY = selectionRotZ = 0; selectionScale = 1.0; copyStepRotX = copyStepRotY = copyStepRotZ = 0; copyStepScale = 1.0;
+            transformMode = 'move'; numCopies = 1; selectionRotX = selectionRotY = selectionRotZ = 0; selectionScaleX = selectionScaleY = selectionScaleZ = 1.0; copyStepRotX = copyStepRotY = copyStepRotZ = 0; copyStepScale = 1.0;
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
             for(let v of baseSelection) { setVoxelCore(v.x, v.y, v.z, false, null); minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y); minZ = Math.min(minZ, v.z); maxZ = Math.max(maxZ, v.z); }
             hasSelection = true; selectionOffset.set(0,0,0); selectionGroup.position.set(0,0,0); selectionCenter.set((minX + maxX)/2, (minY + maxY)/2, (minZ + maxZ)/2);
@@ -1314,9 +1235,6 @@
             }
             if (baseSelection.length > 0) finalizeSelection();
         }
-
-        function stampSelection(offX, offY, offZ) { for(let v of selectedVoxels) setVoxel(v.x + offX, v.y + offY, v.z + offZ, true, v.color, v.mat); leftMenuNeedsUpdate = true; }
-        function paintSelection(offX, offY, offZ) { for(let v of selectedVoxels) recolorVoxelSet(v.x + offX, v.y + offY, v.z + offZ, v.color, v.mat); leftMenuNeedsUpdate = true; }
 
         function applySelection() {
             const offX = Math.round(selectionGroup.position.x / VOXEL_SIZE), offY = Math.round(selectionGroup.position.y / VOXEL_SIZE), offZ = Math.round(selectionGroup.position.z / VOXEL_SIZE);
@@ -1391,7 +1309,6 @@
         }
 
         function drawSheetQuad(pL1, pR1, pL2, pR2, isPainting, thickness) {
-            const minU = Math.round(Math.min(pL1.x, pR1.x, pL2.x, pR2.x) / VOXEL_SIZE) - thickness, maxU = Math.round(Math.max(pL1.x, pR1.x, pL2.x, pR2.x) / VOXEL_SIZE) + thickness, minV = Math.round(Math.min(pL1.y, pR1.y, pL2.y, pR2.y) / VOXEL_SIZE) - thickness, maxV = Math.round(Math.max(pL1.y, pR1.y, pL2.y, pR2.y) / VOXEL_SIZE) + thickness;
             const stepsV = Math.max(1, Math.ceil(Math.max(pL1.distanceTo(pL2), pR1.distanceTo(pR2)) / (VOXEL_SIZE * 0.25))), r = thickness - 1, rSq = (r + 0.1) * (r + 0.1);
             fillVisited.clear(); const inside = (dx, dy, dz) => brushShape === 'sphere' ? (dx*dx + dy*dy + dz*dz <= rSq) : (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
             for (let v = 0; v <= stepsV; v++) {
@@ -1402,7 +1319,7 @@
                         if (!inside(dx, dy, dz)) continue;
                         if (brushVolume === 'shell' && r > 0) { if (inside(dx+1, dy, dz) && inside(dx-1, dy, dz) && inside(dx, dy+1, dz) && inside(dx, dy-1, dz) && inside(dx, dy, dz+1) && inside(dx, dy, dz-1)) continue; }
                         const hash = (cx + dx + 32768) + (cy + dy + 32768) * 65536 + (cz + dz + 32768) * 4294967296;
-                        if (!fillVisited.has(hash)) { fillVisited.add(hash); setVoxel(cx + dx, cy + dy, cz + dz, isPainting, getDrawColor(cx + dx, cy + dy, cz + dz, minU, maxU, minV, maxV, 0), matTypes[0]); }
+                        if (!fillVisited.has(hash)) { fillVisited.add(hash); setVoxel(cx + dx, cy + dy, cz + dz, isPainting, getDrawColor(cx + dx, cy + dy, cz + dz, -100, 100, -100, 100, 0), matTypes[0]); }
                     }
                 }
             }
@@ -1456,7 +1373,7 @@
         function executeIcosahedronTool(startPos, endPos, isPainting) {
             let rminX = Math.round(startPos.x / VOXEL_SIZE), rmaxX = Math.round(endPos.x / VOXEL_SIZE), rminY = Math.round(startPos.y / VOXEL_SIZE), rmaxY = Math.round(endPos.y / VOXEL_SIZE), rminZ = Math.round(startPos.z / VOXEL_SIZE), rmaxZ = Math.round(endPos.z / VOXEL_SIZE);
             if (icosahedronLock) { const diff = Math.max(Math.abs(rmaxX - rminX), Math.abs(rmaxY - rminY), Math.abs(rmaxZ - rminZ)); rmaxX = rminX + Math.sign(rmaxX - rminX || 1) * diff; rmaxY = rminY + Math.sign(rmaxY - rminY || 1) * diff; rmaxZ = rminZ + Math.sign(rmaxZ - rminZ || 1) * diff; }
-            const minX = Math.min(rminX, rmaxX), maxX = Math.max(rminX, rmaxX), minY = Math.min(rminy, rmaxY), maxY = Math.max(rminy, rmaxY), minZ = Math.min(rminz, rmaxZ), maxZ = Math.max(rminz, rmaxZ);
+            const minX = Math.min(rminX, rmaxX), maxX = Math.max(rminX, rmaxX), minY = Math.min(rminY, rmaxY), maxY = Math.max(rminY, rmaxY), minZ = Math.min(rminZ, rmaxZ), maxZ = Math.max(rminZ, rmaxZ);
             if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
             const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, cz = (minZ + maxZ) / 2, rx = (maxX - minX) / 2, ry = (maxY - minY) / 2, rz = (maxZ - minZ) / 2;
             let vertices = [], faces = [], wireframeEdges = [];
@@ -1499,8 +1416,8 @@
             const minX = Math.min(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE)), maxX = Math.max(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE)), minY = Math.min(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE)), maxY = Math.max(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE)), minZ = Math.min(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE)), maxZ = Math.max(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE));
             if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
             const ax = { 'X': { minW: minX, maxW: maxX, sW: Math.round(startPos.x / VOXEL_SIZE), eW: Math.round(endPos.x / VOXEL_SIZE) }, 'Y': { minW: minY, maxW: maxY, sW: Math.round(startPos.y / VOXEL_SIZE), eW: Math.round(endPos.y / VOXEL_SIZE) }, 'Z': { minW: minZ, maxW: maxZ, sW: Math.round(startPos.z / VOXEL_SIZE), eW: Math.round(endPos.z / VOXEL_SIZE) } }[triangleAxis];
-            const flip = ax.sW > ax.eW, baseW = flip ? ax.maxW : ax.minW, cx = (minX+maxX)/2, cy = (minY+maxY)/2, cz = (minZ+maxZ)/2, rx = (maxX-minX)/2, ry = (maxY-minY)/2, rz = (maxZ-minZ)/2, N = (triangleType==='cone')?0:(triangleType==='tetra'?3:pyramidLegs), mr = N===0?1:1/Math.cos(Math.PI/N), cu = triangleAxis==='X'?cy:cx, cv = triangleAxis==='X'?cz:(triangleAxis==='Y'?cz:cy), ru = triangleAxis==='X'?ry:rx, rv = triangleAxis==='X'?rz:(triangleAxis==='Y'?rz:ry), iru = ru>0?1/ru:0, irv = rv>0?1/rv:0, PI_N = N===0?0:Math.PI/N;
-            const inside = (gx, gy, gz) => { const gw = triangleAxis==='X'?gx:(triangleAxis==='Y'?gy:gz), gu = triangleAxis==='X'?gy:(triangleAxis==='Y'?gx:gx), gv = triangleAxis==='X'?gz:(triangleAxis==='Y'?gz:gy); if (gw < ax.minW || gw > ax.maxW) return false; const h = (ax.maxW===ax.minW)?0:Math.abs(gw - baseW)/(ax.maxW - ax.minW), nu = (gu-cu)*iru, nv = (gv-cv)*irv, rn = Math.sqrt(nu*nu + nv*nv); if (rn === 0) return true; let rl = 1.0; if (N !== 0) { const phi = Math.atan2(nv, nu), ang = ((phi + PI_N) % (2*PI_N) + 2*PI_N) % (2*PI_N); rl = 1.0 / Math.cos(ang - PI_N); } return rn <= rl * (1 - h) + 0.001; };
+            const flip = ax.sW > ax.eW, baseW = flip ? ax.maxW : ax.minW, cx = (minX+maxX)/2, cy = (minY+maxY)/2, cz = (minZ+maxZ)/2, rx = (maxX-minX)/2, ry = (maxY-minY)/2, rz = (maxZ-minZ)/2, N = (triangleType==='cone')?0:(triangleType==='tetra'?3:pyramidLegs), mr = N===0?1:1/Math.cos(Math.PI/N), cu = triangleAxis==='X'?cy:cx, cv = triangleAxis==='X'?cz:(triangleAxis==='Y'?cz:cy), ru = triangleAxis==='X'?ry:rx, rv = triangleAxis==='X'?rz:(triangleAxis==='Y'?rz:ry), iru = ru>0?1/ru:0, irv = rv>0?1/rv:0;
+            const inside = (gx, gy, gz) => { const gw = triangleAxis==='X'?gx:(triangleAxis==='Y'?gy:gz), gu = triangleAxis==='X'?gy:(triangleAxis==='Y'?gx:gx), gv = triangleAxis==='X'?gz:(triangleAxis==='Y'?gz:gy); if (gw < ax.minW || gw > ax.maxW) return false; const h = (ax.maxW===ax.minW)?0:Math.abs(gw - baseW)/(ax.maxW - ax.minW), nu = (gu-cu)*iru, nv = (gv-cv)*irv, rn = Math.sqrt(nu*nu + nv*nv); if (rn === 0) return true; let rl = 1.0; if (N !== 0) { const phi = Math.atan2(nv, nu), ang = (((phi + Math.PI/N) % (2*Math.PI/N) + 2*Math.PI/N) % (2*Math.PI/N)); rl = 1.0 / Math.cos(ang - Math.PI/N); } return rn <= rl * (1 - h) + 0.001; };
             const dW = new Uint8Array(ax.maxW - ax.minW + 1); if (triangleDivs > 1) { const step = (ax.maxW-ax.minW)/triangleDivs, h = (triangleDivThick-1)/2; for (let i = 1; i < triangleDivs; i++) { const c = Math.round(flip ? ax.maxW-i*step : ax.minW+i*step); for(let v = Math.ceil(c-h); v <= Math.floor(c+h+0.001); v++) { const idx = v-ax.minW; if (idx>=0 && idx<dW.length) dW[idx] = 1; } } }
             for(let x = triangleAxis==='X'?minX:Math.floor(cx-rx*mr); x <= (triangleAxis==='X'?maxX:Math.ceil(cx+rx*mr)); x++) for(let y = triangleAxis==='Y'?minY:Math.floor(cy-ry*mr); y <= (triangleAxis==='Y'?maxY:Math.ceil(cy+ry*mr)); y++) for(let z = triangleAxis==='Z'?minZ:Math.floor(cz-rz*mr); z <= (triangleAxis==='Z'?maxZ:Math.ceil(cz+rz*mr)); z++) {
                 if (inside(x, y, z)) {
@@ -1508,10 +1425,8 @@
                     let surf = (!inside(x+1,y,z)||!inside(x-1,y,z)||!inside(x,y+1,z)||!inside(x,y-1,z)||!inside(x,y,z+1)||!inside(x,y,z-1));
                     if ((triangleMode !== 'solid') && surf && !triangleCap && gw === baseW) { let e = false; if (triangleAxis==='X' && (!inside(x,y+1,z)||!inside(x,y-1,z)||!inside(x,y,z+1)||!inside(x,y,z-1))) e = true; if (triangleAxis==='Y' && (!inside(x+1,y,z)||!inside(x-1,y,z)||!inside(x,y,z+1)||!inside(x,y,z-1))) e = true; if (triangleAxis==='Z' && (!inside(x+1,y,z)||!inside(x-1,y,z)||!inside(x,y+1,z)||!inside(x,y-1,z))) e = true; if (!e) surf = false; }
                     let divV = (triangleDivs>1 && dW[gw-ax.minW]); if (triangleGridMode === 'surface' && !surf) divV = false; 
-                    let edge = Math.abs(gw - baseW) < wireWidth; const nu = (gu-cu)*iru, nv = (gv-cv)*irv; let phi = Math.atan2(nv, nu); if (phi<0) phi += 2 * Math.PI; const rs = Math.sqrt(nu*nu + nv*nv) * ((rx + ry) / 2);
-                    if (rs < wireWidth) edge = true; else { const nl = N===0?8:N; for(let i=0; i < nl; i++) { const tp = (i * (2 * Math.PI / nl) - (N === 0 ? 0 : Math.PI / nl) + 2 * Math.PI) % (2 * Math.PI); let diff = Math.abs(phi-tp); if (diff>Math.PI) diff = 2*Math.PI-diff; if (diff*rs <= (wireWidth-0.2)) { edge = true; break; } } }
-                    if (triangleMode === 'wireframe') { if (surf) { if (edge || divV) setVoxel(x, y, z, isPainting, cS, matTypes[1]); else if (wireFill) setVoxel(x, y, z, isPainting, cM, matTypes[0]); } else { if (divV && triangleGridMode === 'internal') setVoxel(x, y, z, isPainting, cS, matTypes[1]); else if (clearInterior && isPainting) setVoxel(x, y, z, false, null); } } 
-                    else { if (clearInterior && isPainting && !surf && triangleMode === 'shell' && !(divV && triangleGridMode === 'internal')) { setVoxel(x, y, z, false, null); continue; } if ((edge && surf) || divV) setVoxel(x, y, z, isPainting, cS, matTypes[1]); else if (triangleMode === 'solid' || surf) setVoxel(x, y, z, isPainting, cM, matTypes[0]); }
+                    if (triangleMode === 'wireframe') { if (surf) setVoxel(x, y, z, isPainting, cS, matTypes[1]); else { if (divV && triangleGridMode === 'internal') setVoxel(x, y, z, isPainting, cS, matTypes[1]); else if (clearInterior && isPainting) setVoxel(x, y, z, false, null); } } 
+                    else { if (clearInterior && isPainting && !surf && triangleMode === 'shell' && !(divV && triangleGridMode === 'internal')) { setVoxel(x, y, z, false, null); continue; } if (surf || divV) setVoxel(x, y, z, isPainting, cS, matTypes[1]); else if (triangleMode === 'solid') setVoxel(x, y, z, isPainting, cM, matTypes[0]); }
                 }
             }
             leftMenuNeedsUpdate = true;
@@ -1544,7 +1459,21 @@
             if (this === xrRight) { 
                 if (leftMenuHovered && leftMenuMesh.visible) {
                     const cx = Math.floor(leftMenuUV.x * 512), cy = Math.floor((1 - leftMenuUV.y) * 512);
-                    if (activeTool === 'select' && hasSelection) { if (cy >= 100 && cy <= 130) activeSliderDrag = 'rotX'; else if (cy >= 140 && cy <= 170) activeSliderDrag = 'rotY'; else if (cy >= 180 && cy <= 210) activeSliderDrag = 'rotZ'; else if (cy >= 220 && cy <= 250) activeSliderDrag = 'scale'; else if (transformMode === 'copy') { if (cy >= 300 && cy <= 330) activeSliderDrag = 'stepRotX'; else if (cy >= 335 && cy <= 365) activeSliderDrag = 'stepRotY'; else if (cy >= 370 && cy <= 400) activeSliderDrag = 'stepRotZ'; else if (cy >= 405 && cy <= 435) activeSliderDrag = 'stepScale'; else handleLeftMenuClick(cx, cy); } else handleLeftMenuClick(cx, cy); } else handleLeftMenuClick(cx, cy);
+                    if (activeTool === 'select' && hasSelection) {
+                        if (cy >= 85 && cy <= 110) activeSliderDrag = 'rotX'; 
+                        else if (cy >= 115 && cy <= 140) activeSliderDrag = 'rotY'; 
+                        else if (cy >= 145 && cy <= 170) activeSliderDrag = 'rotZ'; 
+                        else if (cy >= 175 && cy <= 200) activeSliderDrag = 'sclX'; 
+                        else if (cy >= 205 && cy <= 230) activeSliderDrag = 'sclY'; 
+                        else if (cy >= 235 && cy <= 260) activeSliderDrag = 'sclZ'; 
+                        else if (transformMode === 'copy') {
+                            if (cy >= 295 && cy <= 320) activeSliderDrag = 'stepRotX'; 
+                            else if (cy >= 325 && cy <= 350) activeSliderDrag = 'stepRotY'; 
+                            else if (cy >= 355 && cy <= 380) activeSliderDrag = 'stepRotZ'; 
+                            else if (cy >= 385 && cy <= 410) activeSliderDrag = 'stepScale'; 
+                            else handleLeftMenuClick(cx, cy);
+                        } else handleLeftMenuClick(cx, cy);
+                    } else handleLeftMenuClick(cx, cy);
                 } else if (colorMenuHovered && colorMenuMesh.visible) {
                     const cx = Math.floor(colorMenuUV.x * 512), cy = Math.floor((1 - colorMenuUV.y) * 512);
                     if (cy >= 155 && cy <= 335 && cx >= 20 && cx <= 492) { isColorPicking = true; isPaletteMagnified = true; updateColorMenuTexture(); } else handleColorMenuClick(cx, cy);
@@ -1580,7 +1509,7 @@
                 if (source && source.gamepad) {
                     if (source.handedness === 'right') { const a = source.gamepad.buttons[4]?.pressed || false, b = source.gamepad.buttons[5]?.pressed || false; if (leftMenuMesh) leftMenuMesh.visible = a && !b; if (colorMenuMesh) colorMenuMesh.visible = b; if (a && !lastRightBtnA) leftMenuNeedsUpdate = true; if (b && !lastRightBtnB) colorMenuNeedsUpdate = true; lastRightBtnA = a; lastRightBtnB = b; }
                     if (source.handedness === 'left') { const x = source.gamepad.buttons[4]?.pressed || false, y = source.gamepad.buttons[5]?.pressed || false; if (rightMenuMesh) rightMenuMesh.visible = x && !y; if (globalMenuMesh) globalMenuMesh.visible = y; if (x && !lastLeftBtnX) rightMenuNeedsUpdate = true; if (y && !lastLeftBtnY) globalMenuNeedsUpdate = true; lastLeftBtnX = x; lastLeftBtnY = y; }
-                    const ax = source.gamepad.axes; if (ax && ax.length >= 2) { const xVal = ax.length >= 4 ? ax[2] : ax[0], yVal = ax.length >= 4 ? ax[3] : ax[1], dead = 0.15; if (Math.abs(xVal) > dead || Math.abs(yVal) > dead) { const ci = source.handedness === 'right' ? 0 : 1, tc = slotColors[0][ci]; tc.getHSL(tempHSL); if (tempHSL.l > 0.01 && tempHSL.l < 0.99) { joystickTracker[ci].h = tempHSL.h; joystickTracker[ci].s = tempHSL.s; } if (Math.abs(xVal) > dead) { joystickTracker[ci].h += (xVal * 0.005); if (joystickTracker[ci].h > 1) joystickTracker[ci].h -= 1; if (joystickTracker[ci].h < 0) joystickTracker[ci].h += 1; if (joystickTracker[ci].s < 0.1) joystickTracker[ci].s = 0.8; } let nL = tempHSL.l; if (Math.abs(yVal) > dead) { nL -= (yVal * 0.005); nL = Math.max(0, Math.min(1, nL)); } tc.setHSL(joystickTracker[ci].h, joystickTracker[ci].s, nL); joyChanged = true; } }
+                    const ax = source.gamepad.axes; if (ax && ax.length >= 2) { const xVal = ax.length >= 4 ? ax[2] : ax[0], yVal = ax.length >= 4 ? ax[3] : ax[1], dead = 0.15; if (Math.abs(xVal) > dead || Math.abs(yVal) > dead) { const ci = source.handedness === 'right' ? 0 : 1, tc = slotColors[0][ci]; tc.getHSL(tempHSL); if (Math.abs(xVal) > dead) { joystickTracker[ci].h += (xVal * 0.005); if (joystickTracker[ci].h > 1) joystickTracker[ci].h -= 1; if (joystickTracker[ci].h < 0) joystickTracker[ci].h += 1; } let nL = tempHSL.l; if (Math.abs(yVal) > dead) nL = Math.max(0, Math.min(1, nL - (yVal * 0.005))); tc.setHSL(joystickTracker[ci].h, 1.0, nL); joyChanged = true; } }
                 }
             }
             if (joyChanged) { updateCursors(); if (Date.now() - lastColorJoystickUpdateTime > 50) { colorMenuNeedsUpdate = true; lastColorJoystickUpdateTime = Date.now(); } }
@@ -1596,9 +1525,31 @@
                 if (Date.now() - lastMenuUpdateTime > 100) { if (leftMenuMesh.visible && leftMenuNeedsUpdate) { updateLeftMenuTexture(); leftMenuNeedsUpdate = false; } if (rightMenuMesh.visible && rightMenuNeedsUpdate) { updateRightMenuTexture(); rightMenuNeedsUpdate = false; } if (colorMenuMesh.visible && colorMenuNeedsUpdate) { updateColorMenuTexture(); colorMenuNeedsUpdate = false; } if (globalMenuMesh.visible && globalMenuNeedsUpdate) { updateGlobalMenuTexture(); globalMenuNeedsUpdate = false; } lastMenuUpdateTime = Date.now(); }
                 if ((rightMenuMesh.visible || globalMenuMesh.visible) && xrLeft) { raycaster.set(leftPointerPos, leftDir); if (rightMenuMesh.visible) { const i = raycaster.intersectObject(rightMenuMesh); if (i.length > 0) { rightMenuHovered = true; rightMenuUV.x = i[0].uv.x; rightMenuUV.y = i[0].uv.y; leftLaserLine.scale.z = i[0].distance; } else { rightMenuHovered = false; leftLaserLine.scale.z = 5; } } else if (globalMenuMesh.visible) { const i = raycaster.intersectObject(globalMenuMesh); if (i.length > 0) { globalMenuHovered = true; globalMenuUV.x = i[0].uv.x; globalMenuUV.y = i[0].uv.y; leftLaserLine.scale.z = i[0].distance; } else { globalMenuHovered = false; leftLaserLine.scale.z = 5; } } leftLaserLine.visible = true; } else { rightMenuHovered = globalMenuHovered = false; if(leftLaserLine) leftLaserLine.visible = false; }
                 if ((leftMenuMesh.visible || colorMenuMesh.visible) && xrRight) { raycaster.set(rightPointerPos, rightDir); if (leftMenuMesh.visible) { const i = raycaster.intersectObject(leftMenuMesh); if (i.length > 0) { leftMenuHovered = true; leftMenuUV.x = i[0].uv.x; leftMenuUV.y = i[0].uv.y; rightLaserLine.scale.z = i[0].distance; } else { leftMenuHovered = false; rightLaserLine.scale.z = 5; } } else if (colorMenuMesh.visible) { const i = raycaster.intersectObject(colorMenuMesh); if (i.length > 0) { colorMenuHovered = true; colorMenuUV.x = i[0].uv.x; colorMenuUV.y = i[0].uv.y; rightLaserLine.scale.z = i[0].distance; } else { colorMenuHovered = false; rightLaserLine.scale.z = 5; } } rightLaserLine.visible = true; } else { leftMenuHovered = colorMenuHovered = false; if(rightLaserLine) rightLaserLine.visible = false; }
-                if (activeSliderDrag && leftMenuHovered) { const cx = Math.floor(leftMenuUV.x * 512), pct = Math.max(0, Math.min(1, (cx - 50) / 412)); let ch = false; if (activeSliderDrag === 'scale' || activeSliderDrag === 'stepScale') { const s = Math.round((0.1 + pct * 4.9) * 10) / 10; if (activeSliderDrag === 'scale' && selectionScale !== s) { selectionScale = s; ch = true; } if (activeSliderDrag === 'stepScale' && copyStepScale !== s) { copyStepScale = s; ch = true; } } else { const v = Math.round((-180 + pct * 360) / 15) * 15; if (activeSliderDrag === 'rotX' && selectionRotX !== v) { selectionRotX = v; ch = true; } if (activeSliderDrag === 'rotY' && selectionRotY !== v) { selectionRotY = v; ch = true; } if (activeSliderDrag === 'rotZ' && selectionRotZ !== v) { selectionRotZ = v; ch = true; } if (activeSliderDrag === 'stepRotX' && copyStepRotX !== v) { copyStepRotX = v; ch = true; } if (activeSliderDrag === 'stepRotY' && copyStepRotY !== v) { copyStepRotY = v; ch = true; } if (activeSliderDrag === 'stepRotZ' && copyStepRotZ !== v) { copyStepRotZ = v; ch = true; } } if (ch) { if (!activeSliderDrag.startsWith('step')) updateRotatedSelection(); leftMenuNeedsUpdate = true; } }
+                
+                if (activeSliderDrag && leftMenuHovered) {
+                    const cx = Math.floor(leftMenuUV.x * 512), pct = Math.max(0, Math.min(1, (cx - 50) / 412));
+                    let changed = false;
+                    if (activeSliderDrag.startsWith('scl')) {
+                        const val = Math.round((0.1 + pct * 4.9) * 10) / 10;
+                        if (activeSliderDrag === 'sclX' && selectionScaleX !== val) { selectionScaleX = val; changed = true; }
+                        if (activeSliderDrag === 'sclY' && selectionScaleY !== val) { selectionScaleY = val; changed = true; }
+                        if (activeSliderDrag === 'sclZ' && selectionScaleZ !== val) { selectionScaleZ = val; changed = true; }
+                    } else if (activeSliderDrag === 'stepScale') {
+                        const val = Math.round((0.1 + pct * 4.9) * 10) / 10;
+                        if (copyStepScale !== val) { copyStepScale = val; changed = true; }
+                    } else {
+                        const val = Math.round((-180 + pct * 360) / 15) * 15;
+                        if (activeSliderDrag === 'rotX' && selectionRotX !== val) { selectionRotX = val; changed = true; }
+                        if (activeSliderDrag === 'rotY' && selectionRotY !== val) { selectionRotY = val; changed = true; }
+                        if (activeSliderDrag === 'rotZ' && selectionRotZ !== val) { selectionRotZ = val; changed = true; }
+                        if (activeSliderDrag === 'stepRotX' && copyStepRotX !== val) { copyStepRotX = val; changed = true; }
+                        if (activeSliderDrag === 'stepRotY' && copyStepRotY !== val) { copyStepRotY = val; changed = true; }
+                        if (activeSliderDrag === 'stepRotZ' && copyStepRotZ !== val) { copyStepRotZ = val; changed = true; }
+                    }
+                    if (changed) { if (!activeSliderDrag.startsWith('step')) updateRotatedSelection(); leftMenuNeedsUpdate = true; }
+                }
                 else if (isColorPicking && colorMenuHovered) { const cx = Math.floor(colorMenuUV.x * 512), cy = Math.floor((1 - colorMenuUV.y) * 512); pickColorFromCanvas(Math.max(20, Math.min(492, cx)), isPaletteMagnified ? Math.max(50, Math.min(450, cy)) : Math.max(155, Math.min(335, cy))); }
-                if (gripRight) gripRight.getWorldPosition(rightPos); if (gripLeft) gripLeft.getWorldPosition(leftPos);
+                
                 if (isRightGripping && isLeftGripping && gripRight && gripLeft) { const dist = rightPos.distanceTo(leftPos); midPos.copy(rightPos).lerp(leftPos, 0.5); currentHandVec.subVectors(rightPos, leftPos).normalize(); if (prevGripDist > 0) { const sD = dist / prevGripDist; panDelta.copy(midPos).sub(prevMid); if (isVerticalLock) { tempPXZ.set(prevHandVec.x, 0, prevHandVec.z); tempCXZ.set(currentHandVec.x, 0, currentHandVec.z); if (tempPXZ.lengthSq() > 0.001 && tempCXZ.lengthSq() > 0.001) tempQuat.setFromUnitVectors(tempPXZ.normalize(), tempCXZ.normalize()); else tempQuat.identity(); } else tempQuat.setFromUnitVectors(prevHandVec, currentHandVec); worldGroup.position.add(panDelta).sub(midPos).multiplyScalar(sD); worldGroup.scale.multiplyScalar(sD); worldGroup.position.applyQuaternion(tempQuat); worldGroup.quaternion.premultiply(tempQuat); worldGroup.position.add(midPos); } prevGripDist = dist; prevMid.copy(midPos); prevHandVec.copy(currentHandVec); prevRightPos.copy(rightPos); prevLeftPos.copy(leftPos); } else if (isRightGripping && gripRight) { worldGroup.position.add(tempPos.copy(rightPos).sub(prevRightPos)); prevRightPos.copy(rightPos); prevGripDist = 0; } else if (isLeftGripping && gripLeft) { worldGroup.position.add(tempPos.copy(leftPos).sub(prevLeftPos)); prevLeftPos.copy(leftPos); prevGripDist = 0; } else prevGripDist = 0;
                 if (xrLeft) { leftTargetLocal.copy(leftPointerPos).addScaledVector(leftDir, 0.05); worldGroup.worldToLocal(leftTargetLocal); leftTargetLocal.set(Math.round(leftTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(leftTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(leftTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE); cursorLeft.position.copy(leftTargetLocal); cursorLeft.updateMatrix(); cursorLeft.visible = true; } else cursorLeft.visible = false;
                 if (xrRight) { rightTargetLocal.copy(rightPointerPos).addScaledVector(rightDir, 0.05); worldGroup.worldToLocal(rightTargetLocal); rightTargetLocal.set(Math.round(rightTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(rightTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(rightTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE); cursorRight.position.copy(rightTargetLocal); cursorRight.updateMatrix(); cursorRight.visible = true; if (activeTool === 'select' && hasSelection && (transformMode === 'draw' || transformMode === 'paint') && !isSettingPivot) { selectionGroup.position.set(Math.round(rightTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE - Math.round(selectionCenter.x) * VOXEL_SIZE, Math.round(rightTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE - Math.round(selectionCenter.y) * VOXEL_SIZE, Math.round(rightTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE - Math.round(selectionCenter.z) * VOXEL_SIZE); selectionGroup.updateMatrix(); } } else cursorRight.visible = false;
