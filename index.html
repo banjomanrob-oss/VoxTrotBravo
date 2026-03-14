@@ -187,6 +187,7 @@
         let isVerticalLock = true;
         let clearInterior = false; 
         let mirrorX = false;
+        let mirrorY = false;
         let mirrorZ = false;
         let polarSymmetry = 1; 
         
@@ -208,15 +209,33 @@
 
         function updateActiveSymmetries() {
             activeSymmetries = [];
-            const mirrors = [{sx: 1, sz: 1}];
-            if (mirrorX) mirrors.push({sx: -1, sz: 1});
-            if (mirrorZ) mirrors.push({sx: 1, sz: -1});
-            if (mirrorX && mirrorZ) mirrors.push({sx: -1, sz: -1});
+            // Generate all combinations of axial mirrors
+            let mirrors = [{sx: 1, sy: 1, sz: 1}];
+            
+            if (mirrorX) {
+                const count = mirrors.length;
+                for (let i = 0; i < count; i++) {
+                    mirrors.push({ ...mirrors[i], sx: -1 });
+                }
+            }
+            if (mirrorY) {
+                const count = mirrors.length;
+                for (let i = 0; i < count; i++) {
+                    mirrors.push({ ...mirrors[i], sy: -1 });
+                }
+            }
+            if (mirrorZ) {
+                const count = mirrors.length;
+                for (let i = 0; i < count; i++) {
+                    mirrors.push({ ...mirrors[i], sz: -1 });
+                }
+            }
 
             for (let m = 0; m < mirrors.length; m++) {
                 for (let p = 0; p < polarSymmetry; p++) {
                     activeSymmetries.push({
                         sx: mirrors[m].sx,
+                        sy: mirrors[m].sy,
                         sz: mirrors[m].sz,
                         p: p,
                         cos: p > 0 ? polarCos[p] : 1,
@@ -537,7 +556,7 @@
             if (!hasSelection) return;
 
             let pIdx = 0;
-            function getPreviewGroup(tgtCX, tgtCY, tgtCZ, sx, sz, step, polarAngle) {
+            function getPreviewGroup(tgtCX, tgtCY, tgtCZ, sx, sy, sz, step, polarAngle) {
                 if (pIdx >= previewGroups.length) {
                     const g = new THREE.Group();
                     g.matrixAutoUpdate = false;
@@ -591,7 +610,7 @@
                 pivotGroup.updateMatrix();
 
                 g.position.set(tgtCX, tgtCY, tgtCZ);
-                g.scale.set(sx, 1, sz);
+                g.scale.set(sx, sy, sz);
                 g.rotation.set(0, polarAngle, 0, 'XYZ');
                 
                 g.updateMatrix(); 
@@ -615,14 +634,14 @@
 
                 for (let i = 0; i < activeSymmetries.length; i++) {
                     const sym = activeSymmetries[i];
-                    let fx = bx * sym.sx, fz = bz * sym.sz;
+                    let fx = bx * sym.sx, fy = by * sym.sy, fz = bz * sym.sz;
                     let rot = 0;
                     if (sym.p > 0) {
                         rot = sym.p * 2 * Math.PI / polarSymmetry;
                         fx = (bx * sym.sx) * sym.cos + (bz * sym.sz) * sym.sin;
                         fz = -(bx * sym.sx) * sym.sin + (bz * sym.sz) * sym.cos;
                     }
-                    getPreviewGroup(fx, by, fz, sym.sx, sym.sz, step, rot);
+                    getPreviewGroup(fx, fy, fz, sym.sx, sym.sy, sym.sz, step, rot);
                 }
             }
         }
@@ -663,7 +682,7 @@
         }
 
         function syncMirrorProxies(baseMesh, proxies, showMirrors) {
-            if (!baseMesh.visible || !showMirrors || (polarSymmetry === 1 && !mirrorX && !mirrorZ)) {
+            if (!baseMesh.visible || !showMirrors || (polarSymmetry === 1 && !mirrorX && !mirrorY && !mirrorZ)) {
                 for(let i=0; i < proxies.length; i++) proxies[i].visible = false;
                 return;
             }
@@ -672,15 +691,16 @@
 
             for (let i = 0; i < activeSymmetries.length; i++) {
                 const sym = activeSymmetries[i];
-                if (sym.sx === 1 && sym.sz === 1 && sym.p === 0) continue; 
+                if (sym.sx === 1 && sym.sy === 1 && sym.sz === 1 && sym.p === 0) continue; 
                 if (pIdx >= proxies.length) break;
 
                 const proxy = proxies[pIdx++];
                 proxy.visible = true;
 
                 const mx = baseMesh.position.x * sym.sx;
+                const my = baseMesh.position.y * sym.sy;
                 const mz = baseMesh.position.z * sym.sz;
-                let fx = mx, fz = mz, rotAngle = 0;
+                let fx = mx, fy = my, fz = mz, rotAngle = 0;
                 
                 if (sym.p > 0) {
                     fx = mx * sym.cos + mz * sym.sin;
@@ -688,10 +708,11 @@
                     rotAngle = sym.p * 2 * Math.PI / polarSymmetry;
                 }
 
-                proxy.position.set(fx, baseMesh.position.y, fz);
+                proxy.position.set(fx, fy, fz);
                 
                 proxy.scale.copy(baseMesh.scale);
                 proxy.scale.x *= sym.sx;
+                proxy.scale.y *= sym.sy;
                 proxy.scale.z *= sym.sz;
 
                 proxy.quaternion.copy(baseMesh.quaternion);
@@ -957,7 +978,6 @@
                 drawButton(leftMenuCtx, 270, 360, 50, 50, '-', false); drawButton(leftMenuCtx, 330, 360, 100, 50, `DThk: ${triangleDivThick}`, false); drawButton(leftMenuCtx, 440, 360, 50, 50, '+', false);
                 drawButton(leftMenuCtx, 20, 420, 220, 50, `Divs: ${triangleGridMode.toUpperCase()}`, false);
             } else if (activeTool === 'icosahedron') {
-                // New layout for platonic types: 2 rows of 2 buttons
                 drawButton(leftMenuCtx, 20, 60, 225, 45, 'TETRA', platonicType === 'tetrahedron');
                 drawButton(leftMenuCtx, 265, 60, 225, 45, 'OCTA', platonicType === 'octahedron');
                 drawButton(leftMenuCtx, 20, 110, 225, 45, 'ICOSA', platonicType === 'icosahedron');
@@ -968,7 +988,6 @@
                 drawButton(leftMenuCtx, 330, 165, 160, 50, 'WIRE', icosahedronMode === 'wireframe');
                 
                 drawButton(leftMenuCtx, 20, 225, 220, 50, `LOCK RATIO: ${icosahedronLock ? 'ON' : 'OFF'}`, icosahedronLock);
-                // Subdivision works for all platonic shapes except Dodeca (which is specialized)
                 if (platonicType !== 'dodecahedron') {
                     drawButton(leftMenuCtx, 250, 225, 50, 50, '-', false);
                     drawButton(leftMenuCtx, 310, 225, 130, 50, `Divs: ${icosahedronDivs}`, false);
@@ -990,8 +1009,7 @@
             } else if (activeTool === 'select') {
                 if (!hasSelection) {
                     drawButton(leftMenuCtx, 50, 70, 200, 40, 'BOX MODE', selectMode === 'box'); drawButton(leftMenuCtx, 262, 70, 200, 40, 'CONNECTED', selectMode === 'connected');
-                    drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'material'); drawButton(leftMenuCtx, 330, 120, 132, 40, 'MATERIAL', selectFilter === 'material');
-                    leftMenuCtx.fillStyle = '#aaa'; leftMenuCtx.font = '16px sans-serif'; leftMenuCtx.fillText('Use Right Trigger on target to start selecting.', 256, 190);
+                    drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'color'); drawButton(leftMenuCtx, 330, 120, 132, 40, 'MATERIAL', selectFilter === 'material');
                 } else {
                     const btnW = 80;
                     drawButton(leftMenuCtx, 50, 60, btnW, 30, 'MOVE', transformMode === 'move' && !isSettingPivot);
@@ -1013,9 +1031,6 @@
                     } else {
                         drawButton(leftMenuCtx, 50, 270, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 270, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 270, 132, 40, 'DELETE', false);
                     }
-                    if (isSettingPivot) {
-                        leftMenuCtx.fillStyle = '#ffff00'; leftMenuCtx.font = 'bold 18px sans-serif'; leftMenuCtx.fillText('Use Right Trigger to Pick Pivot Point.', 256, 495);
-                    }
                 }
             }
             leftMenuTexture.needsUpdate = true;
@@ -1036,11 +1051,6 @@
                             for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat); 
                         } else { 
                             for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, false, null); 
-                        }
-                        if (transformMode !== 'draw' && transformMode !== 'paint') {
-                            selectionGroup.position.set(0,0,0);
-                            selectionGroup.updateMatrix();
-                            selectionOffset.set(0,0,0);
                         }
                     }
                 }
@@ -1335,8 +1345,12 @@
             globalMenuCtx.fillStyle = '#4facfe'; globalMenuCtx.font = 'bold 28px sans-serif'; globalMenuCtx.textAlign = 'center'; globalMenuCtx.fillText(`Global Settings`, 256, 40);
             drawButton(globalMenuCtx, 40, 70, 200, 50, `V-Lock: ${isVerticalLock ? 'ON' : 'OFF'}`, isVerticalLock);
             drawButton(globalMenuCtx, 272, 70, 200, 50, `Clear Inside: ${clearInterior ? 'ON' : 'OFF'}`, clearInterior);
-            drawButton(globalMenuCtx, 40, 140, 200, 50, `Mirror X: ${mirrorX ? 'ON' : 'OFF'}`, mirrorX);
-            drawButton(globalMenuCtx, 272, 140, 200, 50, `Mirror Z: ${mirrorZ ? 'ON' : 'OFF'}`, mirrorZ);
+            
+            // Compact Mirror Layout: MX, MY, MZ
+            drawButton(globalMenuCtx, 40, 140, 138, 50, `MX: ${mirrorX ? 'ON' : 'OFF'}`, mirrorX);
+            drawButton(globalMenuCtx, 187, 140, 138, 50, `MY: ${mirrorY ? 'ON' : 'OFF'}`, mirrorY);
+            drawButton(globalMenuCtx, 334, 140, 138, 50, `MZ: ${mirrorZ ? 'ON' : 'OFF'}`, mirrorZ);
+            
             drawButton(globalMenuCtx, 40, 210, 50, 50, '-', false);
             drawButton(globalMenuCtx, 100, 210, 312, 50, `Polar Symmetry: ${polarSymmetry}`, polarSymmetry > 1);
             drawButton(globalMenuCtx, 422, 210, 50, 50, '+', false);
@@ -1347,8 +1361,15 @@
         }
 
         function handleGlobalMenuClick(cx, cy) {
-            if (cy >= 70 && cy <= 120) { if (cx >= 40 && cx <= 240) isVerticalLock = !isVerticalLock; if (cx >= 272 && cx <= 472) clearInterior = !clearInterior; }
-            if (cy >= 140 && cy <= 190) { if (cx >= 40 && cx <= 240) { mirrorX = !mirrorX; updateActiveSymmetries(); } if (cx >= 272 && cx <= 472) { mirrorZ = !mirrorZ; updateActiveSymmetries(); } }
+            if (cy >= 70 && cy <= 120) { 
+                if (cx >= 40 && cx <= 240) isVerticalLock = !isVerticalLock; 
+                if (cx >= 272 && cx <= 472) clearInterior = !clearInterior; 
+            }
+            if (cy >= 140 && cy <= 190) { 
+                if (cx >= 40 && cx <= 178) { mirrorX = !mirrorX; updateActiveSymmetries(); } 
+                if (cx >= 187 && cx <= 325) { mirrorY = !mirrorY; updateActiveSymmetries(); }
+                if (cx >= 334 && cx <= 472) { mirrorZ = !mirrorZ; updateActiveSymmetries(); } 
+            }
             if (cy >= 210 && cy <= 260) { if (cx >= 40 && cx <= 90) polarSymmetry = Math.max(1, polarSymmetry - 1); if (cx >= 422 && cx <= 472) polarSymmetry = Math.min(16, polarSymmetry + 1); if (cx >= 100 && cx <= 412) polarSymmetry = polarSymmetry === 1 ? 4 : 1; updatePolarArrays(); }
             if (cy >= 280 && cy <= 330) { if (cx >= 40 && cx <= 240) exportMode = 'boxes'; if (cx >= 272 && cx <= 472) exportMode = 'mesh'; }
             if (cy >= 350 && cy <= 410 && cx >= 40 && cx <= 472) exportToOBJ();
@@ -1443,18 +1464,28 @@
 
         function setVoxel(gx, gy, gz, isPainting, color, matOverride = -1) {
             for (let i = 0; i < activeSymmetries.length; i++) {
-                const sym = activeSymmetries[i]; const mx = gx * sym.sx, mz = gz * sym.sz; let px = mx, pz = mz;
-                if (sym.p > 0) { px = Math.round(mx * sym.cos + mz * sym.sin); pz = Math.round(-mx * sym.sin + mz * sym.cos); }
-                setVoxelCore(px, gy, pz, isPainting, color, matOverride);
+                const sym = activeSymmetries[i]; 
+                const mx = gx * sym.sx, my = gy * sym.sy, mz = gz * sym.sz; 
+                let px = mx, pz = mz;
+                if (sym.p > 0) { 
+                    px = Math.round(mx * sym.cos + mz * sym.sin); 
+                    pz = Math.round(-mx * sym.sin + mz * sym.cos); 
+                }
+                setVoxelCore(px, my, pz, isPainting, color, matOverride);
             }
         }
 
         function recolorVoxelSet(gx, gy, gz, color, matOverride = -1) {
             const drawMatType = matOverride !== -1 ? matOverride : matTypes[0]; 
             for (let i = 0; i < activeSymmetries.length; i++) {
-                const sym = activeSymmetries[i]; const mx = gx * sym.sx, mz = gz * sym.sz; let px = mx, pz = mz;
-                if (sym.p > 0) { px = Math.round(mx * sym.cos + mz * sym.sin); pz = Math.round(-mx * sym.sin + mz * sym.cos); }
-                recolorVoxel(px, gy, pz, color, drawMatType);
+                const sym = activeSymmetries[i]; 
+                const mx = gx * sym.sx, my = gy * sym.sy, mz = gz * sym.sz; 
+                let px = mx, pz = mz;
+                if (sym.p > 0) { 
+                    px = Math.round(mx * sym.cos + mz * sym.sin); 
+                    pz = Math.round(-mx * sym.sin + mz * sym.cos); 
+                }
+                recolorVoxel(px, my, pz, color, drawMatType);
             }
         }
 
@@ -1706,13 +1737,11 @@
                 const phi = (1 + Math.sqrt(5)) / 2, inv = 1 / phi;
                 vertices = [ new THREE.Vector3(1,1,1).normalize(), new THREE.Vector3(1,1,-1).normalize(), new THREE.Vector3(1,-1,1).normalize(), new THREE.Vector3(1,-1,-1).normalize(), new THREE.Vector3(-1,1,1).normalize(), new THREE.Vector3(-1,1,-1).normalize(), new THREE.Vector3(-1,-1,1).normalize(), new THREE.Vector3(-1,-1,-1).normalize(), new THREE.Vector3(0,inv,phi).normalize(), new THREE.Vector3(0,inv,-phi).normalize(), new THREE.Vector3(0,-inv,phi).normalize(), new THREE.Vector3(0,-inv,-phi).normalize(), new THREE.Vector3(inv,phi,0).normalize(), new THREE.Vector3(inv,-phi,0).normalize(), new THREE.Vector3(-inv,phi,0).normalize(), new THREE.Vector3(-inv,-phi,0).normalize(), new THREE.Vector3(phi,0,inv).normalize(), new THREE.Vector3(phi,0,-inv).normalize(), new THREE.Vector3(-phi,0,inv).normalize(), new THREE.Vector3(-phi,0,-inv).normalize() ];
                 const pentagons = [ [0,12,14,4,8], [0,8,10,2,16], [0,16,17,1,12], [1,9,11,3,17], [1,12,14,5,9], [2,13,15,6,10], [2,16,17,3,13], [3,11,7,15,13], [4,14,5,19,18], [4,18,6,10,8], [5,19,7,11,9], [6,18,19,7,15] ];
-                // Convert pentagons to triangles for standard processing
                 const triFaces = [];
                 for(let p of pentagons) { triFaces.push([p[0],p[1],p[2]], [p[0],p[2],p[3]], [p[0],p[3],p[4]]); wireframeEdges.push([p[0],p[1]],[p[1],p[2]],[p[2],p[3]],[p[3],p[4]],[p[4],p[0]]); }
                 faces = triFaces;
             }
 
-            // Subdivision for all triangle-based types (Tetra, Octa, Icosa)
             if (platonicType !== 'dodecahedron') {
                 let cache = new Map(); 
                 function getMid(v1, v2) { 
@@ -1731,7 +1760,6 @@
                 for (const face of faces) wireframeEdges.push([face[0], face[1]], [face[1], face[2]], [face[2], face[0]]);
             }
 
-            // Scale vertices to actual volume
             for(let i=0; i<vertices.length; i++) { vertices[i].x = cX + vertices[i].x * rX; vertices[i].y = cY + vertices[i].y * rY; vertices[i].z = cZ + vertices[i].z * rZ; }
             
             const sizeX = maxX - minX + 1, sizeZ = maxZ - minZ + 1, minYGrid = new Int32Array(sizeX * sizeZ).fill(999999), maxYGrid = new Int32Array(sizeX * sizeZ).fill(-999999);
