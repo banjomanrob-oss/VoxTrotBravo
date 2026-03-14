@@ -186,6 +186,7 @@
         // --- Symmetry & Settings ---
         let isVerticalLock = true;
         let clearInterior = false; 
+        let passthroughEnabled = false;
         let mirrorX = false;
         let mirrorY = false;
         let mirrorZ = false;
@@ -321,6 +322,7 @@
             canvas: canvas, 
             context: gl, 
             antialias: true, 
+            alpha: true, // Required for passthrough transparency
             powerPreference: "high-performance" 
         });
         renderer.setPixelRatio(window.devicePixelRatio);
@@ -1343,10 +1345,13 @@
         function updateGlobalMenuTexture() {
             globalMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; globalMenuCtx.fillRect(0, 0, 512, 512);
             globalMenuCtx.fillStyle = '#4facfe'; globalMenuCtx.font = 'bold 28px sans-serif'; globalMenuCtx.textAlign = 'center'; globalMenuCtx.fillText(`Global Settings`, 256, 40);
-            drawButton(globalMenuCtx, 40, 70, 200, 50, `V-Lock: ${isVerticalLock ? 'ON' : 'OFF'}`, isVerticalLock);
-            drawButton(globalMenuCtx, 272, 70, 200, 50, `Clear Inside: ${clearInterior ? 'ON' : 'OFF'}`, clearInterior);
             
-            // Compact Mirror Layout: MX, MY, MZ
+            // Row 1: V-Lock, Inside, Passthrough
+            drawButton(globalMenuCtx, 40, 70, 138, 50, `V-Lock: ${isVerticalLock ? 'ON' : 'OFF'}`, isVerticalLock);
+            drawButton(globalMenuCtx, 187, 70, 138, 50, `Inside: ${clearInterior ? 'ON' : 'OFF'}`, clearInterior);
+            drawButton(globalMenuCtx, 334, 70, 138, 50, `PASS: ${passthroughEnabled ? 'ON' : 'OFF'}`, passthroughEnabled);
+
+            // Row 2: MX, MY, MZ
             drawButton(globalMenuCtx, 40, 140, 138, 50, `MX: ${mirrorX ? 'ON' : 'OFF'}`, mirrorX);
             drawButton(globalMenuCtx, 187, 140, 138, 50, `MY: ${mirrorY ? 'ON' : 'OFF'}`, mirrorY);
             drawButton(globalMenuCtx, 334, 140, 138, 50, `MZ: ${mirrorZ ? 'ON' : 'OFF'}`, mirrorZ);
@@ -1362,8 +1367,9 @@
 
         function handleGlobalMenuClick(cx, cy) {
             if (cy >= 70 && cy <= 120) { 
-                if (cx >= 40 && cx <= 240) isVerticalLock = !isVerticalLock; 
-                if (cx >= 272 && cx <= 472) clearInterior = !clearInterior; 
+                if (cx >= 40 && cx <= 178) isVerticalLock = !isVerticalLock; 
+                if (cx >= 187 && cx <= 325) clearInterior = !clearInterior; 
+                if (cx >= 334 && cx <= 472) { passthroughEnabled = !passthroughEnabled; updatePassthrough(); }
             }
             if (cy >= 140 && cy <= 190) { 
                 if (cx >= 40 && cx <= 178) { mirrorX = !mirrorX; updateActiveSymmetries(); } 
@@ -1373,6 +1379,17 @@
             if (cy >= 210 && cy <= 260) { if (cx >= 40 && cx <= 90) polarSymmetry = Math.max(1, polarSymmetry - 1); if (cx >= 422 && cx <= 472) polarSymmetry = Math.min(16, polarSymmetry + 1); if (cx >= 100 && cx <= 412) polarSymmetry = polarSymmetry === 1 ? 4 : 1; updatePolarArrays(); }
             if (cy >= 280 && cy <= 330) { if (cx >= 40 && cx <= 240) exportMode = 'boxes'; if (cx >= 272 && cx <= 472) exportMode = 'mesh'; }
             if (cy >= 350 && cy <= 410 && cx >= 40 && cx <= 472) exportToOBJ();
+            globalMenuNeedsUpdate = true;
+        }
+
+        function updatePassthrough() {
+            if (passthroughEnabled) {
+                scene.background = null;
+                renderer.setClearAlpha(0);
+            } else {
+                scene.background = new THREE.Color(0x1a1a2e);
+                renderer.setClearAlpha(1);
+            }
             globalMenuNeedsUpdate = true;
         }
 
@@ -1520,7 +1537,7 @@
             for (let x = minX; x <= maxX; x++) {
                 const dx = x - cx; for (let y = minY; y <= maxY; y++) {
                     const dy = y - cy; for (let z = minZ; z <= maxZ; z++) {
-                        const dz = z - cz, srcX = Math.round(cx + dx * inv0 + dy * inv4 + dz * inv8), srcY = Math.round(cy + dx * inv1 + dy * inv5 + dz * inv9), srcZ = Math.round(cz + dx * inv2 + dy * inv6 + dz * inv10), origVoxel = origMap.get((srcX + 32768) + (srcY + 32768) * 65536 + (srcZ + 32768) * 4294967296);
+                        const dz = z - cz, srcX = Math.round(cx + dx * inv0 + dy * inv4 + dz * inv8), srcY = Math.round(cy + dx * inv1 + dy * inv5 + inv9), srcZ = Math.round(cz + dx * inv2 + dy * inv6 + dz * inv10), origVoxel = origMap.get((srcX + 32768) + (srcY + 32768) * 65536 + (srcZ + 32768) * 4294967296);
                         if (origVoxel) selectedVoxels.push({ x: x, y: y, z: z, color: origVoxel.color, mat: origVoxel.mat });
                     }
                 }
@@ -1588,7 +1605,7 @@
                     for(let v of selectedVoxels) { tempPos.set(v.x - pCX, v.y - pCY, v.z - pCZ); tempPos.applyMatrix4(tempSMat); const rx = pCX + offX * step + tempPos.x, ry = pCY + offY * step + tempPos.y, rz = pCZ + offZ * step + tempPos.z; if (rx < minX) minX = rx; if (rx > maxX) maxX = rx; if (ry < minY) minY = ry; if (ry > maxY) maxY = ry; if (rz < minZ) minZ = rz; if (rz > maxZ) maxZ = rz; }
                     minX = Math.floor(minX) - 1; maxX = Math.ceil(maxX) + 1; minY = Math.floor(minY) - 1; maxY = Math.ceil(maxY) + 1; minZ = Math.floor(minZ) - 1; maxZ = Math.ceil(maxZ) + 1;
                     const e = tempInvMat.elements, inv0 = e[0], inv4 = e[4], inv8 = e[8], inv1 = e[1], inv5 = e[5], inv9 = e[9], inv2 = e[2], inv6 = e[6], inv10 = e[10], tgtCX = pCX + offX * step, tgtCY = pCY + offY * step, tgtCZ = pCZ + offZ * step;
-                    for (let x = minX; x <= maxX; x++) { const dx = x - tgtCX; for (let y = minY; y <= maxY; y++) { const dy = y - tgtCY; for (let z = minZ; z <= maxZ; z++) { const dz = z - tgtCZ, srcX = Math.round(pCX + dx * inv0 + dy * inv4 + dz * inv8), srcY = Math.round(pCY + dx * inv1 + dy * inv5 + dz * inv9), srcZ = Math.round(cz + dx * inv2 + dy * inv6 + dz * inv10), origVoxel = origMap.get((srcX + 32768) + (srcY + 32768) * 65536 + (srcZ + 32768) * 4294967296); if (origVoxel) setVoxel(x, y, z, true, origVoxel.color, origVoxel.mat); } } }
+                    for (let x = minX; x <= maxX; x++) { const dx = x - tgtCX; for (let y = minY; y <= maxY; y++) { const dy = y - tgtCY; for (let z = minZ; z <= maxZ; z++) { const dz = z - tgtCZ, srcX = Math.round(pCX + dx * inv0 + dy * inv4 + dz * inv8), srcY = Math.round(pCY + dx * inv1 + dy * inv5 + inv9), srcZ = Math.round(cz + dx * inv2 + dy * inv6 + dz * inv10), origVoxel = origMap.get((srcX + 32768) + (srcY + 32768) * 65536 + (srcZ + 32768) * 4294967296); if (origVoxel) setVoxel(x, y, z, true, origVoxel.color, origVoxel.mat); } } }
                 }
             } else if (transformMode === 'move') { for(let v of selectedVoxels) setVoxel(v.x + offX, v.y + offY, v.z + offZ, true, v.color, v.mat); }
             baseSelection.length = selectedVoxels.length = 0; hasSelection = selectionGroup.visible = pivotIndicator.visible = isSettingPivot = false; selectionGroup.position.set(0,0,0); selectionOffset.set(0,0,0); leftMenuNeedsUpdate = true;
@@ -1657,7 +1674,7 @@
                 const tV = v / stepsV; sheetPosL.copy(pL1).lerp(pL2, tV); sheetPosR.copy(pR1).lerp(pR2, tV); const distU = sheetPosL.distanceTo(sheetPosR), stepsU = Math.max(1, Math.ceil(distU / (VOXEL_SIZE * 0.25)));
                 for (let u = 0; u <= stepsU; u++) {
                     const tU = u / stepsU; tempPos.copy(sheetPosL).lerp(sheetPosR, tU); const cx = Math.round(tempPos.x / VOXEL_SIZE), cy = Math.round(tempPos.y / VOXEL_SIZE), cz = Math.round(tempPos.z / VOXEL_SIZE);
-                    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
+                    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dx <= r; dz++) {
                         if (!isInside(dx, dy, dz)) continue;
                         if (brushVolume === 'shell' && r > 0) { const isSurface = !isInside(dx+1, dy, dz) || !isInside(dx-1, dy, dz) || !isInside(dx, dy+1, dz) || !isInside(dx, dy-1, dz) || !isInside(dx, dy, dz+1) || !isInside(dx, dy, dz-1); if (!isSurface) continue; }
                         const gx = cx + dx, gy = cy + dy, gz = cz + dz, hash = (gx + 32768) + (gy + 32768) * 65536 + (gz + 32768) * 4294967296;
