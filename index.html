@@ -122,7 +122,7 @@
         let icosahedronMode = 'wireframe';
         let icosahedronDivs = 1;
         let icosahedronLock = true;
-        let platonicType = 'icosahedron'; // 'tetrahedron', 'icosahedron' or 'dodecahedron'
+        let platonicType = 'icosahedron'; // 'tetrahedron', 'octahedron', 'icosahedron', 'dodecahedron'
         
         let wireWidth = 1; 
         let wireFill = true; 
@@ -294,6 +294,7 @@
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a2e);
 
+        // Near plane 0.25 improves depth buffer precision
         const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.25, 1000);
         camera.position.set(0, 1.6, 3);
 
@@ -309,6 +310,7 @@
 
         document.body.appendChild(VRButton.createButton(renderer));
 
+        // --- Quest 3 PCVR Specific Optimizations ---
         renderer.xr.addEventListener('sessionstart', () => {
             const session = renderer.xr.getSession();
             if (session) {
@@ -831,7 +833,7 @@
             else linePreviewMat.color.setHex(0xff0055);
         }
 
-        // --- Controller Handlers ---
+        // --- PCVR CONTROLLERS ---
         let xrRight = null; let xrLeft = null;
         let gripRight = null; let gripLeft = null;
 
@@ -858,7 +860,7 @@
         function drawButton(ctx, x, y, w, h, text, isActive) {
             ctx.fillStyle = isActive ? '#4facfe' : '#333'; ctx.fillRect(x, y, w, h);
             ctx.strokeStyle = isActive ? '#fff' : '#888'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
-            ctx.fillStyle = '#fff'; ctx.font = '20px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x + w/2, y + h/2);
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x + w/2, y + h/2);
         }
 
         function drawSlider(ctx, x, y, w, h, label, val, min, max, format = '') {
@@ -939,8 +941,7 @@
                     drawButton(leftMenuCtx, 330, 240, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill);
                 }
             } else if (activeTool === 'triangle') {
-                drawButton(leftMenuCtx, 50, 60, 200, 50, 'CONE', triangleType === 'cone'); 
-                drawButton(leftMenuCtx, 262, 60, 200, 50, 'PYRAMID', triangleType === 'pyramid');
+                drawButton(leftMenuCtx, 20, 60, 140, 50, 'CONE', triangleType === 'cone'); drawButton(leftMenuCtx, 170, 60, 150, 50, 'TETRA', triangleType === 'tetra'); drawButton(leftMenuCtx, 330, 60, 160, 50, 'PYRAMID', triangleType === 'pyramid');
                 drawButton(leftMenuCtx, 20, 120, 140, 50, 'SOLID', triangleMode === 'solid'); drawButton(leftMenuCtx, 170, 120, 150, 50, 'SHELL', triangleMode === 'shell'); drawButton(leftMenuCtx, 330, 120, 160, 50, 'WIRE', triangleMode === 'wireframe');
                 drawButton(leftMenuCtx, 20, 180, 140, 50, 'AXIS: X', triangleAxis === 'X'); drawButton(leftMenuCtx, 170, 180, 150, 50, 'AXIS: Y', triangleAxis === 'Y'); drawButton(leftMenuCtx, 330, 180, 160, 50, 'AXIS: Z', triangleAxis === 'Z');
                 if (triangleType === 'pyramid') {
@@ -956,24 +957,29 @@
                 drawButton(leftMenuCtx, 270, 360, 50, 50, '-', false); drawButton(leftMenuCtx, 330, 360, 100, 50, `DThk: ${triangleDivThick}`, false); drawButton(leftMenuCtx, 440, 360, 50, 50, '+', false);
                 drawButton(leftMenuCtx, 20, 420, 220, 50, `Divs: ${triangleGridMode.toUpperCase()}`, false);
             } else if (activeTool === 'icosahedron') {
-                drawButton(leftMenuCtx, 20, 60, 150, 50, 'TETRA', platonicType === 'tetrahedron');
-                drawButton(leftMenuCtx, 180, 60, 150, 50, 'ICOSA', platonicType === 'icosahedron');
-                drawButton(leftMenuCtx, 340, 60, 150, 50, 'DODECA', platonicType === 'dodecahedron');
+                // New layout for platonic types: 2 rows of 2 buttons
+                drawButton(leftMenuCtx, 20, 60, 225, 45, 'TETRA', platonicType === 'tetrahedron');
+                drawButton(leftMenuCtx, 265, 60, 225, 45, 'OCTA', platonicType === 'octahedron');
+                drawButton(leftMenuCtx, 20, 110, 225, 45, 'ICOSA', platonicType === 'icosahedron');
+                drawButton(leftMenuCtx, 265, 110, 225, 45, 'DODECA', platonicType === 'dodecahedron');
 
-                drawButton(leftMenuCtx, 20, 120, 140, 50, 'SOLID', icosahedronMode === 'solid');
-                drawButton(leftMenuCtx, 170, 120, 150, 50, 'SHELL', icosahedronMode === 'shell');
-                drawButton(leftMenuCtx, 330, 120, 160, 50, 'WIRE', icosahedronMode === 'wireframe');
-                drawButton(leftMenuCtx, 20, 180, 220, 50, `LOCK RATIO: ${icosahedronLock ? 'ON' : 'OFF'}`, icosahedronLock);
-                if (platonicType !== 'tetrahedron') {
-                    drawButton(leftMenuCtx, 250, 180, 50, 50, '-', false);
-                    drawButton(leftMenuCtx, 310, 180, 130, 50, `Divs: ${icosahedronDivs}`, false);
-                    drawButton(leftMenuCtx, 450, 180, 42, 50, '+', false);
+                drawButton(leftMenuCtx, 20, 165, 140, 50, 'SOLID', icosahedronMode === 'solid');
+                drawButton(leftMenuCtx, 170, 165, 150, 50, 'SHELL', icosahedronMode === 'shell');
+                drawButton(leftMenuCtx, 330, 165, 160, 50, 'WIRE', icosahedronMode === 'wireframe');
+                
+                drawButton(leftMenuCtx, 20, 225, 220, 50, `LOCK RATIO: ${icosahedronLock ? 'ON' : 'OFF'}`, icosahedronLock);
+                // Subdivision works for all platonic shapes except Dodeca (which is specialized)
+                if (platonicType !== 'dodecahedron') {
+                    drawButton(leftMenuCtx, 250, 225, 50, 50, '-', false);
+                    drawButton(leftMenuCtx, 310, 225, 130, 50, `Divs: ${icosahedronDivs}`, false);
+                    drawButton(leftMenuCtx, 450, 225, 42, 50, '+', false);
                 }
+
                 if (icosahedronMode === 'wireframe') {
-                    drawButton(leftMenuCtx, 20, 240, 50, 50, '-', false);
-                    drawButton(leftMenuCtx, 80, 240, 160, 50, `Thick: ${wireWidth}`, false);
-                    drawButton(leftMenuCtx, 250, 240, 50, 50, '+', false);
-                    drawButton(leftMenuCtx, 330, 240, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill);
+                    drawButton(leftMenuCtx, 20, 285, 50, 50, '-', false);
+                    drawButton(leftMenuCtx, 80, 285, 160, 50, `Thick: ${wireWidth}`, false);
+                    drawButton(leftMenuCtx, 250, 285, 50, 50, '+', false);
+                    drawButton(leftMenuCtx, 330, 285, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill);
                 }
             } else if (activeTool === 'plane') {
                 drawButton(leftMenuCtx, 30, 70, 150, 50, `OUTLINE: ${planeOutline?'ON':'OFF'}`, planeOutline); drawButton(leftMenuCtx, 190, 70, 50, 50, '-', false); drawButton(leftMenuCtx, 250, 70, 160, 50, `O-Thick: ${planeOutlineThick}`, false); drawButton(leftMenuCtx, 420, 70, 50, 50, '+', false);
@@ -984,7 +990,7 @@
             } else if (activeTool === 'select') {
                 if (!hasSelection) {
                     drawButton(leftMenuCtx, 50, 70, 200, 40, 'BOX MODE', selectMode === 'box'); drawButton(leftMenuCtx, 262, 70, 200, 40, 'CONNECTED', selectMode === 'connected');
-                    drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'color'); drawButton(leftMenuCtx, 330, 120, 132, 40, 'MATERIAL', selectFilter === 'material');
+                    drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'material'); drawButton(leftMenuCtx, 330, 120, 132, 40, 'MATERIAL', selectFilter === 'material');
                     leftMenuCtx.fillStyle = '#aaa'; leftMenuCtx.font = '16px sans-serif'; leftMenuCtx.fillText('Use Right Trigger on target to start selecting.', 256, 190);
                 } else {
                     const btnW = 80;
@@ -1049,7 +1055,7 @@
                 if (cy >= 120 && cy <= 160) { if (cx >= 50 && cx <= 180) selectFilter = 'all'; if (cx >= 190 && cx <= 320) selectFilter = 'color'; if (cx >= 330 && cx <= 462) selectFilter = 'material'; }
             } else if (activeTool === 'triangle') {
                 if (cy >= 60 && cy <= 110) {
-                    if (cx >= 50 && cx <= 250) triangleType = 'cone'; if (cx >= 262 && cx <= 462) triangleType = 'pyramid';
+                    if (cx >= 20 && cx <= 160) triangleType = 'cone'; if (cx >= 170 && cx <= 320) triangleType = 'tetra'; if (cx >= 330 && cx <= 490) triangleType = 'pyramid';
                 } else if (cy >= 120 && cy <= 170) {
                     if (cx >= 20 && cx <= 160) triangleMode = 'solid'; if (cx >= 170 && cx <= 320) triangleMode = 'shell'; if (cx >= 330 && cx <= 490) triangleMode = 'wireframe';
                 } else if (cy >= 180 && cy <= 230) {
@@ -1101,21 +1107,23 @@
                     }
                 }
             } else if (activeTool === 'icosahedron') {
-                if (cy >= 60 && cy <= 110) {
-                    if (cx >= 20 && cx <= 170) platonicType = 'tetrahedron';
-                    if (cx >= 180 && cx <= 330) platonicType = 'icosahedron';
-                    if (cx >= 340 && cx <= 490) platonicType = 'dodecahedron';
-                } else if (cy >= 120 && cy <= 170) {
+                if (cy >= 60 && cy <= 105) {
+                    if (cx >= 20 && cx <= 245) platonicType = 'tetrahedron';
+                    if (cx >= 265 && cx <= 490) platonicType = 'octahedron';
+                } else if (cy >= 110 && cy <= 155) {
+                    if (cx >= 20 && cx <= 245) platonicType = 'icosahedron';
+                    if (cx >= 265 && cx <= 490) platonicType = 'dodecahedron';
+                } else if (cy >= 165 && cy <= 215) {
                     if (cx >= 20 && cx <= 160) icosahedronMode = 'solid';
                     if (cx >= 170 && cx <= 320) icosahedronMode = 'shell';
                     if (cx >= 330 && cx <= 490) icosahedronMode = 'wireframe';
-                } else if (cy >= 180 && cy <= 230) {
+                } else if (cy >= 225 && cy <= 275) {
                     if (cx >= 20 && cx <= 240) icosahedronLock = !icosahedronLock;
-                    if (platonicType !== 'tetrahedron') {
+                    if (platonicType !== 'dodecahedron') {
                         if (cx >= 250 && cx <= 300) icosahedronDivs = Math.max(1, icosahedronDivs - 1);
                         if (cx >= 450 && cx <= 492) icosahedronDivs = Math.min(5, icosahedronDivs + 1);
                     }
-                } else if (cy >= 240 && cy <= 290 && icosahedronMode === 'wireframe') {
+                } else if (cy >= 285 && cy <= 335 && icosahedronMode === 'wireframe') {
                     if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1);
                     if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
                     if (cx >= 330 && cx <= 490) wireFill = !wireFill;
@@ -1366,7 +1374,7 @@
                 const localIdx = (gx & 31) | ((gy & 31) << 5) | ((gz & 31) << 10); return chunk.voxelMatMap[localIdx] !== -1;
             }
             const mat4 = new THREE.Matrix4(), pos = new THREE.Vector3(), col = new THREE.Color(), matNames = ["Voxel_Solid", "Voxel_Glass", "Voxel_Emission"];
-            let vertAcc = [], faceAcc = [], vertexOffset = 1; const vertMap = new Map();
+            let vertAcc = [], faceAcc = [], vertexOffset = 1; const vertMap = new Map(), worldMat = worldGroup.matrixWorld, dirLen = dirs.length;
             for (let matIdx = 0; matIdx < 3; matIdx++) {
                 faceAcc.push(`\ng ${matNames[matIdx]}\nusemtl ${matNames[matIdx]}\n`);
                 chunks.forEach(chunk => {
@@ -1376,7 +1384,7 @@
                         const lx = localIdx & 31, ly = (localIdx >> 5) & 31, lz = localIdx >> 10, gx = (chunk.cx * CHUNK_SIZE) + lx, gy = (chunk.cy * CHUNK_SIZE) + ly, gz = (chunk.cz * CHUNK_SIZE) + lz;
                         layer.mesh.getMatrixAt(i, mat4); mat4.premultiply(layer.mesh.matrixWorld); layer.mesh.getColorAt(i, col);
                         const rStr = col.r.toFixed(3), gStr = col.g.toFixed(3), bStr = col.b.toFixed(3);
-                        for (let d = 0; d < dirs.length; d++) {
+                        for (let d = 0; d < dirLen; d++) {
                             const dir = dirs[d];
                             if (!hasVoxel(gx + dir.d[0], gy + dir.d[1], gz + dir.d[2])) {
                                 const faceIndices = [];
@@ -1683,41 +1691,62 @@
             if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
             const cX = (minX + maxX) / 2, cY = (minY + maxY) / 2, cZ = (minZ + maxZ) / 2, rX = (maxX - minX) / 2, rY = (maxY - minY) / 2, rZ = (maxZ - minZ) / 2;
             let vertices = [], faces = [], wireframeEdges = [];
-            
+
             if (platonicType === 'tetrahedron') {
-                vertices = [ 
-                    new THREE.Vector3(1, 1, 1).normalize(), new THREE.Vector3(1, -1, -1).normalize(),
-                    new THREE.Vector3(-1, 1, -1).normalize(), new THREE.Vector3(-1, -1, 1).normalize()
-                ];
-                faces = [ [0,1,2],[0,2,3],[0,3,1],[1,3,2] ];
-                // Wireframe for Tetra
-                for (const face of faces) wireframeEdges.push([face[0], face[1]], [face[1], face[2]], [face[2], face[0]]);
+                vertices = [ new THREE.Vector3(1,1,1).normalize(), new THREE.Vector3(1,-1,-1).normalize(), new THREE.Vector3(-1,1,-1).normalize(), new THREE.Vector3(-1,-1,1).normalize() ];
+                faces = [ [0,1,2], [0,2,3], [0,3,1], [1,3,2] ];
+            } else if (platonicType === 'octahedron') {
+                vertices = [ new THREE.Vector3(1,0,0), new THREE.Vector3(-1,0,0), new THREE.Vector3(0,1,0), new THREE.Vector3(0,-1,0), new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,-1) ];
+                faces = [ [0,2,4], [0,4,3], [0,3,5], [0,5,2], [1,2,5], [1,5,3], [1,3,4], [1,4,2] ];
             } else if (platonicType === 'icosahedron') {
                 const t = (1.0 + Math.sqrt(5.0)) / 2.0;
                 vertices = [ new THREE.Vector3(-1,t,0).normalize(), new THREE.Vector3(1,t,0).normalize(), new THREE.Vector3(-1,-t,0).normalize(), new THREE.Vector3(1,-t,0).normalize(), new THREE.Vector3(0,-1,t).normalize(), new THREE.Vector3(0,1,t).normalize(), new THREE.Vector3(0,-1,-t).normalize(), new THREE.Vector3(0,1,-t).normalize(), new THREE.Vector3(t,0,-1).normalize(), new THREE.Vector3(t,0,1).normalize(), new THREE.Vector3(-t,0,-1).normalize(), new THREE.Vector3(-t,0,1).normalize() ];
                 faces = [ [0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1] ];
-                let cache = new Map(); function getMid(v1, v2) { const key = v1 < v2 ? (v1 << 16) | v2 : (v2 << 16) | v1; if (cache.has(key)) return cache.get(key); const p1 = vertices[v1], p2 = vertices[v2], mid = new THREE.Vector3().addVectors(p1, p2).normalize(); vertices.push(mid); const idx = vertices.length - 1; cache.set(key, idx); return idx; }
-                for (let i = 1; i < Math.max(1, icosahedronDivs); i++) {
-                    const next = []; for (const f of faces) { const a = getMid(f[0], f[1]), b = getMid(f[1], f[2]), c = getMid(f[2], f[0]); next.push([f[0], a, c],[f[1], b, a],[f[2], c, b],[a, b, c]); } faces = next;
-                }
-                for (const face of faces) wireframeEdges.push([face[0], face[1]], [face[1], face[2]], [face[2], face[0]]);
-            } else {
+            } else if (platonicType === 'dodecahedron') {
                 const phi = (1 + Math.sqrt(5)) / 2, inv = 1 / phi;
                 vertices = [ new THREE.Vector3(1,1,1).normalize(), new THREE.Vector3(1,1,-1).normalize(), new THREE.Vector3(1,-1,1).normalize(), new THREE.Vector3(1,-1,-1).normalize(), new THREE.Vector3(-1,1,1).normalize(), new THREE.Vector3(-1,1,-1).normalize(), new THREE.Vector3(-1,-1,1).normalize(), new THREE.Vector3(-1,-1,-1).normalize(), new THREE.Vector3(0,inv,phi).normalize(), new THREE.Vector3(0,inv,-phi).normalize(), new THREE.Vector3(0,-inv,phi).normalize(), new THREE.Vector3(0,-inv,-phi).normalize(), new THREE.Vector3(inv,phi,0).normalize(), new THREE.Vector3(inv,-phi,0).normalize(), new THREE.Vector3(-inv,phi,0).normalize(), new THREE.Vector3(-inv,-phi,0).normalize(), new THREE.Vector3(phi,0,inv).normalize(), new THREE.Vector3(phi,0,-inv).normalize(), new THREE.Vector3(-phi,0,inv).normalize(), new THREE.Vector3(-phi,0,-inv).normalize() ];
                 const pentagons = [ [0,12,14,4,8], [0,8,10,2,16], [0,16,17,1,12], [1,9,11,3,17], [1,12,14,5,9], [2,13,15,6,10], [2,16,17,3,13], [3,11,7,15,13], [4,14,5,19,18], [4,18,6,10,8], [5,19,7,11,9], [6,18,19,7,15] ];
-                for(let p of pentagons) { faces.push([p[0],p[1],p[2]], [p[0],p[2],p[3]], [p[0],p[3],p[4]]); wireframeEdges.push([p[0],p[1]],[p[1],p[2]],[p[2],p[3]],[p[3],p[4]],[p[4],p[0]]); }
+                // Convert pentagons to triangles for standard processing
+                const triFaces = [];
+                for(let p of pentagons) { triFaces.push([p[0],p[1],p[2]], [p[0],p[2],p[3]], [p[0],p[3],p[4]]); wireframeEdges.push([p[0],p[1]],[p[1],p[2]],[p[2],p[3]],[p[3],p[4]],[p[4],p[0]]); }
+                faces = triFaces;
             }
-            
+
+            // Subdivision for all triangle-based types (Tetra, Octa, Icosa)
+            if (platonicType !== 'dodecahedron') {
+                let cache = new Map(); 
+                function getMid(v1, v2) { 
+                    const key = v1 < v2 ? (v1 << 16) | v2 : (v2 << 16) | v1; 
+                    if (cache.has(key)) return cache.get(key); 
+                    const p1 = vertices[v1], p2 = vertices[v2], mid = new THREE.Vector3().addVectors(p1, p2).normalize(); 
+                    vertices.push(mid); const idx = vertices.length - 1; cache.set(key, idx); return idx; 
+                }
+                for (let i = 1; i < Math.max(1, icosahedronDivs); i++) {
+                    const next = []; for (const f of faces) { 
+                        const a = getMid(f[0], f[1]), b = getMid(f[1], f[2]), c = getMid(f[2], f[0]); 
+                        next.push([f[0], a, c],[f[1], b, a],[f[2], c, b],[a, b, c]); 
+                    } 
+                    faces = next;
+                }
+                for (const face of faces) wireframeEdges.push([face[0], face[1]], [face[1], face[2]], [face[2], face[0]]);
+            }
+
+            // Scale vertices to actual volume
             for(let i=0; i<vertices.length; i++) { vertices[i].x = cX + vertices[i].x * rX; vertices[i].y = cY + vertices[i].y * rY; vertices[i].z = cZ + vertices[i].z * rZ; }
+            
             const sizeX = maxX - minX + 1, sizeZ = maxZ - minZ + 1, minYGrid = new Int32Array(sizeX * sizeZ).fill(999999), maxYGrid = new Int32Array(sizeX * sizeZ).fill(-999999);
             const updG = (gx, gy, gz) => { if (gx < minX || gx > maxX || gz < minZ || gz > maxZ) return; const idx = (gx - minX) + (gz - minZ) * sizeX; if (gy < minYGrid[idx]) minYGrid[idx] = gy; if (gy > maxYGrid[idx]) maxYGrid[idx] = gy; };
             const drawnSet = new Set();
             const dV = (gx, gy, gz, color, mat) => { if (gx < minX || gx > maxX || gy < minY || gy > maxY || gz < minZ || gz > maxZ) return; const h = (gx + 32768) + (gy + 32768) * 65536 + (gz + 32768) * 4294967296; if (!drawnSet.has(h)) { drawnSet.add(h); setVoxel(gx, gy, gz, isPainting, color, mat); } if (icosahedronMode === 'solid' || clearInterior) updG(gx, gy, gz); };
+            
             function dL(p1, p2, thick, color, mat) { const dist = p1.distanceTo(p2), steps = Math.max(1, Math.ceil(dist * 2.0)), r = thick - 1, rSq = (r + 0.1) * (r + 0.1); for (let i = 0; i <= steps; i++) { tempPos.lerpVectors(p1, p2, i / steps); const cx = Math.round(tempPos.x), cy = Math.round(tempPos.y), cz = Math.round(tempPos.z); for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) { if (dx*dx + dy*dy + dz*dz <= rSq) dV(cx+dx, cy+dy, cz+dz, color, mat); } } }
             function dF(p1, p2, p3, color, mat) { const d12 = p1.distanceTo(p2), d23 = p2.distanceTo(p3), d31 = p3.distanceTo(p1), maxD = Math.max(d12, d23, d31), steps = Math.max(1, Math.ceil(maxD * 2.0)); for (let u = 0; u <= steps; u++) for (let v = 0; v <= steps - u; v++) { const w = steps - u - v, fU = u / steps, fV = v / steps, fW = w / steps, px = Math.round(p1.x * fU + p2.x * fV + p3.x * fW), py = Math.round(p1.y * fU + p2.y * fV + p3.y * fW), pz = Math.round(p1.z * fU + p2.z * fV + p3.z * fW); dV(px, py, pz, color, mat); } }
+            
             const dEdges = new Set();
             for (const edge of wireframeEdges) { const k = edge[0] < edge[1] ? (edge[0] << 16) | edge[1] : (edge[1] << 16) | edge[0]; if (!dEdges.has(k)) { dEdges.add(k); const ep1 = vertices[edge[0]], ep2 = vertices[edge[1]]; dL(ep1, ep2, wireWidth, getDrawColor(Math.round((ep1.x+ep2.x)/2), Math.round((ep1.y+ep2.y)/2), Math.round((ep1.z+ep2.z)/2), minX, maxX, minY, maxY, 1), matTypes[1]); } }
+            
             if (icosahedronMode === 'solid' || icosahedronMode === 'shell' || (icosahedronMode === 'wireframe' && wireFill)) { for (const face of faces) { const p1 = vertices[face[0]], p2 = vertices[face[1]], p3 = vertices[face[2]]; dF(p1, p2, p3, getDrawColor(Math.round((p1.x+p2.x+p3.x)/3), Math.round((p1.y+p2.y+p3.y)/3), Math.round((p1.z+p2.z+p3.z)/3), minX, maxX, minY, maxY, 0), matTypes[0]); } }
+            
             if (icosahedronMode === 'solid' || (clearInterior && isPainting)) { for (let gx = minX; gx <= maxX; gx++) for (let gz = minZ; gz <= maxZ; gz++) { const idx = (gx - minX) + (gz - minZ) * sizeX, min_y = minYGrid[idx], max_y = maxYGrid[idx]; if (min_y <= max_y) for (let gy = min_y; gy <= max_y; gy++) { const h = (gx + 32768) + (gy + 32768) * 65536 + (gz + 32768) * 4294967296; if (!drawnSet.has(h)) { if (icosahedronMode === 'solid') { drawnSet.add(h); setVoxel(gx, gy, gz, isPainting, getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0), matTypes[0]); } else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null); } } } }
             leftMenuNeedsUpdate = true;
         }
@@ -1744,7 +1773,7 @@
             const rMinX = Math.round(startPos.x / VOXEL_SIZE), rMaxX = Math.round(endPos.x / VOXEL_SIZE), rMinY = Math.round(startPos.y / VOXEL_SIZE), rMaxY = Math.round(endPos.y / VOXEL_SIZE), rMinZ = Math.round(startPos.z / VOXEL_SIZE), rMaxZ = Math.round(endPos.z / VOXEL_SIZE), minX = Math.min(rMinX, rMaxX), maxX = Math.max(rMinX, rMaxX), minY = Math.min(rMinY, rMaxY), maxY = Math.max(rMinY, rMaxY), minZ = Math.min(rMinZ, rMaxZ), maxZ = Math.max(rMinZ, rMaxZ);
             if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
             const axMap = { 'X': { minW: minX, maxW: maxX, startW: Math.round(startPos.x / VOXEL_SIZE), endW: rMaxX }, 'Y': { minW: minY, maxW: maxY, startW: Math.round(startPos.y / VOXEL_SIZE), endW: rMaxY }, 'Z': { minW: minZ, maxW: maxZ, startW: Math.round(startPos.z / VOXEL_SIZE), endW: rMaxZ } };
-            const ax = axMap[triangleAxis], isFlipped = ax.startW > ax.endW, baseW = isFlipped ? ax.maxW : ax.minW, cX = (minX+maxX)/2, cY = (minY+maxY)/2, cZ = (minZ+maxZ)/2, rX = (maxX-minX)/2, rY = (maxY-minY)/2, rZ = (maxZ-minZ)/2, N = (triangleType==='cone')?0:pyramidLegs, max_r = N===0?1:1/Math.cos(Math.PI/N), loopMinX = triangleAxis==='X'?minX:Math.floor(cX-rX*max_r), loopMaxX = triangleAxis==='X'?maxX:Math.ceil(cX+rX*max_r), loopMinY = triangleAxis==='Y'?minY:Math.floor(cY-rY*max_r), loopMaxY = triangleAxis==='Y'?maxY:Math.ceil(cY+rY*max_r), loopMinZ = triangleAxis==='Z'?minZ:Math.floor(cZ-rZ*max_r), loopMaxZ = triangleAxis==='Z'?maxZ:Math.ceil(cZ+rZ*max_r), cu = triangleAxis==='X'?cY:cX, cv = triangleAxis==='X'?cZ:(triangleAxis==='Y'?cZ:cY), ru = triangleAxis==='X'?rY:(triangleAxis==='Y'?rX:rX), rv = triangleAxis==='X'?rZ:(triangleAxis==='Y'?rZ:rY), invRu = ru>0?1/ru:0, invRv = rv>0?1/rv:0, PI_N = N===0?0:Math.PI/N, N_legs = N===0?8:N;
+            const ax = axMap[triangleAxis], isFlipped = ax.startW > ax.endW, baseW = isFlipped ? ax.maxW : ax.minW, cX = (minX+maxX)/2, cY = (minY+maxY)/2, cZ = (minZ+maxZ)/2, rX = (maxX-minX)/2, rY = (maxY-minY)/2, rZ = (maxZ-minZ)/2, N = (triangleType==='cone')?0:(triangleType==='tetra'?3:pyramidLegs), max_r = N===0?1:1/Math.cos(Math.PI/N), loopMinX = triangleAxis==='X'?minX:Math.floor(cX-rX*max_r), loopMaxX = triangleAxis==='X'?maxX:Math.ceil(cX+rX*max_r), loopMinY = triangleAxis==='Y'?minY:Math.floor(cY-rY*max_r), loopMaxY = triangleAxis==='Y'?maxY:Math.ceil(cY+rY*max_r), loopMinZ = triangleAxis==='Z'?minZ:Math.floor(cZ-rZ*max_r), loopMaxZ = triangleAxis==='Z'?maxZ:Math.ceil(cZ+rZ*max_r), cu = triangleAxis==='X'?cY:cX, cv = triangleAxis==='X'?cZ:(triangleAxis==='Y'?cZ:cY), ru = triangleAxis==='X'?rY:(triangleAxis==='Y'?rX:rX), rv = triangleAxis==='X'?rZ:(triangleAxis==='Y'?rZ:rY), invRu = ru>0?1/ru:0, invRv = rv>0?1/rv:0, PI_N = N===0?0:Math.PI/N, N_legs = N===0?8:N;
             const isInside = (gx, gy, gz) => { const gw = triangleAxis==='X'?gx:(triangleAxis==='Y'?gy:gz), gu = triangleAxis==='X'?gy:(triangleAxis==='Y'?gx:gx), gv = triangleAxis==='X'?gz:(triangleAxis==='Y'?gz:gy); if (gw < ax.minW || gw > ax.maxW) return false; const h = (ax.maxW===ax.minW)?0:Math.abs(gw - baseW)/(ax.maxW - ax.minW), nu = (gu-cu)*invRu, nv = (gv-cv)*invRv, r_norm = Math.sqrt(nu*nu + nv*nv); if (r_norm === 0) return true; let r_limit = 1.0; if (N !== 0) { const phi = Math.atan2(nv, nu), angle = ((phi + PI_N) % (2*PI_N) + 2*PI_N) % (2*PI_N); r_limit = 1.0 / Math.cos(angle - PI_N); } return r_norm <= r_limit * (1 - h) + 0.001; };
             const divW = new Uint8Array(ax.maxW - ax.minW + 1); if (triangleDivs > 1) { const step = (ax.maxW-ax.minW)/triangleDivs; for (let i = 1; i < triangleDivs; i++) { const center = Math.round(isFlipped ? ax.maxW-i*step : ax.minW+i*step), half = (triangleDivThick-1)/2; for(let v = Math.ceil(center-half); v <= Math.floor(center+half+0.001); v++) { const idx = v-ax.minW; if (idx>=0 && idx<divW.length) divW[idx] = 1; } } }
             for(let gx = loopMinX; gx <= loopMaxX; gx++) for(let gy = loopMinY; gy <= loopMaxY; gy++) for(let gz = loopMinZ; gz <= loopMaxZ; gz++) {
@@ -1784,7 +1813,12 @@
             leftMenuNeedsUpdate = true;
         }
 
-        // --- Controller Event Listeners ---
+        // --- Controller Handlers ---
+        let isDrawing = false, isErasing = false, isColorPicking = false, rightMenuHovered = false, globalMenuHovered = false, leftMenuHovered = false, colorMenuHovered = false;
+        let rightMenuUV = { x: 0, y: 0 }, globalMenuUV = { x: 0, y: 0 }, leftMenuUV = { x: 0, y: 0 }, colorMenuUV = { x: 0, y: 0 }, isRightGripping = false, isLeftGripping = false;
+        const prevRightPos = new THREE.Vector3(), prevLeftPos = new THREE.Vector3(), prevMid = new THREE.Vector3(), prevHandVec = new THREE.Vector3(), rightPos = new THREE.Vector3(), leftPos = new THREE.Vector3(), rightDir = new THREE.Vector3(), leftDir = new THREE.Vector3(), rightTargetLocal = new THREE.Vector3(), leftTargetLocal = new THREE.Vector3(), lastPaintedPos = new THREE.Vector3(Infinity, Infinity, Infinity), lastErasedPos = new THREE.Vector3(Infinity, Infinity, Infinity);
+        let prevGripDist = 0;
+
         function onSelectStart() {
             if (this === xrRight) { 
                 if (leftMenuHovered && leftMenuMesh.visible) {
@@ -1807,7 +1841,7 @@
 
         function onSelectEnd() {
             if (this === xrRight) { if (activeSliderDrag) activeSliderDrag = null; else if (isColorPicking) { isColorPicking = isPaletteMagnified = false; updateColorMenuTexture(); } else { isDrawing = false; if (activeTool === 'select' && selectMode === 'box' && isPreviewingBox) { executeSelectBox(drawStartPos, rightTargetLocal); isPreviewingBox = false; boxPreviewMesh.visible = false; } if (activeTool === 'box' && isPreviewingBox) { executeBoxTool(drawStartPos, rightTargetLocal, true); isPreviewingBox = false; boxPreviewMesh.visible = false; } if (activeTool === 'quadsphere' && isPreviewingSphere) { executeQuadSphereTool(drawStartPos, rightTargetLocal, true); isPreviewingSphere = false; spherePreviewMesh.visible = false; } if (activeTool === 'cylinder' && isPreviewingCylinder) { executeCylinderTool(drawStartPos, rightTargetLocal, true); isPreviewingCylinder = false; boxPreviewMesh.visible = false; } if (activeTool === 'plane' && isPreviewingPlane) { executePlaneTool(drawStartPos, rightTargetLocal, true); isPreviewingPlane = false; boxPreviewMesh.visible = false; } if (activeTool === 'triangle' && isPreviewingTriangle) { executeTriangleTool(drawStartPos, rightTargetLocal, true); isPreviewingTriangle = false; boxPreviewMesh.visible = false; } if (activeTool === 'icosahedron' && isPreviewingIcosahedron) { executeIcosahedronTool(drawStartPos, rightTargetLocal, true); isPreviewingIcosahedron = false; boxPreviewMesh.visible = false; } lastPaintedPos.set(Infinity, Infinity, Infinity); if (activeTool === 'sheet') lastSheetLeftPos.set(Infinity, Infinity, Infinity); } }
-            else if (this === xrLeft) { isErasing = false; if (activeTool === 'box' && isPreviewingBox) { executeBoxTool(drawStartPos, leftTargetLocal, false); isPreviewingBox = false; boxPreviewMesh.visible = false; } if (activeTool === 'quadsphere' && isPreviewingSphere) { executeQuadSphereTool(drawStartPos, leftTargetLocal, false); isPreviewingSphere = false; spherePreviewMesh.visible = false; } if (activeTool === 'cylinder' && isPreviewingCylinder) { executeBoxTool(drawStartPos, leftTargetLocal, false); isPreviewingCylinder = false; boxPreviewMesh.visible = false; } if (activeTool === 'plane' && isPreviewingPlane) { executePlaneTool(drawStartPos, leftTargetLocal, false); isPreviewingPlane = false; boxPreviewMesh.visible = false; } if (activeTool === 'triangle' && isPreviewingTriangle) { executeTriangleTool(drawStartPos, leftTargetLocal, false); isPreviewingTriangle = false; boxPreviewMesh.visible = false; } if (activeTool === 'icosahedron' && isPreviewingIcosahedron) { executeIcosahedronTool(drawStartPos, leftTargetLocal, false); isPreviewingIcosahedron = false; boxPreviewMesh.visible = false; } lastErasedPos.set(Infinity, Infinity, Infinity); if (activeTool === 'sheet') lastSheetLeftPos.set(Infinity, Infinity, Infinity); }
+            else if (this === xrLeft) { isErasing = false; if (activeTool === 'box' && isPreviewingBox) { executeBoxTool(drawStartPos, leftTargetLocal, false); isPreviewingBox = false; boxPreviewMesh.visible = false; } if (activeTool === 'quadsphere' && isPreviewingSphere) { executeQuadSphereTool(drawStartPos, leftTargetLocal, false); isPreviewingSphere = false; spherePreviewMesh.visible = false; } if (activeTool === 'cylinder' && isPreviewingCylinder) { executeCylinderTool(drawStartPos, leftTargetLocal, false); isPreviewingCylinder = false; boxPreviewMesh.visible = false; } if (activeTool === 'plane' && isPreviewingPlane) { executePlaneTool(drawStartPos, leftTargetLocal, false); isPreviewingPlane = false; boxPreviewMesh.visible = false; } if (activeTool === 'triangle' && isPreviewingTriangle) { executeTriangleTool(drawStartPos, leftTargetLocal, false); isPreviewingTriangle = false; boxPreviewMesh.visible = false; } if (activeTool === 'icosahedron' && isPreviewingIcosahedron) { executeIcosahedronTool(drawStartPos, leftTargetLocal, false); isPreviewingIcosahedron = false; boxPreviewMesh.visible = false; } lastErasedPos.set(Infinity, Infinity, Infinity); if (activeTool === 'sheet') lastSheetLeftPos.set(Infinity, Infinity, Infinity); }
         }
 
         controller0.addEventListener('selectstart', onSelectStart); controller1.addEventListener('selectstart', onSelectStart);
