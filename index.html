@@ -210,7 +210,6 @@
 
         function updateActiveSymmetries() {
             activeSymmetries = [];
-            // Generate all combinations of axial mirrors
             let mirrors = [{sx: 1, sy: 1, sz: 1}];
             
             if (mirrorX) {
@@ -314,7 +313,6 @@
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a2e);
 
-        // Near plane 0.25 improves depth buffer precision
         const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.25, 1000);
         camera.position.set(0, 1.6, 3);
 
@@ -322,31 +320,18 @@
             canvas: canvas, 
             context: gl, 
             antialias: true, 
-            alpha: true, // Required for passthrough transparency
+            alpha: true, // Crucial for Passthrough support
             powerPreference: "high-performance" 
         });
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.xr.enabled = true;
 
-        document.body.appendChild(VRButton.createButton(renderer));
-
-        // --- Quest 3 PCVR Specific Optimizations ---
-        renderer.xr.addEventListener('sessionstart', () => {
-            const session = renderer.xr.getSession();
-            if (session) {
-                if (session.renderState.baseLayer) {
-                    session.renderState.baseLayer.fixedFoveation = 1; 
-                }
-                if (session.supportedFrameRates) {
-                    if (session.supportedFrameRates.includes(120)) {
-                        session.updateTargetFrameRate(120);
-                    } else if (session.supportedFrameRates.includes(90)) {
-                        session.updateTargetFrameRate(90);
-                    }
-                }
-            }
-        });
+        // Custom VRButton configuration to support passthrough via immersive-ar if available
+        document.body.appendChild(VRButton.createButton(renderer, {
+            optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers', 'passthrough'],
+            sessionMode: 'immersive-vr' // We use VR mode but clear alpha to trigger passthrough
+        }));
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambientLight);
@@ -562,65 +547,43 @@
                 if (pIdx >= previewGroups.length) {
                     const g = new THREE.Group();
                     g.matrixAutoUpdate = false;
-                    
                     const pivotGroup = new THREE.Group();
                     pivotGroup.matrixAutoUpdate = false;
                     g.add(pivotGroup);
-
                     const m1 = new THREE.InstancedMesh(voxelGeometry, matSolid, 1); m1.matrixAutoUpdate = false; m1.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE); m1.updateMatrix();
                     const m2 = new THREE.InstancedMesh(voxelGeometry, matGlass, 1); m2.matrixAutoUpdate = false; m2.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE); m2.updateMatrix();
                     const m3 = new THREE.InstancedMesh(voxelGeometry, matEmission, 1); m3.matrixAutoUpdate = false; m3.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE); m3.updateMatrix();
                     const bMesh = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), selBoxMat); bMesh.matrixAutoUpdate = false;
-                    
                     pivotGroup.add(m1); pivotGroup.add(m2); pivotGroup.add(m3); pivotGroup.add(bMesh);
                     previewContainer.add(g);
                     previewGroups.push(g);
                 }
                 const g = previewGroups[pIdx];
                 const pivotGroup = g.children[0];
-                
                 const pCX = pivotPoint.x * VOXEL_SIZE;
                 const pCY = pivotPoint.y * VOXEL_SIZE;
                 const pCZ = pivotPoint.z * VOXEL_SIZE;
-
                 pivotGroup.children[0].instanceMatrix = selMeshSolid.instanceMatrix; pivotGroup.children[0].instanceColor = selMeshSolid.instanceColor; pivotGroup.children[0].count = selMeshSolid.count; pivotGroup.children[0].visible = selMeshSolid.visible;
                 pivotGroup.children[1].instanceMatrix = selMeshGlass.instanceMatrix; pivotGroup.children[1].instanceColor = selMeshGlass.instanceColor; pivotGroup.children[1].count = selMeshGlass.count; pivotGroup.children[1].visible = selMeshGlass.visible;
                 pivotGroup.children[2].instanceMatrix = selMeshEmission.instanceMatrix; pivotGroup.children[2].instanceColor = selMeshEmission.instanceColor; pivotGroup.children[2].count = selMeshEmission.count; pivotGroup.children[2].visible = selMeshEmission.visible;
-                
-                pivotGroup.children.forEach((m, idx) => {
-                    if (idx < 3) {
-                        m.position.set(-pCX, -pCY, -pCZ);
-                        m.updateMatrix();
-                    }
-                });
-
+                pivotGroup.children.forEach((m, idx) => { if (idx < 3) { m.position.set(-pCX, -pCY, -pCZ); m.updateMatrix(); } });
                 const bMesh = pivotGroup.children[3];
                 tempPos.set(pCX, pCY, pCZ);
                 bMesh.position.copy(selBoxMesh.position).sub(tempPos);
                 bMesh.scale.copy(selBoxMesh.scale);
                 bMesh.updateMatrix();
-
-                pivotGroup.rotation.set(
-                    THREE.MathUtils.degToRad(copyStepRotX * step),
-                    THREE.MathUtils.degToRad(copyStepRotY * step),
-                    THREE.MathUtils.degToRad(copyStepRotZ * step),
-                    'XYZ'
-                );
-                
+                pivotGroup.rotation.set(THREE.MathUtils.degToRad(copyStepRotX * step), THREE.MathUtils.degToRad(copyStepRotY * step), THREE.MathUtils.degToRad(copyStepRotZ * step), 'XYZ');
                 const stScale = Math.pow(copyStepScale, step);
                 pivotGroup.scale.set(stScale, stScale, stScale);
                 pivotGroup.updateMatrix();
-
                 g.position.set(tgtCX, tgtCY, tgtCZ);
                 g.scale.set(sx, sy, sz);
                 g.rotation.set(0, polarAngle, 0, 'XYZ');
-                
                 g.updateMatrix(); 
                 g.updateMatrixWorld(true);
                 g.visible = true;
                 pIdx++;
             }
-
             const steps = transformMode === 'copy' ? numCopies : 1;
             const offX = Math.round(selectionGroup.position.x / VOXEL_SIZE) * VOXEL_SIZE;
             const offY = Math.round(selectionGroup.position.y / VOXEL_SIZE) * VOXEL_SIZE;
@@ -628,12 +591,10 @@
             const pCX = pivotPoint.x * VOXEL_SIZE;
             const pCY = pivotPoint.y * VOXEL_SIZE;
             const pCZ = pivotPoint.z * VOXEL_SIZE;
-
             for (let step = 1; step <= steps; step++) {
                 const bx = pCX + offX * step;
                 const by = pCY + offY * step;
                 const bz = pCZ + offZ * step;
-
                 for (let i = 0; i < activeSymmetries.length; i++) {
                     const sym = activeSymmetries[i];
                     let fx = bx * sym.sx, fy = by * sym.sy, fz = bz * sym.sz;
@@ -678,7 +639,6 @@
             let cache = syncCache.get(baseMesh);
             if (!cache) { cache = { p: new THREE.Vector3(), s: new THREE.Vector3(), q: new THREE.Quaternion(), c: -1, v: null, sym: -1, sm: null }; syncCache.set(baseMesh, cache); }
             if (cache.p.equals(baseMesh.position) && cache.s.equals(baseMesh.scale) && cache.q.equals(baseMesh.quaternion) && cache.c === (baseMesh.count || 0) && cache.v === baseMesh.visible && cache.sym === symmetryVersion && cache.sm === showMirrors) return false;
-            
             cache.p.copy(baseMesh.position); cache.s.copy(baseMesh.scale); cache.q.copy(baseMesh.quaternion); cache.c = baseMesh.count || 0; cache.v = baseMesh.visible; cache.sym = symmetryVersion; cache.sm = showMirrors;
             return true;
         }
@@ -688,45 +648,35 @@
                 for(let i=0; i < proxies.length; i++) proxies[i].visible = false;
                 return;
             }
-
             let pIdx = 0;
-
             for (let i = 0; i < activeSymmetries.length; i++) {
                 const sym = activeSymmetries[i];
                 if (sym.sx === 1 && sym.sy === 1 && sym.sz === 1 && sym.p === 0) continue; 
                 if (pIdx >= proxies.length) break;
-
                 const proxy = proxies[pIdx++];
                 proxy.visible = true;
-
                 const mx = baseMesh.position.x * sym.sx;
                 const my = baseMesh.position.y * sym.sy;
                 const mz = baseMesh.position.z * sym.sz;
                 let fx = mx, fy = my, fz = mz, rotAngle = 0;
-                
                 if (sym.p > 0) {
                     fx = mx * sym.cos + mz * sym.sin;
                     fz = -mx * sym.sin + mz * sym.cos;
                     rotAngle = sym.p * 2 * Math.PI / polarSymmetry;
                 }
-
                 proxy.position.set(fx, fy, fz);
-                
                 proxy.scale.copy(baseMesh.scale);
                 proxy.scale.x *= sym.sx;
                 proxy.scale.y *= sym.sy;
                 proxy.scale.z *= sym.sz;
-
                 proxy.quaternion.copy(baseMesh.quaternion);
                 if (rotAngle !== 0) {
                     tempQuat.setFromAxisAngle(tempPos.set(0, 1, 0), rotAngle);
                     proxy.quaternion.premultiply(tempQuat);
                 }
-
                 proxy.updateMatrix();
                 if (baseMesh.isInstancedMesh) proxy.count = baseMesh.count;
             }
-
             for (; pIdx < proxies.length; pIdx++) proxies[pIdx].visible = false;
         }
 
@@ -739,14 +689,11 @@
             }
             const width = ((effSize - 1) * 2 + 1) * VOXEL_SIZE;
             const isBoxShape = (brushShape === 'cube' && activeTool !== 'sculpt') || activeTool === 'box' || activeTool === 'select' || activeTool === 'cylinder' || activeTool === 'quadsphere' || activeTool === 'plane' || activeTool === 'triangle' || activeTool === 'icosahedron' || (activeTool === 'paint' && paintMode === 'bucket');
-            
             const shapeKey = (isBoxShape ? 'box_' : 'sph_') + width;
             if (!cursorGeos[shapeKey]) cursorGeos[shapeKey] = isBoxShape ? new THREE.BoxGeometry(width, width, width) : new THREE.SphereGeometry(width / 2, 16, 16);
-            
             const geo = cursorGeos[shapeKey];
             cursorLeft.geometry = geo; cursorRight.geometry = geo;
             cursorLeftMirrors.forEach(m => m.geometry = geo); cursorRightMirrors.forEach(m => m.geometry = geo);
-
             const activeColor = slotColors[activeMatSlot][activeColorSubSlot];
             cursorRight.material.color.copy(activeColor); 
         }
@@ -780,22 +727,18 @@
             let minX = Math.min(gStartX, gEndX); let maxX = Math.max(gStartX, gEndX);
             let minY = Math.min(gStartY, gEndY); let maxY = Math.max(gStartY, gEndY);
             let minZ = Math.min(gStartZ, gEndZ); let maxZ = Math.max(gStartZ, gEndZ);
-
             const dx = maxX - minX; const dy = maxY - minY; const dz = maxZ - minZ;
             let flatAxis = 'y';
             if (dx <= dy && dx <= dz) flatAxis = 'x'; else if (dz <= dx && dz <= dy) flatAxis = 'z';
-
             const depthSize = (planeThick - 1) * VOXEL_SIZE;
             if (flatAxis === 'x') { minX = Math.min(gStartX, gEndX); maxX = minX + depthSize; }
             if (flatAxis === 'y') { minY = Math.min(gStartY, gEndY); maxY = minY + depthSize; }
             if (flatAxis === 'z') { minZ = Math.min(gStartZ, gEndZ); maxZ = minZ + depthSize; }
-
             boxPreviewMesh.position.set(minX + maxX, minY + maxY, minZ + maxZ).multiplyScalar(0.5);
             const sizeX = Math.abs(maxX - minX) + VOXEL_SIZE; const sizeY = Math.abs(maxY - minY) + VOXEL_SIZE; const sizeZ = Math.abs(maxZ - minZ) + VOXEL_SIZE;
             boxPreviewMesh.scale.set(sizeX, sizeY, sizeZ);
             boxPreviewMesh.updateMatrix();
             boxPreviewMat.wireframe = false;
-            
             if (isPainting) boxPreviewMat.color.copy(slotColors[0][0]);
             else boxPreviewMat.color.setHex(0xff0055);
         }
@@ -807,7 +750,6 @@
             spherePreviewMesh.scale.set(sizeX, sizeY, sizeZ);
             spherePreviewMesh.updateMatrix();
             spherePreviewMat.wireframe = (sphereMode === 'shell');
-            
             if (isPainting) spherePreviewMat.color.copy(slotColors[0][0]);
             else spherePreviewMat.color.setHex(0xff0055);
         }
@@ -816,12 +758,7 @@
             const dist = startPos.distanceTo(endPos);
             const steps = Math.min(600, Math.max(1, Math.ceil(dist / (VOXEL_SIZE * 0.25)))); 
             let instCount = 0; const r = brushSize - 1; const rSq = (r + 0.1) * (r + 0.1); 
-            
-            const isInside = (dx, dy, dz) => {
-                if (brushShape === 'sphere') return (dx*dx + dy*dy + dz*dz <= rSq);
-                return (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
-            };
-
+            const isInside = (dx, dy, dz) => brushShape === 'sphere' ? (dx*dx + dy*dy + dz*dz <= rSq) : (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
             fillVisited.clear();
             let lastGx = Infinity, lastGy = Infinity, lastGz = Infinity;
             for (let i = 0; i <= steps; i++) {
@@ -833,9 +770,7 @@
                     for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
                         if (!isInside(dx, dy, dz)) continue;
                         if (brushVolume === 'shell' && r > 0) {
-                            const isSurface = !isInside(dx+1, dy, dz) || !isInside(dx-1, dy, dz) ||
-                                              !isInside(dx, dy+1, dz) || !isInside(dx, dy-1, dz) ||
-                                              !isInside(dx, dy, dz+1) || !isInside(dx, dy, dz-1);
+                            const isSurface = !isInside(dx+1, dy, dz) || !isInside(dx-1, dy, dz) || !isInside(dx, dy+1, dz) || !isInside(dx, dy-1, dz) || !isInside(dx, dy, dz+1) || !isInside(dx, dy, dz-1);
                             if (!isSurface) continue;
                         }
                         const hash = (cx+dx + 32768) + (cy+dy + 32768) * 65536 + (cz+dz + 32768) * 4294967296;
@@ -856,26 +791,20 @@
             else linePreviewMat.color.setHex(0xff0055);
         }
 
-        // --- PCVR CONTROLLERS ---
+        // --- Controller Setup ---
         let xrRight = null; let xrLeft = null;
         let gripRight = null; let gripLeft = null;
-
         const controller0 = renderer.xr.getController(0);
         const controller1 = renderer.xr.getController(1);
         const grip0 = renderer.xr.getControllerGrip(0);
         const grip1 = renderer.xr.getControllerGrip(1);
-
         scene.add(controller0); scene.add(controller1);
         scene.add(grip0); scene.add(grip1);
-
         xrRight = controller0; xrLeft = controller1;
         gripRight = grip0; gripLeft = grip1;
-
         const raycaster = new THREE.Raycaster();
-        
         const leftLaserLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }));
         leftLaserLine.scale.z = 5; leftLaserLine.visible = false; xrLeft.add(leftLaserLine);
-        
         const rightLaserLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }));
         rightLaserLine.scale.z = 5; rightLaserLine.visible = false; xrRight.add(rightLaserLine);
 
@@ -906,7 +835,6 @@
             leftMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; leftMenuCtx.fillRect(0, 0, 512, 512);
             leftMenuCtx.fillStyle = '#4facfe'; leftMenuCtx.font = 'bold 22px sans-serif'; leftMenuCtx.textAlign = 'center';
             leftMenuCtx.fillText(`Tool Options | Blocks: ${totalActiveVoxels.toLocaleString()}`, 256, 30);
-
             if (activeTool === 'brush') {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'Shape: CUBE', brushShape === 'cube'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'Shape: SPHERE', brushShape === 'sphere');
                 drawButton(leftMenuCtx, 50, 140, 200, 50, 'SOLID', brushVolume === 'solid'); drawButton(leftMenuCtx, 262, 140, 200, 50, 'SHELL', brushVolume === 'shell');
@@ -954,9 +882,7 @@
                 drawButton(leftMenuCtx, 20, 180, 50, 50, '-', false);
                 drawButton(leftMenuCtx, 80, 180, 160, 50, `Sides: ${cylinderSides === 0 ? 'ROUND' : cylinderSides}`, false);
                 drawButton(leftMenuCtx, 250, 180, 50, 50, '+', false);
-                if (cylinderMode !== 'solid') {
-                    drawButton(leftMenuCtx, 310, 180, 150, 50, `CAP: ${cylinderCap?'ON':'OFF'}`, cylinderCap);
-                }
+                if (cylinderMode !== 'solid') { drawButton(leftMenuCtx, 310, 180, 150, 50, `CAP: ${cylinderCap?'ON':'OFF'}`, cylinderCap); }
                 if (cylinderMode === 'wireframe') {
                     drawButton(leftMenuCtx, 20, 240, 50, 50, '-', false);
                     drawButton(leftMenuCtx, 80, 240, 160, 50, `Thick: ${wireWidth}`, false);
@@ -967,11 +893,8 @@
                 drawButton(leftMenuCtx, 20, 60, 140, 50, 'CONE', triangleType === 'cone'); drawButton(leftMenuCtx, 170, 60, 150, 50, 'TETRA', triangleType === 'tetra'); drawButton(leftMenuCtx, 330, 60, 160, 50, 'PYRAMID', triangleType === 'pyramid');
                 drawButton(leftMenuCtx, 20, 120, 140, 50, 'SOLID', triangleMode === 'solid'); drawButton(leftMenuCtx, 170, 120, 150, 50, 'SHELL', triangleMode === 'shell'); drawButton(leftMenuCtx, 330, 120, 160, 50, 'WIRE', triangleMode === 'wireframe');
                 drawButton(leftMenuCtx, 20, 180, 140, 50, 'AXIS: X', triangleAxis === 'X'); drawButton(leftMenuCtx, 170, 180, 150, 50, 'AXIS: Y', triangleAxis === 'Y'); drawButton(leftMenuCtx, 330, 180, 160, 50, 'AXIS: Z', triangleAxis === 'Z');
-                if (triangleType === 'pyramid') {
-                    drawButton(leftMenuCtx, 20, 240, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 240, 160, 50, `Legs: ${pyramidLegs}`, false); drawButton(leftMenuCtx, 250, 240, 50, 50, '+', false);
-                } else if (triangleMode !== 'solid') {
-                    drawButton(leftMenuCtx, 170, 240, 150, 50, `CAP: ${triangleCap?'ON':'OFF'}`, triangleCap);
-                }
+                if (triangleType === 'pyramid') { drawButton(leftMenuCtx, 20, 240, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 240, 160, 50, `Legs: ${pyramidLegs}`, false); drawButton(leftMenuCtx, 250, 240, 50, 50, '+', false); } 
+                else if (triangleMode !== 'solid') { drawButton(leftMenuCtx, 170, 240, 150, 50, `CAP: ${triangleCap?'ON':'OFF'}`, triangleCap); }
                 if (triangleMode === 'wireframe') {
                     drawButton(leftMenuCtx, 20, 300, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 300, 160, 50, `Thick: ${wireWidth}`, false); drawButton(leftMenuCtx, 250, 300, 50, 50, '+', false);
                     drawButton(leftMenuCtx, 330, 300, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill);
@@ -984,22 +907,13 @@
                 drawButton(leftMenuCtx, 265, 60, 225, 45, 'OCTA', platonicType === 'octahedron');
                 drawButton(leftMenuCtx, 20, 110, 225, 45, 'ICOSA', platonicType === 'icosahedron');
                 drawButton(leftMenuCtx, 265, 110, 225, 45, 'DODECA', platonicType === 'dodecahedron');
-
                 drawButton(leftMenuCtx, 20, 165, 140, 50, 'SOLID', icosahedronMode === 'solid');
                 drawButton(leftMenuCtx, 170, 165, 150, 50, 'SHELL', icosahedronMode === 'shell');
                 drawButton(leftMenuCtx, 330, 165, 160, 50, 'WIRE', icosahedronMode === 'wireframe');
-                
                 drawButton(leftMenuCtx, 20, 225, 220, 50, `LOCK RATIO: ${icosahedronLock ? 'ON' : 'OFF'}`, icosahedronLock);
-                if (platonicType !== 'dodecahedron') {
-                    drawButton(leftMenuCtx, 250, 225, 50, 50, '-', false);
-                    drawButton(leftMenuCtx, 310, 225, 130, 50, `Divs: ${icosahedronDivs}`, false);
-                    drawButton(leftMenuCtx, 450, 225, 42, 50, '+', false);
-                }
-
+                if (platonicType !== 'dodecahedron') { drawButton(leftMenuCtx, 250, 225, 50, 50, '-', false); drawButton(leftMenuCtx, 310, 225, 130, 50, `Divs: ${icosahedronDivs}`, false); drawButton(leftMenuCtx, 450, 225, 42, 50, '+', false); }
                 if (icosahedronMode === 'wireframe') {
-                    drawButton(leftMenuCtx, 20, 285, 50, 50, '-', false);
-                    drawButton(leftMenuCtx, 80, 285, 160, 50, `Thick: ${wireWidth}`, false);
-                    drawButton(leftMenuCtx, 250, 285, 50, 50, '+', false);
+                    drawButton(leftMenuCtx, 20, 285, 50, 50, '-', false); drawButton(leftMenuCtx, 80, 285, 160, 50, `Thick: ${wireWidth}`, false); drawButton(leftMenuCtx, 250, 285, 50, 50, '+', false);
                     drawButton(leftMenuCtx, 330, 285, 160, 50, `FILL: ${wireFill?'ON':'OFF'}`, wireFill);
                 }
             } else if (activeTool === 'plane') {
@@ -1030,9 +944,7 @@
                         drawSlider(leftMenuCtx, 50, 370, 412, 30, 'STEP ROT Z', copyStepRotZ, -180, 180);
                         drawSlider(leftMenuCtx, 50, 405, 412, 30, 'STEP SCALE', copyStepScale, 0.1, 5.0, 'STEP SCL: %vx');
                         drawButton(leftMenuCtx, 50, 445, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 445, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 445, 132, 40, 'DELETE', false);
-                    } else {
-                        drawButton(leftMenuCtx, 50, 270, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 270, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 270, 132, 40, 'DELETE', false);
-                    }
+                    } else { drawButton(leftMenuCtx, 50, 270, 130, 40, 'APPLY', false); drawButton(leftMenuCtx, 190, 270, 130, 40, 'CANCEL', false); drawButton(leftMenuCtx, 330, 270, 132, 40, 'DELETE', false); }
                 }
             }
             leftMenuTexture.needsUpdate = true;
@@ -1049,142 +961,36 @@
                     else if (cx >= 390 && cx <= 475) { isSettingPivot = !isSettingPivot; }
                     if (newMode !== transformMode) {
                         transformMode = newMode;
-                        if (transformMode === 'copy' || transformMode === 'draw' || transformMode === 'paint') { 
-                            for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat); 
-                        } else { 
-                            for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, false, null); 
-                        }
+                        if (transformMode === 'copy' || transformMode === 'draw' || transformMode === 'paint') { for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat); } 
+                        else { for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, false, null); }
                     }
                 }
                 if (transformMode === 'copy') {
                     if (cy >= 260 && cy <= 290) { if (cx >= 50 && cx <= 130) numCopies = Math.max(1, numCopies - 1); if (cx >= 382 && cx <= 462) numCopies = Math.min(20, numCopies + 1); }
                     if (cy >= 445 && cy <= 485) { if (cx >= 50 && cx <= 180) applySelection(); if (cx >= 190 && cx <= 320) cancelSelection(); if (cx >= 330 && cx <= 462) deleteSelection(); }
-                } else {
-                    if (cy >= 270 && cy <= 310) { if (cx >= 50 && cx <= 180) applySelection(); if (cx >= 190 && cx <= 320) cancelSelection(); if (cx >= 330 && cx <= 462) deleteSelection(); }
-                }
+                } else { if (cy >= 270 && cy <= 310) { if (cx >= 50 && cx <= 180) applySelection(); if (cx >= 190 && cx <= 320) cancelSelection(); if (cx >= 330 && cx <= 462) deleteSelection(); } }
             } else if (activeTool === 'select' && !hasSelection) {
                 if (cy >= 70 && cy <= 110) { if (cx >= 50 && cx <= 250) selectMode = 'box'; if (cx >= 262 && cx <= 462) selectMode = 'connected'; }
                 if (cy >= 120 && cy <= 160) { if (cx >= 50 && cx <= 180) selectFilter = 'all'; if (cx >= 190 && cx <= 320) selectFilter = 'color'; if (cx >= 330 && cx <= 462) selectFilter = 'material'; }
             } else if (activeTool === 'triangle') {
-                if (cy >= 60 && cy <= 110) {
-                    if (cx >= 20 && cx <= 160) triangleType = 'cone'; if (cx >= 170 && cx <= 320) triangleType = 'tetra'; if (cx >= 330 && cx <= 490) triangleType = 'pyramid';
-                } else if (cy >= 120 && cy <= 170) {
-                    if (cx >= 20 && cx <= 160) triangleMode = 'solid'; if (cx >= 170 && cx <= 320) triangleMode = 'shell'; if (cx >= 330 && cx <= 490) triangleMode = 'wireframe';
-                } else if (cy >= 180 && cy <= 230) {
-                    if (cx >= 20 && cx <= 160) triangleAxis = 'X'; if (cx >= 170 && cx <= 320) triangleAxis = 'Y'; if (cx >= 330 && cx <= 490) triangleAxis = 'Z';
-                } else if (cy >= 240 && cy <= 290) {
-                    if (triangleType === 'pyramid') {
-                        if (cx >= 20 && cx <= 70) pyramidLegs = Math.max(3, pyramidLegs - 1); 
-                        if (cx >= 250 && cx <= 300) pyramidLegs = Math.min(12, pyramidLegs + 1);
-                    } else if (triangleMode !== 'solid') {
-                        if (cx >= 170 && cx <= 320) triangleCap = !triangleCap;
-                    }
-                } else if (cy >= 300 && cy <= 350) {
-                    if (triangleMode === 'wireframe') {
-                        if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
-                        if (cx >= 330 && cx <= 490) wireFill = !wireFill;
-                    } 
-                } else if (cy >= 360 && cy <= 410) {
-                    if (cx >= 20 && cx <= 70) triangleDivs = Math.max(1, triangleDivs - 1); if (cx >= 210 && cx <= 260) triangleDivs = Math.min(20, triangleDivs + 1);
-                    if (cx >= 270 && cx <= 320) triangleDivThick = Math.max(1, triangleDivThick - 1); if (cx >= 440 && cx <= 490) triangleDivThick = Math.min(10, triangleDivThick + 1);
-                } else if (cy >= 420 && cy <= 470) {
-                    if (cx >= 20 && cx <= 240) triangleGridMode = triangleGridMode === 'internal' ? 'surface' : 'internal';
-                }
+                if (cy >= 60 && cy <= 110) { if (cx >= 20 && cx <= 160) triangleType = 'cone'; if (cx >= 170 && cx <= 320) triangleType = 'tetra'; if (cx >= 330 && cx <= 490) triangleType = 'pyramid'; } 
+                else if (cy >= 120 && cy <= 170) { if (cx >= 20 && cx <= 160) triangleMode = 'solid'; if (cx >= 170 && cx <= 320) triangleMode = 'shell'; if (cx >= 330 && cx <= 490) triangleMode = 'wireframe'; } 
+                else if (cy >= 180 && cy <= 230) { if (cx >= 20 && cx <= 160) triangleAxis = 'X'; if (cx >= 170 && cx <= 320) triangleAxis = 'Y'; if (cx >= 330 && cx <= 490) triangleAxis = 'Z'; } 
+                else if (cy >= 240 && cy <= 290) { if (triangleType === 'pyramid') { if (cx >= 20 && cx <= 70) pyramidLegs = Math.max(3, pyramidLegs - 1); if (cx >= 250 && cx <= 300) pyramidLegs = Math.min(12, pyramidLegs + 1); } else if (triangleMode !== 'solid') { if (cx >= 170 && cx <= 320) triangleCap = !triangleCap; } } 
+                else if (cy >= 300 && cy <= 350) { if (triangleMode === 'wireframe') { if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1); if (cx >= 330 && cx <= 490) wireFill = !wireFill; } } 
+                else if (cy >= 360 && cy <= 410) { if (cx >= 20 && cx <= 70) triangleDivs = Math.max(1, triangleDivs - 1); if (cx >= 210 && cx <= 260) triangleDivs = Math.min(20, triangleDivs + 1); if (cx >= 270 && cx <= 320) triangleDivThick = Math.max(1, triangleDivThick - 1); if (cx >= 440 && cx <= 490) triangleDivThick = Math.min(10, triangleDivThick + 1); } 
+                else if (cy >= 420 && cy <= 470) { if (cx >= 20 && cx <= 240) triangleGridMode = triangleGridMode === 'internal' ? 'surface' : 'internal'; }
             } else if (activeTool === 'cylinder') {
-                if (cy >= 60 && cy <= 110) {
-                    if (cx >= 20 && cx <= 160) cylinderMode = 'solid';
-                    if (cx >= 170 && cx <= 320) cylinderMode = 'shell';
-                    if (cx >= 330 && cx <= 490) cylinderMode = 'wireframe';
-                } else if (cy >= 120 && cy <= 170) {
-                    if (cx >= 20 && cx <= 160) cylinderAxis = 'X';
-                    if (cx >= 170 && cx <= 320) cylinderAxis = 'Y';
-                    if (cx >= 330 && cx <= 490) cylinderAxis = 'Z';
-                } else if (cy >= 180 && cy <= 230) {
-                    if (cx >= 20 && cx <= 70) {
-                        if (cylinderSides === 0) cylinderSides = 32;
-                        else if (cylinderSides > 3) cylinderSides--;
-                        else cylinderSides = 0;
-                    }
-                    if (cx >= 250 && cx <= 300) {
-                        if (cylinderSides === 0) cylinderSides = 3;
-                        else if (cylinderSides < 32) cylinderSides++;
-                        else cylinderSides = 0;
-                    }
-                    if (cylinderMode !== 'solid' && cx >= 310 && cx <= 460) cylinderCap = !cylinderCap;
-                } else if (cy >= 240 && cy <= 290) {
-                    if (cylinderMode === 'wireframe') {
-                        if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1);
-                        if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
-                        if (cx >= 330 && cx <= 490) wireFill = !wireFill;
-                    }
-                }
+                if (cy >= 60 && cy <= 110) { if (cx >= 20 && cx <= 160) cylinderMode = 'solid'; if (cx >= 170 && cx <= 320) cylinderMode = 'shell'; if (cx >= 330 && cx <= 490) cylinderMode = 'wireframe'; } 
+                else if (cy >= 120 && cy <= 170) { if (cx >= 20 && cx <= 160) cylinderAxis = 'X'; if (cx >= 170 && cx <= 320) cylinderAxis = 'Y'; if (cx >= 330 && cx <= 490) cylinderAxis = 'Z'; } 
+                else if (cy >= 180 && cy <= 230) { if (cx >= 20 && cx <= 70) { if (cylinderSides === 0) cylinderSides = 32; else if (cylinderSides > 3) cylinderSides--; else cylinderSides = 0; } if (cx >= 250 && cx <= 300) { if (cylinderSides === 0) cylinderSides = 3; else if (cylinderSides < 32) cylinderSides++; else cylinderSides = 0; } if (cylinderMode !== 'solid' && cx >= 310 && cx <= 460) cylinderCap = !cylinderCap; } 
+                else if (cy >= 240 && cy <= 290) { if (cylinderMode === 'wireframe') { if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1); if (cx >= 330 && cx <= 490) wireFill = !wireFill; } }
             } else if (activeTool === 'icosahedron') {
-                if (cy >= 60 && cy <= 105) {
-                    if (cx >= 20 && cx <= 245) platonicType = 'tetrahedron';
-                    if (cx >= 265 && cx <= 490) platonicType = 'octahedron';
-                } else if (cy >= 110 && cy <= 155) {
-                    if (cx >= 20 && cx <= 245) platonicType = 'icosahedron';
-                    if (cx >= 265 && cx <= 490) platonicType = 'dodecahedron';
-                } else if (cy >= 165 && cy <= 215) {
-                    if (cx >= 20 && cx <= 160) icosahedronMode = 'solid';
-                    if (cx >= 170 && cx <= 320) icosahedronMode = 'shell';
-                    if (cx >= 330 && cx <= 490) icosahedronMode = 'wireframe';
-                } else if (cy >= 225 && cy <= 275) {
-                    if (cx >= 20 && cx <= 240) icosahedronLock = !icosahedronLock;
-                    if (platonicType !== 'dodecahedron') {
-                        if (cx >= 250 && cx <= 300) icosahedronDivs = Math.max(1, icosahedronDivs - 1);
-                        if (cx >= 450 && cx <= 492) icosahedronDivs = Math.min(5, icosahedronDivs + 1);
-                    }
-                } else if (cy >= 285 && cy <= 335 && icosahedronMode === 'wireframe') {
-                    if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1);
-                    if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
-                    if (cx >= 330 && cx <= 490) wireFill = !wireFill;
-                }
-            } else if (activeTool === 'sculpt') {
-                if (cy >= 70 && cy <= 120) {
-                    if (cx >= 50 && cx <= 130) sculptSize = Math.max(1, sculptSize - 1);
-                    if (cx >= 382 && cx <= 462) sculptSize = Math.min(10, sculptSize + 1);
-                }
-                if (cy >= 140 && cy <= 190) {
-                    if (cx >= 50 && cx <= 130) sculptDensity = Math.max(1, sculptDensity - 1);
-                    if (cx >= 382 && cx <= 462) sculptDensity = Math.min(10, sculptDensity + 1);
-                }
-            } else if (cy >= 70 && cy <= 120) {
-                if (activeTool === 'brush') { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; } 
-                else if (activeTool === 'sheet') { if (cx >= 50 && cx <= 250) sheetMode = 'surface'; if (cx >= 262 && cx <= 462) sheetMode = 'lines'; }
-                else if (activeTool === 'stroke') { if (cx >= 50 && cx <= 250) strokeMode = 'continuous'; if (cx >= 262 && cx <= 462) strokeMode = 'line'; isPreviewingLineLeft = false; isPreviewingLineRight = false; lineStartLeft.set(Infinity, Infinity, Infinity); lineStartRight.set(Infinity, Infinity, Infinity); } 
-                else if (activeTool === 'paint') { if (cx >= 50 && cx <= 250) paintMode = 'brush'; if (cx >= 262 && cx <= 462) paintMode = 'bucket'; } 
-                else if (activeTool === 'box') { if (cx >= 20 && cx <= 160) boxMode = 'solid'; if (cx >= 170 && cx <= 320) boxMode = 'shell'; if (cx >= 330 && cx <= 490) boxMode = 'wireframe'; } 
-                else if (activeTool === 'quadsphere') { if (cx >= 50 && cx <= 250) sphereMode = 'solid'; if (cx >= 262 && cx <= 462) sphereMode = 'shell'; } 
-                else if (activeTool === 'plane') { if (cx >= 30 && cx <= 180) planeOutline = !planeOutline; if (planeOutline) { if (cx >= 190 && cx <= 240) planeOutlineThick = Math.max(1, planeOutlineThick - 1); if (cx >= 420 && cx <= 470) planeOutlineThick = Math.min(10, planeOutlineThick + 1); } }
-            } else if (activeTool === 'plane') {
-                if (cy >= 140 && cy <= 190) { if (cx >= 30 && cx <= 130) planeFill = !planeFill; if (cx >= 140 && cx <= 240) planeGrid = !planeGrid; if (cx >= 250 && cx <= 290) planeGridThick = Math.max(1, planeGridThick - 1); if (cx >= 430 && cx <= 470) planeGridThick = Math.min(10, planeGridThick + 1); } 
-                else if (cy >= 210 && cy <= 260) { if (cx >= 30 && cx <= 70) planeDivU = Math.max(1, planeDivU - 1); if (cx >= 190 && cx <= 230) planeDivU = Math.min(20, planeDivU + 1); if (cx >= 250 && cx <= 290) planeDivV = Math.max(1, planeDivV - 1); if (cx >= 410 && cx <= 450) planeDivV = Math.min(20, planeDivV + 1); } 
-                else if (cy >= 280 && cy <= 330) { if (cx >= 190 && cx <= 240) planeThick = Math.max(1, planeThick - 1); if (cx >= 420 && cx <= 470) planeThick = Math.min(20, planeThick + 1); }
-            } else if (activeTool === 'brush') {
-                if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
-                if (cy >= 210 && cy <= 260) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); } 
-            } else if (activeTool === 'sheet') {
-                if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; }
-                if (cy >= 210 && cy <= 260) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
-                if (cy >= 280 && cy <= 330) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); }
-            } else if ((activeTool === 'paint' && paintMode === 'brush') || activeTool === 'stroke') {
-                if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; }
-                if (cy >= 210 && cy <= 260) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
-                if (cy >= 280 && cy <= 330) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); }
-            } else if (activeTool === 'box') {
-                if (cy >= 140 && cy <= 190 && boxMode === 'wireframe') {
-                    if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1);
-                    if (cx >= 330 && cx <= 490) wireFill = !wireFill;
-                } else if (cy >= 210 && cy <= 260) {
-                    if (cx >= 20 && cx <= 240) boxGridMode = boxGridMode === 'internal' ? 'surface' : 'internal';
-                    if (cx >= 250 && cx <= 300) boxDivThick = Math.max(1, boxDivThick - 1); if (cx >= 440 && cx <= 490) boxDivThick = Math.min(10, boxDivThick + 1);
-                } else if (cy >= 280 && cy <= 330) {
-                    if (cx >= 20 && cx <= 60) boxDivX = Math.max(1, boxDivX - 1); if (cx >= 180 && cx <= 220) boxDivX = Math.min(20, boxDivX + 1);
-                    if (cx >= 250 && cx <= 290) boxDivY = Math.max(1, boxDivY - 1); if (cx >= 410 && cx <= 450) boxDivY = Math.min(20, boxDivY + 1);
-                } else if (cy >= 350 && cy <= 400) {
-                    if (cx >= 20 && cx <= 60) boxDivZ = Math.max(1, boxDivZ - 1); if (cx >= 180 && cx <= 220) boxDivZ = Math.min(20, boxDivZ + 1);
-                }
+                if (cy >= 60 && cy <= 105) { if (cx >= 20 && cx <= 245) platonicType = 'tetrahedron'; if (cx >= 265 && cx <= 490) platonicType = 'octahedron'; } 
+                else if (cy >= 110 && cy <= 155) { if (cx >= 20 && cx <= 245) platonicType = 'icosahedron'; if (cx >= 265 && cx <= 490) platonicType = 'dodecahedron'; } 
+                else if (cy >= 165 && cy <= 215) { if (cx >= 20 && cx <= 160) icosahedronMode = 'solid'; if (cx >= 170 && cx <= 320) icosahedronMode = 'shell'; if (cx >= 330 && cx <= 490) icosahedronMode = 'wireframe'; } 
+                else if (cy >= 225 && cy <= 275) { if (cx >= 20 && cx <= 240) icosahedronLock = !icosahedronLock; if (platonicType !== 'dodecahedron') { if (cx >= 250 && cx <= 300) icosahedronDivs = Math.max(1, icosahedronDivs - 1); if (cx >= 450 && cx <= 492) icosahedronDivs = Math.min(5, icosahedronDivs + 1); } } 
+                else if (cy >= 285 && cy <= 335 && icosahedronMode === 'wireframe') { if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1); if (cx >= 330 && cx <= 490) wireFill = !wireFill; }
             }
             updateCursors(); leftMenuNeedsUpdate = true;
         }
@@ -1196,38 +1002,6 @@
         const colorMenuMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.15), new THREE.MeshBasicMaterial({ map: colorMenuTexture, transparent: true, side: THREE.DoubleSide }));
         colorMenuMesh.visible = false; colorMenuMesh.position.set(0, 0.15, -0.05); colorMenuMesh.rotation.x = -Math.PI / 4;
         xrLeft.add(colorMenuMesh);
-
-        function drawColorPickerUI(ctx, cx, cy, radius, sliderX, sliderY, sliderW, sliderH, targetColor, isMagnified) {
-            targetColor.getHSL(tempHSL);
-            const conic = ctx.createConicGradient(0, cx, cy);
-            for(let i = 0; i <= 360; i += 60) conic.addColorStop(i / 360, `hsl(${i}, 100%, 50%)`);
-            ctx.fillStyle = conic;
-            ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill();
-            const radial = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-            radial.addColorStop(0, 'rgba(128,128,128,1)');
-            radial.addColorStop(1, 'rgba(128,128,128,0)');
-            ctx.fillStyle = radial;
-            ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-            if (tempHSL.l < 0.5) { ctx.fillStyle = `rgba(0,0,0,${1 - (tempHSL.l / 0.5)})`; } else { ctx.fillStyle = `rgba(255,255,255,${(tempHSL.l - 0.5) / 0.5})`; }
-            ctx.fill();
-            const grad = ctx.createLinearGradient(sliderX, 0, sliderX + sliderW, 0);
-            grad.addColorStop(0, `hsl(${tempHSL.h * 360}, ${tempHSL.s * 100}%, 0%)`);
-            grad.addColorStop(0.5, `hsl(${tempHSL.h * 360}, ${tempHSL.s * 100}%, 50%)`);
-            grad.addColorStop(1, `hsl(${tempHSL.h * 360}, ${tempHSL.s * 100}%, 100%)`);
-            ctx.fillStyle = grad;
-            ctx.fillRect(sliderX, sliderY, sliderW, sliderH);
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(sliderX, sliderY, sliderW, sliderH);
-            if (isMagnified) {
-                const markerX = cx + Math.cos(tempHSL.h * Math.PI * 2) * (tempHSL.s * radius);
-                const markerY = cy + Math.sin(tempHSL.h * Math.PI * 2) * (tempHSL.s * radius);
-                ctx.beginPath(); ctx.arc(markerX, markerY, 8, 0, Math.PI * 2);
-                ctx.strokeStyle = tempHSL.l > 0.6 ? '#000' : '#fff'; ctx.lineWidth = 3; ctx.stroke();
-                const sliderMarkerX = sliderX + tempHSL.l * sliderW;
-                ctx.fillStyle = '#fff'; ctx.fillRect(sliderMarkerX - 4, sliderY - 5, 8, sliderH + 10);
-                ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(sliderMarkerX - 4, sliderY - 5, 8, sliderH + 10);
-            }
-        }
 
         function updateColorMenuTexture() {
             colorMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; colorMenuCtx.fillRect(0, 0, 512, 512);
@@ -1256,48 +1030,8 @@
                 colorMenuCtx.strokeStyle = activeColorSubSlot === 0 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSubSlot === 0 ? 4 : 2; colorMenuCtx.strokeRect(30, 390, 216, 55);
                 colorMenuCtx.fillStyle = '#' + cB.getHexString(); colorMenuCtx.fillRect(266, 390, 216, 55); 
                 colorMenuCtx.strokeStyle = activeColorSubSlot === 1 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSubSlot === 1 ? 4 : 2; colorMenuCtx.strokeRect(266, 390, 216, 55);
-                cA.getHSL(tempHSL); colorMenuCtx.fillStyle = tempHSL.l > 0.6 ? 'black' : 'white'; colorMenuCtx.font = '24px sans-serif'; colorMenuCtx.fillText('Color A', 138, 423);
-                cB.getHSL(tempHSL); colorMenuCtx.fillStyle = tempHSL.l > 0.6 ? 'black' : 'white'; colorMenuCtx.fillText('Color B', 374, 423);
             }
             colorMenuTexture.needsUpdate = true;
-        }
-
-        function pickColorFromCanvas(cx, cy) {
-            let wheelCx = 256, wheelCy = 235, wheelR = 75, sliderX = 40, sliderY = 315, sliderW = 432, sliderH = 15;
-            if (isPaletteMagnified) { wheelCx = 256; wheelCy = 220; wheelR = 150; sliderX = 20; sliderY = 400; sliderW = 472; sliderH = 30; }
-            const targetColor = slotColors[activeMatSlot][activeColorSubSlot];
-            targetColor.getHSL(tempHSL);
-            const dx = cx - wheelCx, dy = cy - wheelCy;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist <= wheelR) {
-                let angle = Math.atan2(dy, dx); if (angle < 0) angle += Math.PI * 2;
-                const h = angle / (Math.PI * 2), s = Math.min(1, dist / wheelR);
-                targetColor.setHSL(h, s, tempHSL.l);
-            } else if (cx >= sliderX && cx <= sliderX + sliderW && cy >= sliderY && cy <= sliderY + sliderH) {
-                const l = Math.max(0, Math.min(1, (cx - sliderX) / sliderW));
-                targetColor.setHSL(tempHSL.h, tempHSL.s, l);
-            }
-            updateCursors(); colorMenuNeedsUpdate = true; lastLinePreviewGridHash = ""; 
-        }
-
-        function handleColorMenuClick(cx, cy) {
-            if (cy >= 45 && cy <= 90) {
-                if (cx >= 30 && cx <= 250) { activeMatSlot = 0; activeColorSubSlot = 0; }
-                if (cx >= 262 && cx <= 482) { activeMatSlot = 1; activeColorSubSlot = 0; }
-            } else if (cy >= 100 && cy <= 145) {
-                if (cx >= 30 && cx <= 170) matTypes[activeMatSlot] = 0;
-                if (cx >= 186 && cx <= 326) matTypes[activeMatSlot] = 1;
-                if (cx >= 342 && cx <= 482) matTypes[activeMatSlot] = 2;
-            } else if (cy >= 340 && cy <= 380) {
-                if (cx >= 30 && cx <= 135) { colorModes[activeMatSlot] = 'solid'; activeColorSubSlot = 0; }
-                if (cx >= 145 && cx <= 250) colorModes[activeMatSlot] = 'grad_h'; 
-                if (cx >= 260 && cx <= 365) colorModes[activeMatSlot] = 'grad_v'; 
-                if (cx >= 375 && cx <= 482) colorModes[activeMatSlot] = 'shift';
-            } else if (cy >= 390 && cy <= 445) {
-                if (cx >= 30 && cx <= 246) activeColorSubSlot = 0; 
-                if (cx >= 266 && cx <= 482) activeColorSubSlot = 1; 
-            }
-            updateCursors(); colorMenuNeedsUpdate = true; lastLinePreviewGridHash = ""; 
         }
 
         const rightMenuCanvas = document.createElement('canvas'); rightMenuCanvas.width = 512; rightMenuCanvas.height = 512;
@@ -1319,22 +1053,6 @@
             rightMenuTexture.needsUpdate = true;
         }
 
-        function handleRightMenuClick(cx, cy) {
-            if (cx >= 50 && cx <= 462 && cy >= 36 && cy <= 36 + 12 * 39) {
-                const idx = Math.floor((cy - 36) / 39);
-                if (idx >= 0 && idx < 12) {
-                    if (hasSelection) applySelection();
-                    isPreviewingBox = isPreviewingSphere = isPreviewingPlane = isPreviewingTriangle = isPreviewingCylinder = isPreviewingIcosahedron = false;
-                    boxPreviewMesh.visible = spherePreviewMesh.visible = bucketPreviewMesh.visible = linePreviewMesh.visible = false;
-                    isPreviewingLineLeft = isPreviewingLineRight = false; lineStartLeft.set(Infinity, Infinity, Infinity); lineStartRight.set(Infinity, Infinity, Infinity);
-                    lastHoveredVoxel.set(Infinity, Infinity, Infinity); hoveredFillCoords.length = 0; lastPaintedPos.set(Infinity, Infinity, Infinity); lastErasedPos.set(Infinity, Infinity, Infinity);
-                    lastSheetLeftPos.set(Infinity, Infinity, Infinity); lastSheetRightPos.set(Infinity, Infinity, Infinity);
-                    const toolsList = ['brush', 'stroke', 'sheet', 'paint', 'sculpt', 'plane', 'box', 'quadsphere', 'cylinder', 'triangle', 'icosahedron', 'select'];
-                    activeTool = toolsList[idx]; updateCursors(); rightMenuNeedsUpdate = leftMenuNeedsUpdate = true; lastLinePreviewGridHash = "";
-                }
-            }
-        }
-
         const globalMenuCanvas = document.createElement('canvas'); globalMenuCanvas.width = 512; globalMenuCanvas.height = 512;
         const globalMenuCtx = globalMenuCanvas.getContext('2d', { willReadFrequently: true });
         const globalMenuTexture = new THREE.CanvasTexture(globalMenuCanvas);
@@ -1345,17 +1063,12 @@
         function updateGlobalMenuTexture() {
             globalMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; globalMenuCtx.fillRect(0, 0, 512, 512);
             globalMenuCtx.fillStyle = '#4facfe'; globalMenuCtx.font = 'bold 28px sans-serif'; globalMenuCtx.textAlign = 'center'; globalMenuCtx.fillText(`Global Settings`, 256, 40);
-            
-            // Row 1: V-Lock, Inside, Passthrough
             drawButton(globalMenuCtx, 40, 70, 138, 50, `V-Lock: ${isVerticalLock ? 'ON' : 'OFF'}`, isVerticalLock);
             drawButton(globalMenuCtx, 187, 70, 138, 50, `Inside: ${clearInterior ? 'ON' : 'OFF'}`, clearInterior);
             drawButton(globalMenuCtx, 334, 70, 138, 50, `PASS: ${passthroughEnabled ? 'ON' : 'OFF'}`, passthroughEnabled);
-
-            // Row 2: MX, MY, MZ
             drawButton(globalMenuCtx, 40, 140, 138, 50, `MX: ${mirrorX ? 'ON' : 'OFF'}`, mirrorX);
             drawButton(globalMenuCtx, 187, 140, 138, 50, `MY: ${mirrorY ? 'ON' : 'OFF'}`, mirrorY);
             drawButton(globalMenuCtx, 334, 140, 138, 50, `MZ: ${mirrorZ ? 'ON' : 'OFF'}`, mirrorZ);
-            
             drawButton(globalMenuCtx, 40, 210, 50, 50, '-', false);
             drawButton(globalMenuCtx, 100, 210, 312, 50, `Polar Symmetry: ${polarSymmetry}`, polarSymmetry > 1);
             drawButton(globalMenuCtx, 422, 210, 50, 50, '+', false);
@@ -1365,504 +1078,16 @@
             globalMenuTexture.needsUpdate = true;
         }
 
-        function handleGlobalMenuClick(cx, cy) {
-            if (cy >= 70 && cy <= 120) { 
-                if (cx >= 40 && cx <= 178) isVerticalLock = !isVerticalLock; 
-                if (cx >= 187 && cx <= 325) clearInterior = !clearInterior; 
-                if (cx >= 334 && cx <= 472) { passthroughEnabled = !passthroughEnabled; updatePassthrough(); }
-            }
-            if (cy >= 140 && cy <= 190) { 
-                if (cx >= 40 && cx <= 178) { mirrorX = !mirrorX; updateActiveSymmetries(); } 
-                if (cx >= 187 && cx <= 325) { mirrorY = !mirrorY; updateActiveSymmetries(); }
-                if (cx >= 334 && cx <= 472) { mirrorZ = !mirrorZ; updateActiveSymmetries(); } 
-            }
-            if (cy >= 210 && cy <= 260) { if (cx >= 40 && cx <= 90) polarSymmetry = Math.max(1, polarSymmetry - 1); if (cx >= 422 && cx <= 472) polarSymmetry = Math.min(16, polarSymmetry + 1); if (cx >= 100 && cx <= 412) polarSymmetry = polarSymmetry === 1 ? 4 : 1; updatePolarArrays(); }
-            if (cy >= 280 && cy <= 330) { if (cx >= 40 && cx <= 240) exportMode = 'boxes'; if (cx >= 272 && cx <= 472) exportMode = 'mesh'; }
-            if (cy >= 350 && cy <= 410 && cx >= 40 && cx <= 472) exportToOBJ();
-            globalMenuNeedsUpdate = true;
-        }
-
         function updatePassthrough() {
             if (passthroughEnabled) {
                 scene.background = null;
-                renderer.setClearAlpha(0);
+                renderer.setClearColor(0x000000, 0); // Sets transparent background for AR
             } else {
                 scene.background = new THREE.Color(0x1a1a2e);
-                renderer.setClearAlpha(1);
+                renderer.setClearColor(0x1a1a2e, 1);
             }
             globalMenuNeedsUpdate = true;
         }
-
-        let leftMenuNeedsUpdate = true, rightMenuNeedsUpdate = true, colorMenuNeedsUpdate = true, globalMenuNeedsUpdate = true, lastMenuUpdateTime = 0, lastColorJoystickUpdateTime = 0; 
-        updateLeftMenuTexture(); updateRightMenuTexture(); updateColorMenuTexture(); updateGlobalMenuTexture();
-
-        function exportToOBJ() {
-            const isMesh = exportMode === 'mesh', vertBlobParts = ["# VoxTrotBravo Optimized Vertices\n"], faceBlobParts = ["\n# VoxTrotBravo Faces\nmtllib voxel_materials.mtl\n"], hs = 0.5;
-            const faceVerts = {
-                px: [new THREE.Vector3( hs, -hs,  hs), new THREE.Vector3( hs, -hs, -hs), new THREE.Vector3( hs,  hs, -hs), new THREE.Vector3( hs,  hs,  hs)],
-                nx: [new THREE.Vector3(-hs, -hs, -hs), new THREE.Vector3(-hs, -hs,  hs), new THREE.Vector3(-hs,  hs,  hs), new THREE.Vector3(-hs,  hs, -hs)],
-                py: [new THREE.Vector3(-hs,  hs,  hs), new THREE.Vector3( hs,  hs,  hs), new THREE.Vector3( hs,  hs, -hs), new THREE.Vector3(-hs,  hs, -hs)],
-                ny: [new THREE.Vector3(-hs, -hs, -hs), new THREE.Vector3( hs, -hs, -hs), new THREE.Vector3( hs, -hs,  hs), new THREE.Vector3(-hs, -hs,  hs)],
-                pz: [new THREE.Vector3(-hs, -hs,  hs), new THREE.Vector3( hs, -hs,  hs), new THREE.Vector3( hs,  hs,  hs), new THREE.Vector3(-hs,  hs,  hs)],
-                nz: [new THREE.Vector3( hs, -hs, -hs), new THREE.Vector3(-hs, -hs, -hs), new THREE.Vector3(-hs,  hs, -hs), new THREE.Vector3( hs,  hs, -hs)]
-            };
-            const dirs = [{ d: [1, 0, 0], v: faceVerts.px }, { d: [-1, 0, 0], v: faceVerts.nx }, { d: [0, 1, 0], v: faceVerts.py }, { d: [0, -1, 0], v: faceVerts.ny }, { d: [0, 0, 1], v: faceVerts.pz }, { d: [0, 0, -1], v: faceVerts.nz }];
-            function hasVoxel(gx, gy, gz) {
-                const cx = gx >> 5, cy = gy >> 5, cz = gz >> 5, chunkKey = (cx + 65536) + ((cy + 65536) * 131072) + ((cz + 65536) * 17179869184), chunk = chunks.get(chunkKey); if (!chunk) return false;
-                const localIdx = (gx & 31) | ((gy & 31) << 5) | ((gz & 31) << 10); return chunk.voxelMatMap[localIdx] !== -1;
-            }
-            const mat4 = new THREE.Matrix4(), pos = new THREE.Vector3(), col = new THREE.Color(), matNames = ["Voxel_Solid", "Voxel_Glass", "Voxel_Emission"];
-            let vertAcc = [], faceAcc = [], vertexOffset = 1; const vertMap = new Map(), worldMat = worldGroup.matrixWorld, dirLen = dirs.length;
-            for (let matIdx = 0; matIdx < 3; matIdx++) {
-                faceAcc.push(`\ng ${matNames[matIdx]}\nusemtl ${matNames[matIdx]}\n`);
-                chunks.forEach(chunk => {
-                    const layer = chunk.layers[matIdx]; if (!layer || layer.count === 0) return;
-                    for (let i = 0; i < layer.count; i++) {
-                        const localIdx = layer.indexToLocal[i]; if (localIdx === 65535) continue;
-                        const lx = localIdx & 31, ly = (localIdx >> 5) & 31, lz = localIdx >> 10, gx = (chunk.cx * CHUNK_SIZE) + lx, gy = (chunk.cy * CHUNK_SIZE) + ly, gz = (chunk.cz * CHUNK_SIZE) + lz;
-                        layer.mesh.getMatrixAt(i, mat4); mat4.premultiply(layer.mesh.matrixWorld); layer.mesh.getColorAt(i, col);
-                        const rStr = col.r.toFixed(3), gStr = col.g.toFixed(3), bStr = col.b.toFixed(3);
-                        for (let d = 0; d < dirLen; d++) {
-                            const dir = dirs[d];
-                            if (!hasVoxel(gx + dir.d[0], gy + dir.d[1], gz + dir.d[2])) {
-                                const faceIndices = [];
-                                for (let v = 0; v < 4; v++) {
-                                    pos.copy(dir.v[v]).applyMatrix4(mat4);
-                                    const fx = pos.x.toFixed(4), fy = pos.y.toFixed(4), fz = pos.z.toFixed(4), hash = `${fx}_${fy}_${fz}_${rStr}_${gStr}_${bStr}`;
-                                    let idx = vertMap.get(hash); if (idx === undefined) { idx = vertexOffset++; vertMap.set(hash, idx); vertAcc.push(`v ${fx} ${fy} ${fz} ${rStr} ${gStr} ${bStr}\n`); }
-                                    faceIndices.push(idx);
-                                }
-                                if (isMesh) faceAcc.push(`f ${faceIndices[0]} ${faceIndices[1]} ${faceIndices[2]}\nf ${faceIndices[0]} ${faceIndices[2]} ${faceIndices[3]}\n`);
-                                else faceAcc.push(`f ${faceIndices[0]} ${faceIndices[1]} ${faceIndices[2]} ${faceIndices[3]}\n`);
-                                if (vertAcc.length >= 30000) { vertBlobParts.push(vertAcc.join("")); vertAcc = []; }
-                                if (faceAcc.length >= 30000) { faceBlobParts.push(faceAcc.join("")); faceAcc = []; }
-                            }
-                        }
-                    }
-                });
-            }
-            if (vertAcc.length > 0) vertBlobParts.push(vertAcc.join("")); if (faceAcc.length > 0) faceBlobParts.push(faceAcc.join(""));
-            const blob = new Blob([...vertBlobParts, ...faceBlobParts], { type: 'text/plain' }), url = URL.createObjectURL(blob), a = document.createElement('a');
-            a.style.display = 'none'; a.href = url; a.download = isMesh ? 'voxtrotbravo_optimized_mesh.obj' : 'voxtrotbravo_optimized_boxes.obj'; 
-            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-        }
-
-        // --- Core Tool Algorithms ---
-        function getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, slotIndex) {
-            const mode = colorModes[slotIndex], cA = slotColors[slotIndex][0], cB = slotColors[slotIndex][1];
-            if (mode === 'solid') return cA;
-            if (mode === 'grad_h') { let t = (maxX > minX) ? (gx - minX) / (maxX - minX) : 0; return tempColorForDraw[slotIndex].copy(cA).lerp(cB, t); } 
-            if (mode === 'grad_v') { let t = (maxY > minY) ? (gy - minY) / (maxY - minY) : 0; return tempColorForDraw[slotIndex].copy(cA).lerp(cB, t); } 
-            if (mode === 'shift') return tempColorForDraw[slotIndex].copy(cA).lerp(cB, shiftProgress);
-            return cA;
-        }
-
-        function getVoxelMatAndColor(gx, gy, gz, outColor) {
-            const cx = gx >> 5, cy = gy >> 5, cz = gz >> 5, chunkKey = (cx + 65536) + ((cy + 65536) * 131072) + ((cz + 65536) * 17179869184), chunk = chunks.get(chunkKey); if (!chunk) return -1;
-            const localIdx = (gx & 31) | ((gy & 31) << 5) | ((gz & 31) << 10), matType = chunk.voxelMatMap[localIdx];
-            if (matType !== -1 && outColor) { const layer = chunk.layers[matType], instIdx = layer.voxelToIndex[localIdx]; if (instIdx !== 65535) layer.mesh.getColorAt(instIdx, outColor); }
-            return matType;
-        }
-        
-        function setVoxelCore(gx, gy, gz, isPainting, color, matOverride = -1) {
-            const cx = gx >> 5, cy = gy >> 5, cz = gz >> 5, chunkKey = (cx + 65536) + ((cy + 65536) * 131072) + ((cz + 65536) * 17179869184), lx = gx & 31, ly = gy & 31, lz = gz & 31;
-            let chunk = chunks.get(chunkKey);
-            if (isPainting) { if (!chunk) { chunk = new Chunk(cx, cy, cz); chunks.set(chunkKey, chunk); } chunk.addVoxel(lx, ly, lz, gx, gy, gz, color, matOverride !== -1 ? matOverride : matTypes[0]); } else if (chunk) chunk.removeVoxel(lx, ly, lz);
-        }
-
-        function recolorVoxel(gx, gy, gz, color, targetMatType) {
-            const matType = getVoxelMatAndColor(gx, gy, gz, queryColor);
-            if (matType !== -1) {
-                if (matType === targetMatType && Math.abs(queryColor.r - color.r) < 0.02 && Math.abs(queryColor.g - color.g) < 0.02 && Math.abs(queryColor.b - color.b) < 0.02) return;
-                const cx = gx >> 5, cy = gy >> 5, cz = gz >> 5, chunkKey = (cx + 65536) + ((cy + 65536) * 131072) + ((cz + 65536) * 17179869184), lx = gx & 31, ly = gy & 31, lz = gz & 31;
-                chunks.get(chunkKey).addVoxel(lx, ly, lz, gx, gy, gz, color, targetMatType);
-            }
-        }
-
-        function setVoxel(gx, gy, gz, isPainting, color, matOverride = -1) {
-            for (let i = 0; i < activeSymmetries.length; i++) {
-                const sym = activeSymmetries[i]; 
-                const mx = gx * sym.sx, my = gy * sym.sy, mz = gz * sym.sz; 
-                let px = mx, pz = mz;
-                if (sym.p > 0) { 
-                    px = Math.round(mx * sym.cos + mz * sym.sin); 
-                    pz = Math.round(-mx * sym.sin + mz * sym.cos); 
-                }
-                setVoxelCore(px, my, pz, isPainting, color, matOverride);
-            }
-        }
-
-        function recolorVoxelSet(gx, gy, gz, color, matOverride = -1) {
-            const drawMatType = matOverride !== -1 ? matOverride : matTypes[0]; 
-            for (let i = 0; i < activeSymmetries.length; i++) {
-                const sym = activeSymmetries[i]; 
-                const mx = gx * sym.sx, my = gy * sym.sy, mz = gz * sym.sz; 
-                let px = mx, pz = mz;
-                if (sym.p > 0) { 
-                    px = Math.round(mx * sym.cos + mz * sym.sin); 
-                    pz = Math.round(-mx * sym.sin + mz * sym.cos); 
-                }
-                recolorVoxel(px, my, pz, color, drawMatType);
-            }
-        }
-
-        // --- Select Tool Functions ---
-        function updateSelectionVisuals() {
-            selMeshSolid.count = selMeshGlass.count = selMeshEmission.count = 0;
-            let iSolid = 0, iGlass = 0, iEmission = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-            for(let v of selectedVoxels) {
-                tempMatrix.makeTranslation(v.x, v.y, v.z);
-                if (v.mat === 0) { selMeshSolid.setMatrixAt(iSolid, tempMatrix); selMeshSolid.setColorAt(iSolid, v.color); iSolid++; }
-                else if (v.mat === 1) { selMeshGlass.setMatrixAt(iGlass, tempMatrix); selMeshGlass.setColorAt(iGlass, v.color); iGlass++; }
-                else if (v.mat === 2) { selMeshEmission.setMatrixAt(iEmission, tempMatrix); selMeshEmission.setColorAt(iEmission, v.color); iEmission++; }
-                minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y); minZ = Math.min(minZ, v.z); maxZ = Math.max(maxZ, v.z);
-            }
-            selMeshSolid.instanceMatrix.needsUpdate = selMeshSolid.instanceColor.needsUpdate = true; selMeshGlass.instanceMatrix.needsUpdate = selMeshGlass.instanceColor.needsUpdate = true; selMeshEmission.instanceMatrix.needsUpdate = selMeshEmission.instanceColor.needsUpdate = true;
-            selMeshSolid.count = iSolid; selMeshGlass.count = iGlass; selMeshEmission.count = iEmission; selMeshSolid.visible = iSolid > 0; selMeshGlass.visible = iGlass > 0; selMeshEmission.visible = iEmission > 0;
-            if (selectedVoxels.length > 0) { selBoxMesh.position.set((minX + maxX) / 2 * VOXEL_SIZE, (minY + maxY) / 2 * VOXEL_SIZE, (minZ + maxZ) / 2 * VOXEL_SIZE); selBoxMesh.scale.set((maxX - minX + 1.1) * VOXEL_SIZE, (maxY - minY + 1.1) * VOXEL_SIZE, (maxZ - minZ + 1.1) * VOXEL_SIZE); selBoxMesh.updateMatrix(); selectionGroup.visible = true; } else selectionGroup.visible = false;
-        }
-        
-        function updateRotatedSelection() {
-            selRotEuler.set(THREE.MathUtils.degToRad(selectionRotX), THREE.MathUtils.degToRad(selectionRotY), THREE.MathUtils.degToRad(selectionRotZ), 'XYZ'); rotR.makeRotationFromEuler(selRotEuler);
-            tempMatrix.makeScale(selectionScale, selectionScale, selectionScale); rotR.multiply(tempMatrix); rotR_inv.copy(rotR).invert(); origMap.clear();
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-            for (let v of baseSelection) {
-                origMap.set((v.x + 32768) + (v.y + 32768) * 65536 + (v.z + 32768) * 4294967296, v);
-                tempPos.set(v.x - pivotPoint.x, v.y - pivotPoint.y, v.z - pivotPoint.z); tempPos.applyMatrix4(rotR);
-                const rx = pivotPoint.x + tempPos.x, ry = pivotPoint.y + tempPos.y, rz = pivotPoint.z + tempPos.z;
-                if (rx < minX) minX = rx; if (rx > maxX) maxX = rx; if (ry < minY) minY = ry; if (ry > maxY) maxY = ry; if (rz < minZ) minZ = rz; if (rz > maxZ) maxZ = rz;
-            }
-            minX = Math.floor(minX) - 1; maxX = Math.ceil(maxX) + 1; minY = Math.floor(minY) - 1; maxY = Math.ceil(maxY) + 1; minZ = Math.floor(minZ) - 1; maxZ = Math.ceil(maxZ) + 1;
-            selectedVoxels.length = 0; const e = rotR_inv.elements, inv0 = e[0], inv4 = e[4], inv8 = e[8], inv1 = e[1], inv5 = e[5], inv9 = e[9], inv2 = e[2], inv6 = e[6], inv10 = e[10], cx = pivotPoint.x, cy = pivotPoint.y, cz = pivotPoint.z;
-            for (let x = minX; x <= maxX; x++) {
-                const dx = x - cx; for (let y = minY; y <= maxY; y++) {
-                    const dy = y - cy; for (let z = minZ; z <= maxZ; z++) {
-                        const dz = z - cz, srcX = Math.round(cx + dx * inv0 + dy * inv4 + dz * inv8), srcY = Math.round(cy + dx * inv1 + dy * inv5 + inv9), srcZ = Math.round(cz + dx * inv2 + dy * inv6 + dz * inv10), origVoxel = origMap.get((srcX + 32768) + (srcY + 32768) * 65536 + (srcZ + 32768) * 4294967296);
-                        if (origVoxel) selectedVoxels.push({ x: x, y: y, z: z, color: origVoxel.color, mat: origVoxel.mat });
-                    }
-                }
-            }
-            updateSelectionVisuals();
-        }
-
-        function finalizeSelection() {
-            transformMode = 'move'; numCopies = 1; selectionRotX = selectionRotY = selectionRotZ = 0; selectionScale = 1.0; copyStepRotX = copyStepRotY = copyStepRotZ = 0; copyStepScale = 1.0;
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-            for(let v of baseSelection) { setVoxelCore(v.x, v.y, v.z, false, null); minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y); minZ = Math.min(minZ, v.z); maxZ = Math.max(maxZ, v.z); }
-            hasSelection = true; selectionOffset.set(0,0,0); selectionGroup.position.set(0,0,0); selectionCenter.set( (minX + maxX)/2, (minY + maxY)/2, (minZ + maxZ)/2 );
-            pivotPoint.copy(selectionCenter); pivotIndicator.position.set(pivotPoint.x * VOXEL_SIZE, pivotPoint.y * VOXEL_SIZE, pivotPoint.z * VOXEL_SIZE); pivotIndicator.updateMatrix(); pivotIndicator.visible = true;
-            selectedVoxels = baseSelection.map(v => ({...v})); updateSelectionVisuals(); leftMenuNeedsUpdate = true;
-        }
-
-        function executeSelectBox(startPos, endPos) {
-            const minX = Math.min(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE)), maxX = Math.max(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE)), minY = Math.min(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE)), maxY = Math.max(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE)), minZ = Math.min(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE)), maxZ = Math.max(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE));
-            if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
-            const startGx = Math.round(startPos.x / VOXEL_SIZE), startGy = Math.round(startPos.y / VOXEL_SIZE), startGz = Math.round(startPos.z / VOXEL_SIZE), targetMat = getVoxelMatAndColor(startGx, startGy, startGz, targetQueryColor);
-            baseSelection.length = 0; for(let gx = minX; gx <= maxX; gx++) for(let gy = minY; gy <= maxY; gy++) for(let gz = minZ; gz <= maxZ; gz++) {
-                const matType = getVoxelMatAndColor(gx, gy, gz, tempColor);
-                if (matType !== -1) {
-                    let shouldAdd = (selectFilter === 'all') || (selectFilter === 'color' && Math.abs(tempColor.r - targetQueryColor.r) < 0.05 && Math.abs(tempColor.g - targetQueryColor.g) < 0.05 && Math.abs(tempColor.b - targetQueryColor.b) < 0.05) || (selectFilter === 'material' && matType === targetMat);
-                    if (shouldAdd) { baseSelection.push({ x: gx, y: gy, z: gz, color: tempColor.clone(), mat: matType }); if (baseSelection.length >= SEL_LIMIT) break; }
-                }
-            }
-            if (baseSelection.length > 0) finalizeSelection();
-        }
-
-        function executeSelectConnected(targetPos) {
-            const startX = Math.round(targetPos.x / VOXEL_SIZE), startY = Math.round(targetPos.y / VOXEL_SIZE), startZ = Math.round(targetPos.z / VOXEL_SIZE), targetMat = getVoxelMatAndColor(startX, startY, startZ, targetQueryColor); if (targetMat === -1) return; 
-            selVisited.clear(); selQueue.length = 0; selQueue.push(startX, startY, startZ); selVisited.add((startX + 32768) + (startY + 32768) * 65536 + (startZ + 32768) * 4294967296);
-            baseSelection.length = 0; let qHead = 0;
-            while(qHead < selQueue.length && baseSelection.length < SEL_LIMIT) {
-                const x = selQueue[qHead++], y = selQueue[qHead++], z = selQueue[qHead++];
-                const matType = getVoxelMatAndColor(x, y, z, tempColor);
-                if (matType !== -1) {
-                    baseSelection.push({ x: x, y: y, z: z, color: tempColor.clone(), mat: matType });
-                    for(let i=0; i < SEL_DIRS.length; i+=3) {
-                        const nx = x + SEL_DIRS[i], ny = y + SEL_DIRS[i+1], nz = z + SEL_DIRS[i+2], key = (nx + 32768) + (ny + 32768) * 65536 + (nz + 32768) * 4294967296;
-                        if (!selVisited.has(key)) {
-                            selVisited.add(key); const nMat = getVoxelMatAndColor(nx, ny, nz, queryColor);
-                            let shouldQueue = (selectFilter === 'all' && nMat !== -1) || (selectFilter === 'color' && nMat !== -1 && Math.abs(queryColor.r - targetQueryColor.r) < 0.05 && Math.abs(queryColor.g - targetQueryColor.g) < 0.05 && Math.abs(queryColor.b - targetQueryColor.b) < 0.05) || (selectFilter === 'material' && nMat === targetMat);
-                            if (shouldQueue) selQueue.push(nx, ny, nz);
-                        }
-                    }
-                }
-            }
-            if (baseSelection.length > 0) finalizeSelection();
-        }
-
-        function stampSelection(offX, offY, offZ) { for(let v of selectedVoxels) setVoxel(v.x + offX, v.y + offY, v.z + offZ, true, v.color, v.mat); leftMenuNeedsUpdate = true; }
-        function paintSelection(offX, offY, offZ) { for(let v of selectedVoxels) recolorVoxelSet(v.x + offX, v.y + offY, v.z + offZ, v.color, v.mat); leftMenuNeedsUpdate = true; }
-
-        function applySelection() {
-            const offX = Math.round(selectionGroup.position.x / VOXEL_SIZE), offY = Math.round(selectionGroup.position.y / VOXEL_SIZE), offZ = Math.round(selectionGroup.position.z / VOXEL_SIZE);
-            if (transformMode === 'copy') { 
-                const pCX = pivotPoint.x, pCY = pivotPoint.y, pCZ = pivotPoint.z; origMap.clear();
-                for (let v of selectedVoxels) origMap.set((v.x + 32768) + (v.y + 32768) * 65536 + (v.z + 32768) * 4294967296, v);
-                for (let step = 1; step <= numCopies; step++) {
-                    tempSEuler.set(THREE.MathUtils.degToRad(copyStepRotX * step), THREE.MathUtils.degToRad(copyStepRotY * step), THREE.MathUtils.degToRad(copyStepRotZ * step), 'XYZ');
-                    const stScale = Math.pow(copyStepScale, step); tempSMat.makeRotationFromEuler(tempSEuler); tempScaleMat.makeScale(stScale, stScale, stScale); tempSMat.multiply(tempScaleMat); tempInvMat.copy(tempSMat).invert();
-                    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-                    for(let v of selectedVoxels) { tempPos.set(v.x - pCX, v.y - pCY, v.z - pCZ); tempPos.applyMatrix4(tempSMat); const rx = pCX + offX * step + tempPos.x, ry = pCY + offY * step + tempPos.y, rz = pCZ + offZ * step + tempPos.z; if (rx < minX) minX = rx; if (rx > maxX) maxX = rx; if (ry < minY) minY = ry; if (ry > maxY) maxY = ry; if (rz < minZ) minZ = rz; if (rz > maxZ) maxZ = rz; }
-                    minX = Math.floor(minX) - 1; maxX = Math.ceil(maxX) + 1; minY = Math.floor(minY) - 1; maxY = Math.ceil(maxY) + 1; minZ = Math.floor(minZ) - 1; maxZ = Math.ceil(maxZ) + 1;
-                    const e = tempInvMat.elements, inv0 = e[0], inv4 = e[4], inv8 = e[8], inv1 = e[1], inv5 = e[5], inv9 = e[9], inv2 = e[2], inv6 = e[6], inv10 = e[10], tgtCX = pCX + offX * step, tgtCY = pCY + offY * step, tgtCZ = pCZ + offZ * step;
-                    for (let x = minX; x <= maxX; x++) { const dx = x - tgtCX; for (let y = minY; y <= maxY; y++) { const dy = y - tgtCY; for (let z = minZ; z <= maxZ; z++) { const dz = z - tgtCZ, srcX = Math.round(pCX + dx * inv0 + dy * inv4 + dz * inv8), srcY = Math.round(pCY + dx * inv1 + dy * inv5 + inv9), srcZ = Math.round(cz + dx * inv2 + dy * inv6 + dz * inv10), origVoxel = origMap.get((srcX + 32768) + (srcY + 32768) * 65536 + (srcZ + 32768) * 4294967296); if (origVoxel) setVoxel(x, y, z, true, origVoxel.color, origVoxel.mat); } } }
-                }
-            } else if (transformMode === 'move') { for(let v of selectedVoxels) setVoxel(v.x + offX, v.y + offY, v.z + offZ, true, v.color, v.mat); }
-            baseSelection.length = selectedVoxels.length = 0; hasSelection = selectionGroup.visible = pivotIndicator.visible = isSettingPivot = false; selectionGroup.position.set(0,0,0); selectionOffset.set(0,0,0); leftMenuNeedsUpdate = true;
-        }
-
-        function cancelSelection() { if (transformMode === 'move') for(let v of baseSelection) setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat); deleteSelection(); }
-        function deleteSelection() { baseSelection.length = selectedVoxels.length = 0; hasSelection = selectionGroup.visible = pivotIndicator.visible = isSettingPivot = false; selectionGroup.position.set(0,0,0); selectionOffset.set(0,0,0); leftMenuNeedsUpdate = true; }
-
-        // --- Brushes & Shapes ---
-        function executeSculpt(targetPos, isPainting) {
-            const r = sculptSize, rSq = (r + 0.5) * (r + 0.5), centerGx = Math.round(targetPos.x / VOXEL_SIZE), centerGy = Math.round(targetPos.y / VOXEL_SIZE), centerGz = Math.round(targetPos.z / VOXEL_SIZE), minX = centerGx - r, maxX = centerGx + r, minY = centerGy - r, maxY = centerGy + r, densityFactor = (sculptDensity / 10.0) * 0.15; 
-            for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) {
-                const dxySq = dx*dx + dy*dy; if (dxySq > rSq) continue;
-                const maxDz = Math.floor(Math.sqrt(rSq - dxySq));
-                for (let dz = -maxDz; dz <= maxDz; dz++) {
-                    const distSq = dxySq + dz*dz, dist = Math.sqrt(distSq), falloff = Math.max(0, 1.0 - (dist / (r + 0.1))), prob = falloff * falloff * densityFactor;
-                    if (Math.random() < prob) { const gx = centerGx + dx, gy = centerGy + dy, gz = centerGz + dz; if (isPainting) setVoxel(gx, gy, gz, true, getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0), matTypes[0]); else setVoxel(gx, gy, gz, false, null); }
-                }
-            }
-            leftMenuNeedsUpdate = true;
-        }
-
-        function placeBrushVoxels(targetPos, isPainting) {
-            const r = brushSize - 1, rSq = (r + 0.1) * (r + 0.1), centerGx = Math.round(targetPos.x / VOXEL_SIZE), centerGy = Math.round(targetPos.y / VOXEL_SIZE), centerGz = Math.round(targetPos.z / VOXEL_SIZE), minX = centerGx - r, maxX = centerGx + r, minY = centerGy - r, maxY = centerGy + r;
-            const isInside = (dx, dy, dz) => brushShape === 'sphere' ? (dx*dx + dy*dy + dz*dz <= rSq) : (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
-            for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
-                if (!isInside(dx, dy, dz)) continue;
-                if (brushVolume === 'shell' && r > 0) { const isSurface = !isInside(dx+1, dy, dz) || !isInside(dx-1, dy, dz) || !isInside(dx, dy+1, dz) || !isInside(dx, dy-1, dz) || !isInside(dx, dy, dz+1) || !isInside(dx, dy, dz-1); if (!isSurface) continue; }
-                setVoxel(centerGx + dx, centerGy + dy, centerGz + dz, isPainting, getDrawColor(centerGx + dx, centerGy + dy, centerGz + dz, minX, maxX, minY, maxY, 0), matTypes[0]);
-            }
-            leftMenuNeedsUpdate = true;
-        }
-
-        function placePaintVoxels(targetPos) {
-            const r = brushSize - 1, rSq = (r + 0.1) * (r + 0.1), centerGx = Math.round(targetPos.x / VOXEL_SIZE), centerGy = Math.round(targetPos.y / VOXEL_SIZE), centerGz = Math.round(targetPos.z / VOXEL_SIZE), minX = centerGx - r, maxX = centerGx + r, minY = centerGy - r, maxY = centerGy + r;
-            const isInside = (dx, dy, dz) => brushShape === 'sphere' ? (dx*dx + dy*dy + dz*dz <= rSq) : (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
-            for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
-                if (!isInside(dx, dy, dz)) continue;
-                if (brushVolume === 'shell' && r > 0) { const isSurface = !isInside(dx+1, dy, dz) || !isInside(dx-1, dy, dz) || !isInside(dx, dy+1, dz) || !isInside(dx, dy-1, dz) || !isInside(dx, dy, dz+1) || !isInside(dx, dy, dz-1); if (!isSurface) continue; }
-                recolorVoxelSet(centerGx + dx, centerGy + dy, centerGz + dz, getDrawColor(centerGx + dx, centerGy + dy, centerGz + dz, minX, maxX, minY, maxY, 0));
-            }
-        }
-
-        function drawLineVoxels(startPos, endPos, isPainting) {
-            const dist = startPos.distanceTo(endPos); if (dist === 0) { placeBrushVoxels(startPos, isPainting); return; }
-            const steps = Math.min(600, Math.max(1, Math.ceil(dist / (VOXEL_SIZE * 0.25)))); let lastGx = Infinity, lastGy = Infinity, lastGz = Infinity;
-            for (let i = 0; i <= steps; i++) {
-                tempPos.lerpVectors(startPos, endPos, i / steps); const gx = Math.round(tempPos.x / VOXEL_SIZE), gy = Math.round(tempPos.y / VOXEL_SIZE), gz = Math.round(tempPos.z / VOXEL_SIZE);
-                if (gx !== lastGx || gy !== lastGy || gz !== lastGz) { tempPos.set(gx * VOXEL_SIZE, gy * VOXEL_SIZE, gz * VOXEL_SIZE); placeBrushVoxels(tempPos, isPainting); lastGx = gx; lastGy = gy; lastGz = gz; }
-            }
-        }
-
-        function drawPaintLineVoxels(startPos, endPos) {
-            const dist = startPos.distanceTo(endPos); if (dist === 0) { placePaintVoxels(startPos); return; }
-            const steps = Math.min(600, Math.max(1, Math.ceil(dist / (VOXEL_SIZE * 0.25)))); let lastGx = Infinity, lastGy = Infinity, lastGz = Infinity;
-            for (let i = 0; i <= steps; i++) {
-                tempPos.lerpVectors(startPos, endPos, i / steps); const gx = Math.round(tempPos.x / VOXEL_SIZE), gy = Math.round(tempPos.y / VOXEL_SIZE), gz = Math.round(tempPos.z / VOXEL_SIZE);
-                if (gx !== lastGx || gy !== lastGy || gz !== lastGz) { tempPos.set(gx * VOXEL_SIZE, gy * VOXEL_SIZE, gz * VOXEL_SIZE); placePaintVoxels(tempPos); lastGx = gx; lastGy = gy; lastGz = gz; }
-            }
-        }
-
-        function drawSheetQuad(pL1, pR1, pL2, pR2, isPainting, thickness) {
-            const minPx = Math.min(pL1.x, pR1.x, pL2.x, pR2.x), maxPx = Math.max(pL1.x, pR1.x, pL2.x, pR2.x), minPy = Math.min(pL1.y, pR1.y, pL2.y, pR2.y), maxPy = Math.max(pL1.y, pR1.y, pL2.y, pR2.y), minX = Math.round(minPx / VOXEL_SIZE) - thickness, maxX = Math.round(maxPx / VOXEL_SIZE) + thickness, minY = Math.round(minPy / VOXEL_SIZE) - thickness, maxY = Math.round(maxPy / VOXEL_SIZE) + thickness, distL = pL1.distanceTo(pL2), distR = pR1.distanceTo(pR2), maxDistV = Math.max(distL, distR), stepsV = Math.max(1, Math.ceil(maxDistV / (VOXEL_SIZE * 0.25))), r = thickness - 1, rSq = (r + 0.1) * (r + 0.1);
-            fillVisited.clear(); const isInside = (dx, dy, dz) => brushShape === 'sphere' ? (dx*dx + dy*dy + dz*dz <= rSq) : (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
-            for (let v = 0; v <= stepsV; v++) {
-                const tV = v / stepsV; sheetPosL.copy(pL1).lerp(pL2, tV); sheetPosR.copy(pR1).lerp(pR2, tV); const distU = sheetPosL.distanceTo(sheetPosR), stepsU = Math.max(1, Math.ceil(distU / (VOXEL_SIZE * 0.25)));
-                for (let u = 0; u <= stepsU; u++) {
-                    const tU = u / stepsU; tempPos.copy(sheetPosL).lerp(sheetPosR, tU); const cx = Math.round(tempPos.x / VOXEL_SIZE), cy = Math.round(tempPos.y / VOXEL_SIZE), cz = Math.round(tempPos.z / VOXEL_SIZE);
-                    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dx <= r; dz++) {
-                        if (!isInside(dx, dy, dz)) continue;
-                        if (brushVolume === 'shell' && r > 0) { const isSurface = !isInside(dx+1, dy, dz) || !isInside(dx-1, dy, dz) || !isInside(dx, dy+1, dz) || !isInside(dx, dy-1, dz) || !isInside(dx, dy, dz+1) || !isInside(dx, dy, dz-1); if (!isSurface) continue; }
-                        const gx = cx + dx, gy = cy + dy, gz = cz + dz, hash = (gx + 32768) + (gy + 32768) * 65536 + (gz + 32768) * 4294967296;
-                        if (!fillVisited.has(hash)) { fillVisited.add(hash); setVoxel(gx, gy, gz, isPainting, getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0), matTypes[0]); }
-                    }
-                }
-            }
-            leftMenuNeedsUpdate = true;
-        }
-
-        function calculateFloodFill(startX, startY, startZ) {
-            hoveredFillCoords.length = 0; const targetMat = getVoxelMatAndColor(startX, startY, startZ, targetQueryColor); if (targetMat === -1) return;
-            fillVisited.clear(); fillQueue.length = 0; fillQueue.push(startX, startY, startZ); fillVisited.add((startX + 32768) + (startY + 32768) * 65536 + (startZ + 32768) * 4294967296);
-            let qHead = 0; while(qHead < fillQueue.length && hoveredFillCoords.length < 12000) {
-                const x = fillQueue[qHead++], y = fillQueue[qHead++], z = fillQueue[qHead++]; hoveredFillCoords.push(x, y, z);
-                for (let i=0; i < FILL_NEIGHBORS.length; i+=3) { const nx = x + FILL_NEIGHBORS[i], ny = y + FILL_NEIGHBORS[i+1], nz = z + FILL_NEIGHBORS[i+2], key = (nx + 32768) + (ny + 32768) * 65536 + (nz + 32768) * 4294967296; if (!fillVisited.has(key)) { fillVisited.add(key); if (getVoxelMatAndColor(nx, ny, nz, queryColor) === targetMat && Math.abs(queryColor.r - targetQueryColor.r) < 0.02 && Math.abs(queryColor.g - targetQueryColor.g) < 0.02 && Math.abs(queryColor.b - targetQueryColor.b) < 0.02) { fillQueue.push(nx, ny, nz); } } }
-            }
-        }
-
-        function executeBoxTool(startPos, endPos, isPainting) {
-            const minX = Math.min(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE)), maxX = Math.max(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE)), minY = Math.min(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE)), maxY = Math.max(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE)), minZ = Math.min(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE)), maxZ = Math.max(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE));
-            if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
-            const w = wireWidth - 1, divX = new Uint8Array(maxX - minX + 1), divY = new Uint8Array(maxY - minY + 1), divZ = new Uint8Array(maxZ - minZ + 1);
-            if (boxDivX > 1) { const stepX = (maxX - minX) / boxDivX, h = (boxDivThick - 1) / 2; for(let i=1; i<boxDivX; i++) { const cx = Math.round(i * stepX); for(let v = Math.ceil(cx - h); v <= Math.floor(cx + h + 0.001); v++) if (v >= 0 && v < divX.length) divX[v] = 1; } }
-            if (boxDivY > 1) { const stepY = (maxY - minY) / boxDivY, h = (boxDivThick - 1) / 2; for(let i=1; i<boxDivY; i++) { const cy = Math.round(i * stepY); for(let v = Math.ceil(cy - h); v <= Math.floor(cy + h + 0.001); v++) if (v >= 0 && v < divY.length) divY[v] = 1; } }
-            if (boxDivZ > 1) { const stepZ = (maxZ - minZ) / boxDivZ, h = (boxDivThick - 1) / 2; for(let i=1; i<boxDivZ; i++) { const cz = Math.round(i * stepZ); for(let v = Math.ceil(cz - h); v <= Math.floor(cz + h + 0.001); v++) if (v >= 0 && v < divZ.length) divZ[v] = 1; } }
-            for(let gx = minX; gx <= maxX; gx++) for(let gy = minY; gy <= maxY; gy++) for(let gz = minZ; gz <= maxZ; gz++) {
-                const cMain = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0), cSec = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 1), isFace = (gx === minX || gx === maxX || gy === minY || gy === maxY || gz === minZ || gz === maxZ), isOuterX = (gx >= minX && gx <= minX + w) || (gx <= maxX && gx >= maxX - w), isOuterY = (gy >= minY && gy <= minY + w) || (gy <= maxY && gy >= maxY - w), isOuterZ = (gz >= minZ && gz <= minZ + w) || (gz <= maxZ && gz >= maxZ - w);
-                let onX = isOuterX, onY = isOuterY, onZ = isOuterZ, isDivCoord = false;
-                if (boxDivX > 1 && divX[gx - minX] === 1) { onX = true; isDivCoord = true; }
-                if (boxDivY > 1 && divY[gy - minY] === 1) { onY = true; isDivCoord = true; }
-                if (boxDivZ > 1 && divZ[gz - minZ] === 1) { onZ = true; isDivCoord = true; }
-                const edgeScore = (onX ? 1 : 0) + (onY ? 1 : 0) + (onZ ? 1 : 0), isEdge = (isOuterX ? 1 : 0) + (isOuterY ? 1 : 0) + (isOuterZ ? 1 : 0) >= 2;
-                let isDivVoxel = false; if ((boxDivX > 1 || boxDivY > 1 || boxDivZ > 1) && edgeScore >= 2 && isDivCoord) { isDivVoxel = true; if (boxGridMode === 'surface' && !isFace) isDivVoxel = false; }
-                if (clearInterior && isPainting && !isFace && (boxMode === 'shell' || boxMode === 'wireframe')) { if (!(isDivVoxel && boxGridMode === 'internal')) { setVoxel(gx, gy, gz, false, null); continue; } }
-                if (boxMode === 'wireframe') { if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]); else if (wireFill && isFace) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]); } 
-                else if (boxMode === 'shell') { if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]); else if (isFace) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]); } 
-                else { if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]); else setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]); }
-            }
-            leftMenuNeedsUpdate = true;
-        }
-
-        function executeQuadSphereTool(startPos, endPos, isPainting) {
-            const minX = Math.min(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE)), maxX = Math.max(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE)), minY = Math.min(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE)), maxY = Math.max(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE)), minZ = Math.min(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE)), maxZ = Math.max(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE));
-            if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
-            const rx = (maxX - minX) / 2 + 0.5, ry = (maxY - minY) / 2 + 0.5, rz = (maxZ - minZ) / 2 + 0.5, cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, cz = (minZ + maxZ) / 2, invRx = 1 / rx, invRy = 1 / ry, invRz = 1 / rz;
-            const isInside = (gx, gy, gz) => { const nx = (gx - cx) * invRx, ny = (gy - cy) * invRy, nz = (gz - cz) * invRz; return (nx * nx + ny * ny + nz * nz) <= 1.0; };
-            for(let gx = minX; gx <= maxX; gx++) for(let gy = minY; gy <= maxY; gy++) for(let gz = minZ; gz <= maxZ; gz++) {
-                if (isInside(gx, gy, gz)) {
-                    const isSurface = (!isInside(gx+1, gy, gz) || !isInside(gx-1, gy, gz) || !isInside(gx, gy+1, gz) || !isInside(gx, gy-1, gz) || !isInside(gx, gy, gz+1) || !isInside(gx, gy, gz-1));
-                    if (clearInterior && isPainting && sphereMode === 'shell' && !isSurface) { setVoxel(gx, gy, gz, false, null); continue; }
-                    if (sphereMode === 'shell') { if (isSurface) setVoxel(gx, gy, gz, isPainting, getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0), matTypes[0]); } else setVoxel(gx, gy, gz, isPainting, getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0), matTypes[0]);
-                }
-            }
-            leftMenuNeedsUpdate = true;
-        }
-        
-        function executeIcosahedronTool(startPos, endPos, isPainting) {
-            let rawMinX = Math.round(startPos.x / VOXEL_SIZE), rawMaxX = Math.round(endPos.x / VOXEL_SIZE), rawMinY = Math.round(startPos.y / VOXEL_SIZE), rawMaxY = Math.round(endPos.y / VOXEL_SIZE), rawMinZ = Math.round(startPos.z / VOXEL_SIZE), rawMaxZ = Math.round(endPos.z / VOXEL_SIZE);
-            if (typeof icosahedronLock !== 'undefined' && icosahedronLock) { const diffX = Math.abs(rawMaxX - rawMinX), diffY = Math.abs(rawMaxY - rawMinY), diffZ = Math.abs(rawMaxZ - rawMinZ), maxDiff = Math.max(diffX, diffY, diffZ); rawMaxX = rawMinX + Math.sign(rawMaxX - rawMinX || 1) * maxDiff; rawMaxY = rawMinY + Math.sign(rawMaxY - rawMinY || 1) * maxDiff; rawMaxZ = rawMinZ + Math.sign(rawMaxZ - rawMinZ || 1) * maxDiff; }
-            const minX = Math.min(rawMinX, rawMaxX), maxX = Math.max(rawMinX, rawMaxX), minY = Math.min(rawMinY, rawMaxY), maxY = Math.max(rawMinY, rawMaxY), minZ = Math.min(rawMinZ, rawMaxZ), maxZ = Math.max(rawMinZ, rawMaxZ);
-            if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
-            const cX = (minX + maxX) / 2, cY = (minY + maxY) / 2, cZ = (minZ + maxZ) / 2, rX = (maxX - minX) / 2, rY = (maxY - minY) / 2, rZ = (maxZ - minZ) / 2;
-            let vertices = [], faces = [], wireframeEdges = [];
-
-            if (platonicType === 'tetrahedron') {
-                vertices = [ new THREE.Vector3(1,1,1).normalize(), new THREE.Vector3(1,-1,-1).normalize(), new THREE.Vector3(-1,1,-1).normalize(), new THREE.Vector3(-1,-1,1).normalize() ];
-                faces = [ [0,1,2], [0,2,3], [0,3,1], [1,3,2] ];
-            } else if (platonicType === 'octahedron') {
-                vertices = [ new THREE.Vector3(1,0,0), new THREE.Vector3(-1,0,0), new THREE.Vector3(0,1,0), new THREE.Vector3(0,-1,0), new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,-1) ];
-                faces = [ [0,2,4], [0,4,3], [0,3,5], [0,5,2], [1,2,5], [1,5,3], [1,3,4], [1,4,2] ];
-            } else if (platonicType === 'icosahedron') {
-                const t = (1.0 + Math.sqrt(5.0)) / 2.0;
-                vertices = [ new THREE.Vector3(-1,t,0).normalize(), new THREE.Vector3(1,t,0).normalize(), new THREE.Vector3(-1,-t,0).normalize(), new THREE.Vector3(1,-t,0).normalize(), new THREE.Vector3(0,-1,t).normalize(), new THREE.Vector3(0,1,t).normalize(), new THREE.Vector3(0,-1,-t).normalize(), new THREE.Vector3(0,1,-t).normalize(), new THREE.Vector3(t,0,-1).normalize(), new THREE.Vector3(t,0,1).normalize(), new THREE.Vector3(-t,0,-1).normalize(), new THREE.Vector3(-t,0,1).normalize() ];
-                faces = [ [0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1] ];
-            } else if (platonicType === 'dodecahedron') {
-                const phi = (1 + Math.sqrt(5)) / 2, inv = 1 / phi;
-                vertices = [ new THREE.Vector3(1,1,1).normalize(), new THREE.Vector3(1,1,-1).normalize(), new THREE.Vector3(1,-1,1).normalize(), new THREE.Vector3(1,-1,-1).normalize(), new THREE.Vector3(-1,1,1).normalize(), new THREE.Vector3(-1,1,-1).normalize(), new THREE.Vector3(-1,-1,1).normalize(), new THREE.Vector3(-1,-1,-1).normalize(), new THREE.Vector3(0,inv,phi).normalize(), new THREE.Vector3(0,inv,-phi).normalize(), new THREE.Vector3(0,-inv,phi).normalize(), new THREE.Vector3(0,-inv,-phi).normalize(), new THREE.Vector3(inv,phi,0).normalize(), new THREE.Vector3(inv,-phi,0).normalize(), new THREE.Vector3(-inv,phi,0).normalize(), new THREE.Vector3(-inv,-phi,0).normalize(), new THREE.Vector3(phi,0,inv).normalize(), new THREE.Vector3(phi,0,-inv).normalize(), new THREE.Vector3(-phi,0,inv).normalize(), new THREE.Vector3(-phi,0,-inv).normalize() ];
-                const pentagons = [ [0,12,14,4,8], [0,8,10,2,16], [0,16,17,1,12], [1,9,11,3,17], [1,12,14,5,9], [2,13,15,6,10], [2,16,17,3,13], [3,11,7,15,13], [4,14,5,19,18], [4,18,6,10,8], [5,19,7,11,9], [6,18,19,7,15] ];
-                const triFaces = [];
-                for(let p of pentagons) { triFaces.push([p[0],p[1],p[2]], [p[0],p[2],p[3]], [p[0],p[3],p[4]]); wireframeEdges.push([p[0],p[1]],[p[1],p[2]],[p[2],p[3]],[p[3],p[4]],[p[4],p[0]]); }
-                faces = triFaces;
-            }
-
-            if (platonicType !== 'dodecahedron') {
-                let cache = new Map(); 
-                function getMid(v1, v2) { 
-                    const key = v1 < v2 ? (v1 << 16) | v2 : (v2 << 16) | v1; 
-                    if (cache.has(key)) return cache.get(key); 
-                    const p1 = vertices[v1], p2 = vertices[v2], mid = new THREE.Vector3().addVectors(p1, p2).normalize(); 
-                    vertices.push(mid); const idx = vertices.length - 1; cache.set(key, idx); return idx; 
-                }
-                for (let i = 1; i < Math.max(1, icosahedronDivs); i++) {
-                    const next = []; for (const f of faces) { 
-                        const a = getMid(f[0], f[1]), b = getMid(f[1], f[2]), c = getMid(f[2], f[0]); 
-                        next.push([f[0], a, c],[f[1], b, a],[f[2], c, b],[a, b, c]); 
-                    } 
-                    faces = next;
-                }
-                for (const face of faces) wireframeEdges.push([face[0], face[1]], [face[1], face[2]], [face[2], face[0]]);
-            }
-
-            for(let i=0; i<vertices.length; i++) { vertices[i].x = cX + vertices[i].x * rX; vertices[i].y = cY + vertices[i].y * rY; vertices[i].z = cZ + vertices[i].z * rZ; }
-            
-            const sizeX = maxX - minX + 1, sizeZ = maxZ - minZ + 1, minYGrid = new Int32Array(sizeX * sizeZ).fill(999999), maxYGrid = new Int32Array(sizeX * sizeZ).fill(-999999);
-            const updG = (gx, gy, gz) => { if (gx < minX || gx > maxX || gz < minZ || gz > maxZ) return; const idx = (gx - minX) + (gz - minZ) * sizeX; if (gy < minYGrid[idx]) minYGrid[idx] = gy; if (gy > maxYGrid[idx]) maxYGrid[idx] = gy; };
-            const drawnSet = new Set();
-            const dV = (gx, gy, gz, color, mat) => { if (gx < minX || gx > maxX || gy < minY || gy > maxY || gz < minZ || gz > maxZ) return; const h = (gx + 32768) + (gy + 32768) * 65536 + (gz + 32768) * 4294967296; if (!drawnSet.has(h)) { drawnSet.add(h); setVoxel(gx, gy, gz, isPainting, color, mat); } if (icosahedronMode === 'solid' || clearInterior) updG(gx, gy, gz); };
-            
-            function dL(p1, p2, thick, color, mat) { const dist = p1.distanceTo(p2), steps = Math.max(1, Math.ceil(dist * 2.0)), r = thick - 1, rSq = (r + 0.1) * (r + 0.1); for (let i = 0; i <= steps; i++) { tempPos.lerpVectors(p1, p2, i / steps); const cx = Math.round(tempPos.x), cy = Math.round(tempPos.y), cz = Math.round(tempPos.z); for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) { if (dx*dx + dy*dy + dz*dz <= rSq) dV(cx+dx, cy+dy, cz+dz, color, mat); } } }
-            function dF(p1, p2, p3, color, mat) { const d12 = p1.distanceTo(p2), d23 = p2.distanceTo(p3), d31 = p3.distanceTo(p1), maxD = Math.max(d12, d23, d31), steps = Math.max(1, Math.ceil(maxD * 2.0)); for (let u = 0; u <= steps; u++) for (let v = 0; v <= steps - u; v++) { const w = steps - u - v, fU = u / steps, fV = v / steps, fW = w / steps, px = Math.round(p1.x * fU + p2.x * fV + p3.x * fW), py = Math.round(p1.y * fU + p2.y * fV + p3.y * fW), pz = Math.round(p1.z * fU + p2.z * fV + p3.z * fW); dV(px, py, pz, color, mat); } }
-            
-            const dEdges = new Set();
-            for (const edge of wireframeEdges) { const k = edge[0] < edge[1] ? (edge[0] << 16) | edge[1] : (edge[1] << 16) | edge[0]; if (!dEdges.has(k)) { dEdges.add(k); const ep1 = vertices[edge[0]], ep2 = vertices[edge[1]]; dL(ep1, ep2, wireWidth, getDrawColor(Math.round((ep1.x+ep2.x)/2), Math.round((ep1.y+ep2.y)/2), Math.round((ep1.z+ep2.z)/2), minX, maxX, minY, maxY, 1), matTypes[1]); } }
-            
-            if (icosahedronMode === 'solid' || icosahedronMode === 'shell' || (icosahedronMode === 'wireframe' && wireFill)) { for (const face of faces) { const p1 = vertices[face[0]], p2 = vertices[face[1]], p3 = vertices[face[2]]; dF(p1, p2, p3, getDrawColor(Math.round((p1.x+p2.x+p3.x)/3), Math.round((p1.y+p2.y+p3.y)/3), Math.round((p1.z+p2.z+p3.z)/3), minX, maxX, minY, maxY, 0), matTypes[0]); } }
-            
-            if (icosahedronMode === 'solid' || (clearInterior && isPainting)) { for (let gx = minX; gx <= maxX; gx++) for (let gz = minZ; gz <= maxZ; gz++) { const idx = (gx - minX) + (gz - minZ) * sizeX, min_y = minYGrid[idx], max_y = maxYGrid[idx]; if (min_y <= max_y) for (let gy = min_y; gy <= max_y; gy++) { const h = (gx + 32768) + (gy + 32768) * 65536 + (gz + 32768) * 4294967296; if (!drawnSet.has(h)) { if (icosahedronMode === 'solid') { drawnSet.add(h); setVoxel(gx, gy, gz, isPainting, getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0), matTypes[0]); } else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null); } } } }
-            leftMenuNeedsUpdate = true;
-        }
-
-        function executeCylinderTool(startPos, endPos, isPainting) {
-            const rMinX = Math.round(startPos.x / VOXEL_SIZE), rMaxX = Math.round(endPos.x / VOXEL_SIZE), rMinY = Math.round(startPos.y / VOXEL_SIZE), rMaxY = Math.round(endPos.y / VOXEL_SIZE), rMinZ = Math.round(startPos.z / VOXEL_SIZE), rMaxZ = Math.round(endPos.z / VOXEL_SIZE), minX = Math.min(rMinX, rMaxX), maxX = Math.max(rMinX, rMaxX), minY = Math.min(rMinY, rMaxY), maxY = Math.max(rMinY, rMaxY), minZ = Math.min(rMinZ, rMaxZ), maxZ = Math.max(rMinZ, rMaxZ);
-            if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
-            const cX = (minX+maxX)/2, cY = (minY+maxY)/2, cZ = (minZ+maxZ)/2, rX = (maxX-minX)/2, rY = (maxY-minY)/2, rZ = (maxZ-minZ)/2, invRu = (cylinderAxis==='X'?rY:rX)>0 ? 1/(cylinderAxis==='X'?rY:rX):0, invRv = (cylinderAxis==='X'?rZ:(cylinderAxis==='Y'?rZ:rY))>0 ? 1/(cylinderAxis==='X'?rZ:(cylinderAxis==='Y'?rZ:rY)):0, cu = cylinderAxis==='X'?cY:cX, cv = cylinderAxis==='X'?cZ:(cylinderAxis==='Y'?cZ:cY), minW = cylinderAxis==='X'?minX:(cylinderAxis==='Y'?minY:minZ), maxW = cylinderAxis==='X'?maxX:(cylinderAxis==='Y'?maxY:maxZ), N = cylinderSides < 3 ? 0 : cylinderSides, PI_N = N === 0 ? 0 : Math.PI / N, max_r = N === 0 ? 1 : 1 / Math.cos(PI_N), loopMinX = cylinderAxis==='X'?minX:Math.floor(cX-rX*max_r), loopMaxX = cylinderAxis==='X'?maxX:Math.ceil(cX+rX*max_r), loopMinY = cylinderAxis==='Y'?minY:Math.floor(cY-rY*max_r), loopMaxY = cylinderAxis==='Y'?maxY:Math.ceil(cY+rY*max_r), loopMinZ = cylinderAxis==='Z'?minZ:Math.floor(cZ-rZ*max_r), loopMaxZ = cylinderAxis==='Z'?maxZ:Math.ceil(cZ+rZ*max_r);
-            const isInside = (gx, gy, gz) => { const gw = cylinderAxis==='X'?gx:(cylinderAxis==='Y'?gy:gz), gu = cylinderAxis==='X'?gy:gx, gv = cylinderAxis==='X'?gz:(cylinderAxis==='Y'?gz:gy); if (gw < minW || gw > maxW) return false; const nu = (gu - cu) * invRu, nv = (gv - cv) * invRv, r_norm = Math.sqrt(nu*nu + nv*nv); if (r_norm === 0) return true; let r_limit = 1.0; if (N !== 0) { const phi = Math.atan2(nv, nu), angle = ((phi + PI_N) % (2*PI_N) + 2*PI_N) % (2*PI_N); r_limit = 1.0 / Math.cos(angle - PI_N); } return r_norm <= r_limit + 0.001; };
-            for(let gx = loopMinX; gx <= loopMaxX; gx++) for(let gy = loopMinY; gy <= loopMaxY; gy++) for(let gz = loopMinZ; gz <= loopMaxZ; gz++) {
-                if (isInside(gx, gy, gz)) {
-                    const isSurface = (!isInside(gx+1,gy,gz)||!isInside(gx-1,gy,gz)||!isInside(gx,gy+1,gz)||!isInside(gx,gy-1,gz)||!isInside(gx,gy,gz+1)||!isInside(gx,gy,gz-1)), gw = cylinderAxis==='X'?gx:(cylinderAxis==='Y'?gy:gz), isCap = (gw===minW || gw===maxW);
-                    let shouldDraw = false, drawColor = getDrawColor(gx,gy,gz,loopMinX,loopMaxX,loopMinY,loopMaxY,0), drawMat = matTypes[0];
-                    if (cylinderMode === 'solid') shouldDraw = true;
-                    else if (cylinderMode === 'shell') { if (isSurface) { if (!cylinderCap && isCap) { let sideS = false; if(cylinderAxis==='X') sideS = !isInside(gx,gy+1,gz)||!isInside(gx,gy-1,gz)||!isInside(gx,gy,gz+1)||!isInside(gx,gy,gz-1); if(cylinderAxis==='Y') sideS = !isInside(gx+1,gy,gz)||!isInside(gx-1,gy,gz)||!isInside(gx,gy,gz+1)||!isInside(gx,gy,gz-1); if(cylinderAxis==='Z') sideS = !isInside(gx+1,gy,gz)||!isInside(gx-1,gy,gz)||!isInside(gx,gy+1,gz)||!isInside(gx,gy-1,gz); if(sideS) shouldDraw = true; } else shouldDraw = true; } else if (clearInterior && isPainting) setVoxel(gx,gy,gz,false,null); }
-                    else if (cylinderMode === 'wireframe') { if (isSurface) { let isEdge = false; if(isCap){ let sideS = false; if(cylinderAxis==='X') sideS = !isInside(gx,gy+1,gz)||!isInside(gx,gy-1,gz)||!isInside(gx,gy,gz+1)||!isInside(gx,gy,gz-1); if(cylinderAxis==='Y') sideS = !isInside(gx+1,gy,gz)||!isInside(gx-1,gy,gz)||!isInside(gx,gy,gz+1)||!isInside(gx,gy,gz-1); if(cylinderAxis==='Z') sideS = !isInside(gx+1,gy,gz)||!isInside(gx-1,gy,gz)||!isInside(gx,gy+1,gz)||!isInside(gx,gy-1,gz); if(sideS) isEdge = true; } if(N!==0 && !isEdge){ const gu = cylinderAxis==='X'?gy:gx, gv = cylinderAxis==='X'?gz:(cylinderAxis==='Y'?gz:gy), nu = (gu - cu) * invRu, nv = (gv - cv) * invRv; let phi = Math.atan2(nv, nu); if (phi < 0) phi += 2 * Math.PI; const r_scaled = Math.sqrt(nu*nu + nv*nv) * ((rX + (cylinderAxis==='X'?rZ:rY)) / 2); for(let i=0; i < N; i++) { const tp = (i * (2 * Math.PI / N) - Math.PI / N + 2 * Math.PI) % (2 * Math.PI); let diff = Math.abs(phi - tp); if (diff > Math.PI) diff = 2 * Math.PI - diff; if (diff * r_scaled <= (wireWidth - 0.2)) { isEdge = true; break; } } } if (isEdge) { shouldDraw = true; drawColor = getDrawColor(gx,gy,gz,loopMinX,loopMaxX,loopMinY,loopMaxY,1); drawMat = matTypes[1]; } else if (wireFill) { shouldDraw = true; if (!cylinderCap && isCap) shouldDraw = false; } } else if (clearInterior && isPainting) setVoxel(gx,gy,gz,false,null); }
-                    if (shouldDraw) setVoxel(gx, gy, gz, isPainting, drawColor, drawMat);
-                }
-            }
-            leftMenuNeedsUpdate = true;
-        }
-
-        function executeTriangleTool(startPos, endPos, isPainting) {
-            const rMinX = Math.round(startPos.x / VOXEL_SIZE), rMaxX = Math.round(endPos.x / VOXEL_SIZE), rMinY = Math.round(startPos.y / VOXEL_SIZE), rMaxY = Math.round(endPos.y / VOXEL_SIZE), rMinZ = Math.round(startPos.z / VOXEL_SIZE), rMaxZ = Math.round(endPos.z / VOXEL_SIZE), minX = Math.min(rMinX, rMaxX), maxX = Math.max(rMinX, rMaxX), minY = Math.min(rMinY, rMaxY), maxY = Math.max(rMinY, rMaxY), minZ = Math.min(rMinZ, rMaxZ), maxZ = Math.max(rMinZ, rMaxZ);
-            if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
-            const axMap = { 'X': { minW: minX, maxW: maxX, startW: Math.round(startPos.x / VOXEL_SIZE), endW: rMaxX }, 'Y': { minW: minY, maxW: maxY, startW: Math.round(startPos.y / VOXEL_SIZE), endW: rMaxY }, 'Z': { minW: minZ, maxW: maxZ, startW: Math.round(startPos.z / VOXEL_SIZE), endW: rMaxZ } };
-            const ax = axMap[triangleAxis], isFlipped = ax.startW > ax.endW, baseW = isFlipped ? ax.maxW : ax.minW, cX = (minX+maxX)/2, cY = (minY+maxY)/2, cZ = (minZ+maxZ)/2, rX = (maxX-minX)/2, rY = (maxY-minY)/2, rZ = (maxZ-minZ)/2, N = (triangleType==='cone')?0:(triangleType==='tetra'?3:pyramidLegs), max_r = N===0?1:1/Math.cos(Math.PI/N), loopMinX = triangleAxis==='X'?minX:Math.floor(cX-rX*max_r), loopMaxX = triangleAxis==='X'?maxX:Math.ceil(cX+rX*max_r), loopMinY = triangleAxis==='Y'?minY:Math.floor(cY-rY*max_r), loopMaxY = triangleAxis==='Y'?maxY:Math.ceil(cY+rY*max_r), loopMinZ = triangleAxis==='Z'?minZ:Math.floor(cZ-rZ*max_r), loopMaxZ = triangleAxis==='Z'?maxZ:Math.ceil(cZ+rZ*max_r), cu = triangleAxis==='X'?cY:cX, cv = triangleAxis==='X'?cZ:(triangleAxis==='Y'?cZ:cY), ru = triangleAxis==='X'?rY:(triangleAxis==='Y'?rX:rX), rv = triangleAxis==='X'?rZ:(triangleAxis==='Y'?rZ:rY), invRu = ru>0?1/ru:0, invRv = rv>0?1/rv:0, PI_N = N===0?0:Math.PI/N, N_legs = N===0?8:N;
-            const isInside = (gx, gy, gz) => { const gw = triangleAxis==='X'?gx:(triangleAxis==='Y'?gy:gz), gu = triangleAxis==='X'?gy:(triangleAxis==='Y'?gx:gx), gv = triangleAxis==='X'?gz:(triangleAxis==='Y'?gz:gy); if (gw < ax.minW || gw > ax.maxW) return false; const h = (ax.maxW===ax.minW)?0:Math.abs(gw - baseW)/(ax.maxW - ax.minW), nu = (gu-cu)*invRu, nv = (gv-cv)*invRv, r_norm = Math.sqrt(nu*nu + nv*nv); if (r_norm === 0) return true; let r_limit = 1.0; if (N !== 0) { const phi = Math.atan2(nv, nu), angle = ((phi + PI_N) % (2*PI_N) + 2*PI_N) % (2*PI_N); r_limit = 1.0 / Math.cos(angle - PI_N); } return r_norm <= r_limit * (1 - h) + 0.001; };
-            const divW = new Uint8Array(ax.maxW - ax.minW + 1); if (triangleDivs > 1) { const step = (ax.maxW-ax.minW)/triangleDivs; for (let i = 1; i < triangleDivs; i++) { const center = Math.round(isFlipped ? ax.maxW-i*step : ax.minW+i*step), half = (triangleDivThick-1)/2; for(let v = Math.ceil(center-half); v <= Math.floor(center+half+0.001); v++) { const idx = v-ax.minW; if (idx>=0 && idx<divW.length) divW[idx] = 1; } } }
-            for(let gx = loopMinX; gx <= loopMaxX; gx++) for(let gy = loopMinY; gy <= loopMaxY; gy++) for(let gz = loopMinZ; gz <= loopMaxZ; gz++) {
-                if (isInside(gx, gy, gz)) {
-                    const cMain = getDrawColor(gx,gy,gz,loopMinX,loopMaxX,loopMinY,loopMaxY,0), cSec = getDrawColor(gx,gy,gz,loopMinX,loopMaxX,loopMinY,loopMaxY,1), gw = triangleAxis==='X'?gx:(triangleAxis==='Y'?gy:gz), gu = triangleAxis==='X'?gy:(triangleAxis==='Y'?gx:gx), gv = triangleAxis==='X'?gz:(triangleAxis==='Y'?gz:gy);
-                    let isSurf = (!isInside(gx+1,gy,gz)||!isInside(gx-1,gy,gz)||!isInside(gx,gy+1,gz)||!isInside(gx,gy-1,gz)||!isInside(gx,gy,gz+1)||!isInside(gx,gy,gz-1));
-                    if ((triangleMode === 'shell' || triangleMode === 'wireframe') && isSurf && !triangleCap && gw === baseW) { let isE = false; if (triangleAxis==='X' && (!isInside(gx,gy+1,gz)||!isInside(gx,gy-1,gz)||!isInside(gx,gy,gz+1)||!isInside(gx,gy,gz-1))) isE = true; if (triangleAxis==='Y' && (!isInside(gx+1,gy,gz)||!isInside(gx-1,gy,gz)||!isInside(gx,gy,gz+1)||!isInside(gx,gy,gz-1))) isE = true; if (triangleAxis==='Z' && (!isInside(gx+1,gy,gz)||!isInside(gx-1,gy,gz)||!isInside(gx,gy+1,gz)||!isInside(gx,gy-1,gz))) isE = true; if (!isE) isSurf = false; }
-                    let isDivV = (triangleDivs>1 && divW[gw-ax.minW]===1); if (triangleGridMode === 'surface' && !isSurf) isDivV = false; 
-                    let isE = Math.abs(gw - baseW) < wireWidth; const nu = (gu-cu)*invRu, nv = (gv-cv)*invRv; let phi = Math.atan2(nv, nu); if (phi<0) phi += 2 * Math.PI; const r_scaled = Math.sqrt(nu*nu + nv*nv) * ((rX + rY) / 2);
-                    if (r_scaled < wireWidth) isE = true; else { for(let i=0; i < N_legs; i++) { const tp = (i * (2 * Math.PI / N_legs) - (N === 0 ? 0 : Math.PI / N_legs) + 2 * Math.PI) % (2 * Math.PI); let diff = Math.abs(phi-tp); if (diff>Math.PI) diff = 2*Math.PI-diff; if (diff*r_scaled <= (wireWidth-0.2)) { isE = true; break; } } }
-                    if (triangleMode === 'wireframe') { if (isSurf) { if (isE || isDivV) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]); else if (wireFill) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]); } else { if (isDivV && triangleGridMode === 'internal') setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]); else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null); } } 
-                    else { if (clearInterior && isPainting && !isSurf && triangleMode === 'shell') { if (!(isDivV && triangleGridMode === 'internal')) { setVoxel(gx, gy, gz, false, null); continue; } } if ((isE && isSurf) || isDivV) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]); else if (triangleMode === 'solid' || isSurf) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]); }
-                }
-            }
-            leftMenuNeedsUpdate = true;
-        }
-
-        function executePlaneTool(startPos, endPos, isPainting) {
-            let minX = Math.min(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE)), maxX = Math.max(Math.round(startPos.x / VOXEL_SIZE), Math.round(endPos.x / VOXEL_SIZE)), minY = Math.min(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE)), maxY = Math.max(Math.round(startPos.y / VOXEL_SIZE), Math.round(endPos.y / VOXEL_SIZE)), minZ = Math.min(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE)), maxZ = Math.max(Math.round(startPos.z / VOXEL_SIZE), Math.round(endPos.z / VOXEL_SIZE));
-            const dx = maxX - minX, dy = maxY - minY, dz = maxZ - minZ; let flat = 'y'; if (dx <= dy && dx <= dz) flat = 'x'; else if (dz <= dx && dz <= dy) flat = 'z';
-            const depth = planeThick - 1; if (flat === 'x') maxX = minX + depth; if (flat === 'y') maxY = minY + depth; if (flat === 'z') maxZ = minZ + depth;
-            if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
-            let minU, maxU, minV, maxV; if (flat === 'x') { minU = minY; maxU = maxY; minV = minZ; maxV = maxZ; } else if (flat === 'y') { minU = minX; maxU = maxX; minV = minZ; maxV = maxZ; } else { minU = minX; maxU = maxX; minV = minY; maxV = maxY; }
-            const gSizeU = (maxU - planeOutlineThick) - (minU + planeOutlineThick) + 1, gSizeV = (maxV - planeOutlineThick) - (minV + planeOutlineThick) + 1, gridU = new Uint8Array(Math.max(0, gSizeU)), gridV = new Uint8Array(Math.max(0, gSizeV));
-            if (planeDivU > 1 && gSizeU > 0) { const step = gSizeU / planeDivU, half = planeGridThick / 2; for (let i = 1; i < planeDivU; i++) { const center = Math.round(i * step); for (let r = Math.ceil(center - half); r <= Math.floor(center + half - 0.001); r++) if (r >= 0 && r < gridU.length) gridU[r] = 1; } }
-            if (planeDivV > 1 && gSizeV > 0) { const step = gSizeV / planeDivV, half = planeGridThick / 2; for (let i = 1; i < planeDivV; i++) { const center = Math.round(i * step); for (let r = Math.ceil(center - half); r <= Math.floor(center + half - 0.001); r++) if (r >= 0 && r < gridV.length) gridV[r] = 1; } }
-            for(let gx = minX; gx <= maxX; gx++) for(let gy = minY; gy <= maxY; gy++) for(let gz = minZ; gz <= maxZ; gz++) {
-                let u, v; if (flat === 'x') { u = gy; v = gz; } else if (flat === 'y') { u = gx; v = gz; } else { u = gx; v = gy; }
-                const distU = Math.min(u - minU, maxU - u), distV = Math.min(v - minV, maxV - v), minDist = Math.min(distU, distV);
-                let draw = false, col = null, mat = 0; const cM = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0), cS = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 1);
-                if (minDist < planeOutlineThick) { if (planeOutline) { draw = true; col = cS; mat = matTypes[1]; } } else if (gSizeU > 0 && gSizeV > 0) {
-                    const rU = u - (minU + planeOutlineThick), rV = v - (minV + planeOutlineThick);
-                    if ((rU >= 0 && rU < gridU.length && gridU[rU] === 1) || (rV >= 0 && rV < gridV.length && gridV[rV] === 1)) { if (planeGrid) { draw = true; col = cS; mat = matTypes[1]; } } else if (planeFill) { draw = true; col = cM; mat = matTypes[0]; }
-                }
-                if (draw) setVoxel(gx, gy, gz, isPainting, col, mat);
-            }
-            leftMenuNeedsUpdate = true;
-        }
-
-        // --- Controller Handlers ---
-        let isDrawing = false, isErasing = false, isColorPicking = false, rightMenuHovered = false, globalMenuHovered = false, leftMenuHovered = false, colorMenuHovered = false;
-        let rightMenuUV = { x: 0, y: 0 }, globalMenuUV = { x: 0, y: 0 }, leftMenuUV = { x: 0, y: 0 }, colorMenuUV = { x: 0, y: 0 }, isRightGripping = false, isLeftGripping = false;
-        const prevRightPos = new THREE.Vector3(), prevLeftPos = new THREE.Vector3(), prevMid = new THREE.Vector3(), prevHandVec = new THREE.Vector3(), rightPos = new THREE.Vector3(), leftPos = new THREE.Vector3(), rightDir = new THREE.Vector3(), leftDir = new THREE.Vector3(), rightTargetLocal = new THREE.Vector3(), leftTargetLocal = new THREE.Vector3(), lastPaintedPos = new THREE.Vector3(Infinity, Infinity, Infinity), lastErasedPos = new THREE.Vector3(Infinity, Infinity, Infinity);
-        let prevGripDist = 0;
 
         function onSelectStart() {
             if (this === xrRight) { 
@@ -1894,6 +1119,39 @@
         controller0.addEventListener('squeezestart', onSqueezeStart); controller1.addEventListener('squeezestart', onSqueezeStart);
         controller0.addEventListener('squeezeend', onSqueezeEnd); controller1.addEventListener('squeezeend', onSqueezeEnd);
 
+        function handleRightMenuClick(cx, cy) {
+            if (cx >= 50 && cx <= 462 && cy >= 36 && cy <= 36 + 12 * 39) {
+                const idx = Math.floor((cy - 36) / 39);
+                if (idx >= 0 && idx < 12) {
+                    if (hasSelection) applySelection();
+                    isPreviewingBox = isPreviewingSphere = isPreviewingPlane = isPreviewingTriangle = isPreviewingCylinder = isPreviewingIcosahedron = false;
+                    boxPreviewMesh.visible = spherePreviewMesh.visible = bucketPreviewMesh.visible = linePreviewMesh.visible = false;
+                    isPreviewingLineLeft = isPreviewingLineRight = false; lineStartLeft.set(Infinity, Infinity, Infinity); lineStartRight.set(Infinity, Infinity, Infinity);
+                    lastHoveredVoxel.set(Infinity, Infinity, Infinity); hoveredFillCoords.length = 0; lastPaintedPos.set(Infinity, Infinity, Infinity); lastErasedPos.set(Infinity, Infinity, Infinity);
+                    lastSheetLeftPos.set(Infinity, Infinity, Infinity); lastSheetRightPos.set(Infinity, Infinity, Infinity);
+                    const toolsList = ['brush', 'stroke', 'sheet', 'paint', 'sculpt', 'plane', 'box', 'quadsphere', 'cylinder', 'triangle', 'icosahedron', 'select'];
+                    activeTool = toolsList[idx]; updateCursors(); rightMenuNeedsUpdate = leftMenuNeedsUpdate = true; lastLinePreviewGridHash = "";
+                }
+            }
+        }
+
+        function handleGlobalMenuClick(cx, cy) {
+            if (cy >= 70 && cy <= 120) { 
+                if (cx >= 40 && cx <= 178) isVerticalLock = !isVerticalLock; 
+                if (cx >= 187 && cx <= 325) clearInterior = !clearInterior; 
+                if (cx >= 334 && cx <= 472) { passthroughEnabled = !passthroughEnabled; updatePassthrough(); }
+            }
+            if (cy >= 140 && cy <= 190) { 
+                if (cx >= 40 && cx <= 178) { mirrorX = !mirrorX; updateActiveSymmetries(); } 
+                if (cx >= 187 && cx <= 325) { mirrorY = !mirrorY; updateActiveSymmetries(); }
+                if (cx >= 334 && cx <= 472) { mirrorZ = !mirrorZ; updateActiveSymmetries(); } 
+            }
+            if (cy >= 210 && cy <= 260) { if (cx >= 40 && cx <= 90) polarSymmetry = Math.max(1, polarSymmetry - 1); if (cx >= 422 && cx <= 472) polarSymmetry = Math.min(16, polarSymmetry + 1); if (cx >= 100 && cx <= 412) polarSymmetry = polarSymmetry === 1 ? 4 : 1; updatePolarArrays(); }
+            if (cy >= 280 && cy <= 330) { if (cx >= 40 && cx <= 240) exportMode = 'boxes'; if (cx >= 272 && cx <= 472) exportMode = 'mesh'; }
+            if (cy >= 350 && cy <= 410 && cx >= 40 && cx <= 472) exportToOBJ();
+            globalMenuNeedsUpdate = true;
+        }
+
         function onSqueezeStart() { if (this === xrRight) { isRightGripping = true; if (gripRight) gripRight.getWorldPosition(prevRightPos); if (isLeftGripping && gripLeft) { gripLeft.getWorldPosition(prevLeftPos); prevGripDist = prevRightPos.distanceTo(prevLeftPos); prevMid.copy(prevRightPos).lerp(prevLeftPos, 0.5); prevHandVec.subVectors(prevRightPos, prevLeftPos).normalize(); } } else if (this === xrLeft) { isLeftGripping = true; if (gripLeft) gripLeft.getWorldPosition(prevLeftPos); if (isRightGripping && gripRight) { gripRight.getWorldPosition(prevRightPos); prevGripDist = prevLeftPos.distanceTo(prevRightPos); prevMid.copy(prevLeftPos).lerp(prevRightPos, 0.5); prevHandVec.subVectors(prevRightPos, prevLeftPos).normalize(); } } }
         function onSqueezeEnd() { if (this === xrRight) { isRightGripping = false; if (isLeftGripping && gripLeft) gripLeft.getWorldPosition(prevLeftPos); } else if (this === xrLeft) { isLeftGripping = false; if (isRightGripping && gripRight) gripRight.getWorldPosition(prevRightPos); } }
 
@@ -1904,7 +1162,7 @@
                 if (source && source.gamepad) {
                     if (source.handedness === 'right') { const a = source.gamepad.buttons[4]?.pressed || false, b = source.gamepad.buttons[5]?.pressed || false; if (leftMenuMesh) leftMenuMesh.visible = a && !b; if (colorMenuMesh) colorMenuMesh.visible = b; if (a && !lastRightBtnA) leftMenuNeedsUpdate = true; if (b && !lastRightBtnB) colorMenuNeedsUpdate = true; lastRightBtnA = a; lastRightBtnB = b; }
                     if (source.handedness === 'left') { const x = source.gamepad.buttons[4]?.pressed || false, y = source.gamepad.buttons[5]?.pressed || false; if (rightMenuMesh) rightMenuMesh.visible = x && !y; if (globalMenuMesh) globalMenuMesh.visible = y; if (x && !lastLeftBtnX) rightMenuNeedsUpdate = true; if (y && !lastLeftBtnY) globalMenuNeedsUpdate = true; lastLeftBtnX = x; lastLeftBtnY = y; }
-                    const ax = source.gamepad.axes; if (ax && ax.length >= 2) { const xVal = ax.length >= 4 ? ax[2] : ax[0], yVal = ax.length >= 4 ? ax[3] : ax[1], dead = 0.15; if (Math.abs(xVal) > dead || Math.abs(yVal) > dead) { const ci = source.handedness === 'right' ? 0 : 1, tc = slotColors[0][ci]; tc.getHSL(tempHSL); if (tempHSL.l > 0.01 && tempHSL.l < 0.99) { joystickTracker[ci].h = tempHSL.h; joystickTracker[ci].s = tempHSL.s; } if (Math.abs(xVal) > dead) { joystickTracker[ci].h += (xVal * 0.005); if (joystickTracker[ci].h > 1) joystickTracker[ci].h -= 1; if (joystickTracker[ci].h < 0) joystickTracker[ci].h += 1; if (joystickTracker[ci].s < 0.1) joystickTracker[ci].s = 0.8; } let nL = tempHSL.l; if (Math.abs(yVal) > dead) { nL -= (yVal * 0.005); nL = Math.max(0, Math.min(1, nL)); } tc.setHSL(joystickTracker[ci].h, joystickTracker[ci].s, nL); joyChanged = true; } }
+                    const ax = source.gamepad.axes; if (ax && ax.length >= 2) { const xVal = ax.length >= 4 ? ax[2] : ax[0], yVal = ax.length >= 4 ? ax[3] : ax[1], dead = 0.15; if (Math.abs(xVal) > dead || Math.abs(yVal) > dead) { const ci = source.handedness === 'right' ? 0 : 1, tc = slotColors[0][ci]; tc.getHSL(tempHSL); tc.setHSL(tempHSL.h + (Math.abs(xVal) > dead ? xVal * 0.01 : 0), tempHSL.s, Math.max(0, Math.min(1, tempHSL.l - (Math.abs(yVal) > dead ? yVal * 0.01 : 0)))); joyChanged = true; } }
                 }
             }
             if (joyChanged) { updateCursors(); if (Date.now() - lastColorJoystickUpdateTime > 50) { colorMenuNeedsUpdate = true; lastColorJoystickUpdateTime = Date.now(); } }
@@ -1928,13 +1186,17 @@
                 if (xrRight) { rightTargetLocal.copy(rightPointerPos).addScaledVector(rightDir, 0.05); worldGroup.worldToLocal(rightTargetLocal); rightTargetLocal.set(Math.round(rightTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(rightTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(rightTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE); cursorRight.position.copy(rightTargetLocal); cursorRight.updateMatrix(); cursorRight.visible = true; if (activeTool === 'select' && hasSelection && (transformMode === 'draw' || transformMode === 'paint') && !isSettingPivot) { const tX = Math.round(rightTargetLocal.x / VOXEL_SIZE) * VOXEL_SIZE - Math.round(selectionCenter.x) * VOXEL_SIZE, tY = Math.round(rightTargetLocal.y / VOXEL_SIZE) * VOXEL_SIZE - Math.round(selectionCenter.y) * VOXEL_SIZE, tZ = Math.round(rightTargetLocal.z / VOXEL_SIZE) * VOXEL_SIZE - Math.round(selectionCenter.z) * VOXEL_SIZE; selectionGroup.position.set(tX, tY, tZ); selectionGroup.updateMatrix(); } } else cursorRight.visible = false;
                 if (xrRight && activeTool === 'paint' && paintMode === 'bucket' && !isDrawing) { const gx = Math.round(rightTargetLocal.x / VOXEL_SIZE), gy = Math.round(rightTargetLocal.y / VOXEL_SIZE), gz = Math.round(rightTargetLocal.z / VOXEL_SIZE); if (gx !== lastHoveredVoxel.x || gy !== lastHoveredVoxel.y || gz !== lastHoveredVoxel.z) { let already = false; for (let i = 0; i < hoveredFillCoords.length; i+=3) { if (hoveredFillCoords[i] === gx && hoveredFillCoords[i+1] === gy && hoveredFillCoords[i+2] === gz) { already = true; break; } } if (!already) { lastHoveredVoxel.set(gx, gy, gz); calculateFloodFill(gx, gy, gz); const count = hoveredFillCoords.length / 3; if (count > 0) { bucketPreviewMesh.count = count; for (let i = 0; i < count; i++) { tempMatrix.makeTranslation(hoveredFillCoords[i*3], hoveredFillCoords[i*3+1], hoveredFillCoords[i*3+2]); bucketPreviewMesh.setMatrixAt(i, tempMatrix); } bucketPreviewMesh.instanceMatrix.needsUpdate = true; bucketPreviewMesh.visible = true; } else bucketPreviewMesh.visible = false; } lastHoveredVoxel.set(gx, gy, gz); } } else { bucketPreviewMesh.visible = false; if (activeTool !== 'paint' || paintMode !== 'bucket') { lastHoveredVoxel.set(Infinity, Infinity, Infinity); hoveredFillCoords.length = 0; } }
                 if (xrRight && isDrawing) { if (activeTool === 'select' && hasSelection && !isSettingPivot) { if (transformMode === 'draw') { if (!rightTargetLocal.equals(lastPaintedPos)) { stampSelection(Math.round(rightTargetLocal.x / VOXEL_SIZE) - Math.round(selectionCenter.x), Math.round(rightTargetLocal.y / VOXEL_SIZE) - Math.round(selectionCenter.y), Math.round(rightTargetLocal.z / VOXEL_SIZE) - Math.round(selectionCenter.z)); lastPaintedPos.copy(rightTargetLocal); } } else if (transformMode === 'paint') { if (!rightTargetLocal.equals(lastPaintedPos)) { paintSelection(Math.round(rightTargetLocal.x / VOXEL_SIZE) - Math.round(selectionCenter.x), Math.round(rightTargetLocal.y / VOXEL_SIZE) - Math.round(selectionCenter.y), Math.round(rightTargetLocal.z / VOXEL_SIZE) - Math.round(selectionCenter.z)); lastPaintedPos.copy(rightTargetLocal); } } else { selectionOffset.copy(rightTargetLocal).sub(dragStartCtrlPos); selectionOffset.set(Math.round(selectionOffset.x / VOXEL_SIZE) * VOXEL_SIZE, Math.round(selectionOffset.y / VOXEL_SIZE) * VOXEL_SIZE, Math.round(selectionOffset.z / VOXEL_SIZE) * VOXEL_SIZE); selectionGroup.position.copy(dragStartOffset).add(selectionOffset); selectionGroup.updateMatrix(); } } else if (activeTool === 'select' && selectMode === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, rightTargetLocal, true); else if (activeTool === 'brush') { if (!rightTargetLocal.equals(lastPaintedPos)) { placeBrushVoxels(rightTargetLocal, true); lastPaintedPos.copy(rightTargetLocal); } } else if (activeTool === 'sculpt') executeSculpt(rightTargetLocal, true); else if (activeTool === 'stroke' && strokeMode === 'continuous') { if (lastPaintedPos.x === Infinity) { placeBrushVoxels(rightTargetLocal, true); lastPaintedPos.copy(rightTargetLocal); } else if (!rightTargetLocal.equals(lastPaintedPos)) { drawLineVoxels(lastPaintedPos, rightTargetLocal, true); lastPaintedPos.copy(rightTargetLocal); } } else if (activeTool === 'sheet' && xrLeft) { if (lastSheetLeftPos.x === Infinity) { lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); drawSheetQuad(lastSheetLeftPos, lastSheetRightPos, lastSheetLeftPos, lastSheetRightPos, true, brushSize); } else { if (sheetMode === 'surface') drawSheetQuad(lastSheetLeftPos, lastSheetRightPos, leftTargetLocal, rightTargetLocal, true, brushSize); else drawSheetQuad(leftTargetLocal, rightTargetLocal, leftTargetLocal, rightTargetLocal, true, brushSize); lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); } } else if (activeTool === 'paint' && paintMode === 'brush') { if (lastPaintedPos.x === Infinity) { placePaintVoxels(rightTargetLocal); lastPaintedPos.copy(rightTargetLocal); } else if (!rightTargetLocal.equals(lastPaintedPos)) { drawPaintLineVoxels(lastPaintedPos, rightTargetLocal); lastPaintedPos.copy(rightTargetLocal); } } else if (activeTool === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, rightTargetLocal, true); else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, rightTargetLocal, true); else if (activeTool === 'cylinder' && isPreviewingCylinder) updateBoxPreview(drawStartPos, rightTargetLocal, true); else if (activeTool === 'plane' && isPreviewingPlane) updatePlanePreview(drawStartPos, rightTargetLocal, true); else if (activeTool === 'triangle' && isPreviewingTriangle) updateBoxPreview(drawStartPos, rightTargetLocal, true); else if (activeTool === 'icosahedron' && isPreviewingIcosahedron) updateBoxPreview(drawStartPos, rightTargetLocal, true); }
-                if (xrLeft && isErasing && !isColorPicking) { if (activeTool === 'brush') { if (!leftTargetLocal.equals(lastErasedPos)) { placeBrushVoxels(leftTargetLocal, false); lastErasedPos.copy(leftTargetLocal); } } else if (activeTool === 'sculpt') executeSculpt(leftTargetLocal, false); else if (activeTool === 'stroke' && strokeMode === 'continuous') { if (lastErasedPos.x === Infinity) { placeBrushVoxels(leftTargetLocal, false); lastErasedPos.copy(leftTargetLocal); } else if (!leftTargetLocal.equals(lastErasedPos)) { drawLineVoxels(lastErasedPos, leftTargetLocal, false); lastErasedPos.copy(leftTargetLocal); } } else if (activeTool === 'sheet' && xrRight) { if (lastSheetLeftPos.x === Infinity) { lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); drawSheetQuad(lastSheetLeftPos, lastSheetRightPos, lastSheetLeftPos, lastSheetRightPos, false, brushSize); } else { if (sheetMode === 'surface') drawSheetQuad(lastSheetLeftPos, lastSheetRightPos, leftTargetLocal, rightTargetLocal, false, brushSize); else drawSheetQuad(leftTargetLocal, rightTargetLocal, leftTargetLocal, rightTargetLocal, false, brushSize); lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); } } else if (activeTool === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, leftTargetLocal, false); else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, leftTargetLocal, false); else if (activeTool === 'cylinder' && isPreviewingCylinder) updateBoxPreview(drawStartPos, leftTargetLocal, false); else if (activeTool === 'plane' && isPreviewingPlane) updatePlanePreview(drawStartPos, leftTargetLocal, false); else if (activeTool === 'triangle' && isPreviewingTriangle) updateBoxPreview(drawStartPos, leftTargetLocal, false); else if (activeTool === 'icosahedron' && isPreviewingIcosahedron) updateBoxPreview(drawStartPos, leftTargetLocal, false); }
+                if (xrLeft && isErasing) { if (activeTool === 'brush') { if (!leftTargetLocal.equals(lastErasedPos)) { placeBrushVoxels(leftTargetLocal, false); lastErasedPos.copy(leftTargetLocal); } } else if (activeTool === 'sculpt') executeSculpt(leftTargetLocal, false); else if (activeTool === 'stroke' && strokeMode === 'continuous') { if (lastErasedPos.x === Infinity) { placeBrushVoxels(leftTargetLocal, false); lastErasedPos.copy(leftTargetLocal); } else if (!leftTargetLocal.equals(lastErasedPos)) { drawLineVoxels(lastErasedPos, leftTargetLocal, false); lastErasedPos.copy(leftTargetLocal); } } else if (activeTool === 'sheet' && xrRight) { if (lastSheetLeftPos.x === Infinity) { lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); drawSheetQuad(lastSheetLeftPos, lastSheetRightPos, lastSheetLeftPos, lastSheetRightPos, false, brushSize); } else { if (sheetMode === 'surface') drawSheetQuad(lastSheetLeftPos, lastSheetRightPos, leftTargetLocal, rightTargetLocal, false, brushSize); else drawSheetQuad(leftTargetLocal, rightTargetLocal, leftTargetLocal, rightTargetLocal, false, brushSize); lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); } } else if (activeTool === 'box' && isPreviewingBox) updateBoxPreview(drawStartPos, leftTargetLocal, false); else if (activeTool === 'quadsphere' && isPreviewingSphere) updateSpherePreview(drawStartPos, leftTargetLocal, false); else if (activeTool === 'cylinder' && isPreviewingCylinder) updateBoxPreview(drawStartPos, leftTargetLocal, false); else if (activeTool === 'plane' && isPreviewingPlane) updatePlanePreview(drawStartPos, leftTargetLocal, false); else if (activeTool === 'triangle' && isPreviewingTriangle) updateBoxPreview(drawStartPos, leftTargetLocal, false); else if (activeTool === 'icosahedron' && isPreviewingIcosahedron) updateBoxPreview(drawStartPos, leftTargetLocal, false); }
                 let pLStart = null, pLEnd = null, pLPainting = false; if (activeTool === 'stroke' && strokeMode === 'line') { if (isPreviewingLineRight) { pLStart = lineStartRight; pLEnd = rightTargetLocal; pLPainting = true; } else if (isPreviewingLineLeft) { pLStart = lineStartLeft; pLEnd = leftTargetLocal; pLPainting = false; } } else if (activeTool === 'sheet' && xrLeft && xrRight) { pLStart = leftTargetLocal; pLEnd = rightTargetLocal; pLPainting = !isErasing; }
                 if (pLStart && pLEnd) { const startX = Math.round(pLStart.x / VOXEL_SIZE), startY = Math.round(pLStart.y / VOXEL_SIZE), startZ = Math.round(pLStart.z / VOXEL_SIZE), endX = Math.round(pLEnd.x / VOXEL_SIZE), endY = Math.round(pLEnd.y / VOXEL_SIZE), endZ = Math.round(pLEnd.z / VOXEL_SIZE), hash = `${startX}_${startY}_${startZ}_${endX}_${endY}_${endZ}`; if (hash !== lastLinePreviewGridHash) { updateLinePreviewMesh(pLStart, pLEnd, pLPainting); lastLinePreviewGridHash = hash; } linePreviewMesh.visible = true; } else { linePreviewMesh.visible = false; lastLinePreviewGridHash = ""; }
                 if (hasSelection) updatePreviews(); else if (previewGroups.length > 0 && previewGroups[0].visible) for (let g of previewGroups) g.visible = false;
                 const showM = activeTool !== 'select', showRM = showM && !isColorPicking;
                 if (needsSync(cursorLeft, showM)) syncMirrorProxies(cursorLeft, cursorLeftMirrors, showM); if (needsSync(cursorRight, showRM)) syncMirrorProxies(cursorRight, cursorRightMirrors, showRM); if (needsSync(boxPreviewMesh, showM)) syncMirrorProxies(boxPreviewMesh, boxPreviewMirrors, showM); if (needsSync(spherePreviewMesh, showM)) syncMirrorProxies(spherePreviewMesh, spherePreviewMirrors, showM); if (needsSync(bucketPreviewMesh, showM)) syncMirrorProxies(bucketPreviewMesh, bucketPreviewMirrors, showM); if (needsSync(linePreviewMesh, showM)) syncMirrorProxies(linePreviewMesh, linePreviewMirrors, showM);
                 chunks.forEach(c => c.updateBuffers());
+                
+                // Ensure clear alpha is respected during Passthrough
+                if (passthroughEnabled) renderer.setClearAlpha(0);
+                else renderer.setClearAlpha(1);
             }
             renderer.render(scene, camera);
         });
