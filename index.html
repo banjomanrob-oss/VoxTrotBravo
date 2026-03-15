@@ -1034,18 +1034,18 @@
         joyIndicator.position.set(0, 0.05, 0); 
         xrLeft.add(joyIndicator);
 
-        function drawColorPickerUI(ctx, cx, cy, radius, sliderX, sliderY, sliderW, sliderH, targetColor, isMagnified) {
+        function drawColorPickerUI(ctx, cx, cy, radius, sliderX, sliderY, sliderX_W, sliderX_H, targetColor, isMagnified) {
             targetColor.getHSL(tempHSL);
             const conic = ctx.createConicGradient(0, cx, cy); for(let i = 0; i <= 360; i += 60) conic.addColorStop(i / 360, `hsl(${i}, 100%, 50%)`);
             ctx.fillStyle = conic; ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill();
             const radial = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius); radial.addColorStop(0, 'rgba(128,128,128,1)'); radial.addColorStop(1, 'rgba(128,128,128,0)'); ctx.fillStyle = radial; ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill();
             ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); if (tempHSL.l < 0.5) ctx.fillStyle = `rgba(0,0,0,${1 - (tempHSL.l / 0.5)})`; else ctx.fillStyle = `rgba(255,255,255,${(tempHSL.l - 0.5) / 0.5})`; ctx.fill();
-            const grad = ctx.createLinearGradient(sliderX, 0, sliderX + sliderW, 0); grad.addColorStop(0, `hsl(${tempHSL.h * 360}, ${tempHSL.s * 100}%, 0%)`); grad.addColorStop(0.5, `hsl(${tempHSL.h * 360}, ${tempHSL.s * 100}%, 50%)`); grad.addColorStop(1, `hsl(${tempHSL.h * 360}, ${tempHSL.s * 100}%, 100%)`); ctx.fillStyle = grad; ctx.fillRect(sliderX, sliderY, sliderW, sliderH);
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(sliderX, sliderY, sliderW, sliderH);
+            const grad = ctx.createLinearGradient(sliderX, 0, sliderX + sliderX_W, 0); grad.addColorStop(0, `hsl(${tempHSL.h * 360}, ${tempHSL.s * 100}%, 0%)`); grad.addColorStop(0.5, `hsl(${tempHSL.h * 360}, ${tempHSL.s * 100}%, 50%)`); grad.addColorStop(1, `hsl(${tempHSL.h * 360}, ${tempHSL.s * 100}%, 100%)`); ctx.fillStyle = grad; ctx.fillRect(sliderX, sliderY, sliderX_W, sliderX_H);
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(sliderX, sliderY, sliderX_W, sliderX_H);
             if (isMagnified) {
                 const markerX = cx + Math.cos(tempHSL.h * Math.PI * 2) * (tempHSL.s * radius), markerY = cy + Math.sin(tempHSL.h * Math.PI * 2) * (tempHSL.s * radius);
                 ctx.beginPath(); ctx.arc(markerX, markerY, 8, 0, Math.PI * 2); ctx.strokeStyle = tempHSL.l > 0.6 ? '#000' : '#fff'; ctx.lineWidth = 3; ctx.stroke();
-                const sliderMarkerX = sliderX + tempHSL.l * sliderW; ctx.fillStyle = '#fff'; ctx.fillRect(sliderMarkerX - 4, sliderY - 5, 8, sliderH + 10); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(sliderMarkerX - 4, sliderY - 5, 8, sliderH + 10);
+                const sliderMarkerX = sliderX + tempHSL.l * sliderX_W; ctx.fillStyle = '#fff'; ctx.fillRect(sliderMarkerX - 4, sliderY - 5, 8, sliderX_H + 10); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(sliderMarkerX - 4, sliderY - 5, 8, sliderX_H + 10);
             }
         }
 
@@ -1491,7 +1491,7 @@
 
         function executeCylinderTool(start, end, isP) {
             const minX=Math.min(Math.round(start.x/VOXEL_SIZE),Math.round(end.x/VOXEL_SIZE)), maxX=Math.max(Math.round(start.x/VOXEL_SIZE),Math.round(end.x/VOXEL_SIZE)), minY=Math.min(Math.round(start.y/VOXEL_SIZE),Math.round(end.y/VOXEL_SIZE)), maxY=Math.max(Math.round(start.y/VOXEL_SIZE),Math.round(end.y/VOXEL_SIZE)), minZ=Math.min(Math.round(start.z/VOXEL_SIZE),Math.round(end.z/VOXEL_SIZE)), maxZ=Math.max(Math.round(start.z/VOXEL_SIZE),Math.round(end.z/VOXEL_SIZE));
-            const cU=(cylinderAxis==='X'?minY+maxY:minX+maxX)/2, cV=(cylinderAxis==='X'?minZ+maxZ:(cylinderAxis==='Y'?minZ+maxZ:minY+maxY))/2, rU=(cylinderAxis==='X'?maxY-minY:maxX-minX)/2, rV=(cylinderAxis==='X'?maxZ-minZ:(cylinderAxis==='Y'?maxZ-minZ:maxY-minY))/2, minW=cylinderAxis==='X'?minX:(cylinderAxis==='Y'?minY:minZ), maxW=cylinderAxis==='X'?maxX:(cylinderAxis==='Y'?maxY:maxZ), N=cylinderSides<3?0:cylinderSides, piN=N===0?0:Math.PI/N, maxR=N===0?1:1/Math.cos(piN);
+            const cU=(cylinderAxis==='X'?minY+maxY:minX+maxX)/2, cV=(cylinderAxis==='X'?minZ+maxZ:(cylinderAxis==='Y'?minZ+maxZ:minY+maxY))/2, rU=(cylinderAxis==='X'?maxY-minY:maxX-minX)/2, rV=(cylinderAxis==='X'?maxZ-minZ:(cylinderAxis==='Y'?maxZ-minZ:maxY-minY))/2, minW=cylinderAxis==='X'?minX:(cylinderAxis==='Y'?minY:minZ), maxW=cylinderAxis==='X'?maxX:(cylinderAxis==='Y'?maxY:maxW), N=cylinderSides<3?0:cylinderSides, piN=N===0?0:Math.PI/N, maxR=N===0?1:1/Math.cos(piN);
             const isInside = (gx,gy,gz) => { const gw=cylinderAxis==='X'?gx:(cylinderAxis==='Y'?gy:gz), gu=cylinderAxis==='X'?gy:gx, gv=cylinderAxis==='X'?gz:(cylinderAxis==='Y'?gz:gy); if(gw<minW||gw>maxW)return false; const nu=(gu-cU)/rU, nv=(gv-cV)/rV, rNorm=Math.sqrt(nu*nu+nv*nv); if(rNorm===0)return true; let rLim=1.0; if(N!==0){ const phi=Math.atan2(nv,nu), ang=((phi+piN)%(2*piN)+2*piN)%(2*piN); rLim=1/Math.cos(ang-piN); } return rNorm<=rLim+0.001; };
             for(let gx=minX-2; gx<=maxX+2; gx++)for(let gy=minY-2; gy<=maxY+2; gy++)for(let gz=minZ-2; gz<=maxZ+2; gz++) if(isInside(gx,gy,gz)){
                 const isS = (!isInside(gx+1,gy,gz)||!isInside(gx-1,gy,gz)||!isInside(gx,gy+1,gz)||!isInside(gx,gy-1)||!isInside(gx,gy,gz+1)||!isInside(gx,gy-1)), gw=cylinderAxis==='X'?gx:(cylinderAxis==='Y'?gy:gz), isCap=(gw===minW||gw===maxW);
@@ -1526,6 +1526,9 @@
         let rightMenuUV={x:0,y:0}, globalMenuUV={x:0,y:0}, leftMenuUV={x:0,y:0}, colorMenuUV={x:0,y:0}, isRightGripping=false, isLeftGripping=false;
         const prevRightPos=new THREE.Vector3(), prevLeftPos=new THREE.Vector3(), prevMid=new THREE.Vector3(), prevHandVec=new THREE.Vector3(), rightPos=new THREE.Vector3(), leftPos=new THREE.Vector3(), rightDir=new THREE.Vector3(), leftDir=new THREE.Vector3(), rightTargetLocal=new THREE.Vector3(), leftTargetLocal=new THREE.Vector3(), lastPaintedPos=new THREE.Vector3(Infinity,Infinity,Infinity), lastErasedPos=new THREE.Vector3(Infinity,Infinity,Infinity);
         let prevGripDist=0;
+
+        function stampSelection(ox, oy, oz) { for(let v of selectedVoxels) setVoxel(v.x + ox, v.y + oy, v.z + oz, true, v.color, v.mat); }
+        function paintSelection(ox, oy, oz) { for(let v of selectedVoxels) recolorVoxelSet(v.x + ox, v.y + oy, v.z + oz, v.color, v.mat); }
 
         function onSelectStart() {
             if (this === xrRight) { 
@@ -1601,16 +1604,48 @@
                 if((rightMenuMesh.visible||globalMenuMesh.visible)&&xrLeft){ raycaster.set(leftPointerPos, leftDir); if(rightMenuMesh.visible){ const inters=raycaster.intersectObject(rightMenuMesh); if(inters.length>0){ rightMenuHovered=true; rightMenuUV.x=inters[0].uv.x; rightMenuUV.y=inters[0].uv.y; leftLaserLine.scale.z=inters[0].distance; } else rightMenuHovered=false; } else if(globalMenuMesh.visible){ const inters=raycaster.intersectObject(globalMenuMesh); if(inters.length>0){ globalMenuHovered=true; globalMenuUV.x=inters[0].uv.x; globalMenuUV.y=inters[0].uv.y; leftLaserLine.scale.z=inters[0].distance; } else globalMenuHovered=false; } leftLaserLine.visible=true; } else { rightMenuHovered=globalMenuHovered=false; if(leftLaserLine)leftLaserLine.visible=false; }
                 if((leftMenuMesh.visible||colorMenuMesh.visible)&&xrRight){ raycaster.set(rightPointerPos, rightDir); if(leftMenuMesh.visible){ const inters=raycaster.intersectObject(leftMenuMesh); if(inters.length>0){ leftMenuHovered=true; leftMenuUV.x=inters[0].uv.x; leftMenuUV.y=inters[0].uv.y; rightLaserLine.scale.z=inters[0].distance; } else leftMenuHovered=false; } else if(colorMenuMesh.visible){ const inters=raycaster.intersectObject(colorMenuMesh); if(inters.length>0){ colorMenuHovered=true; colorMenuUV.x=inters[0].uv.x; colorMenuUV.y=inters[0].uv.y; rightLaserLine.scale.z=inters[0].distance; } else colorMenuHovered=false; } rightLaserLine.visible=true; } else { leftMenuHovered=colorMenuHovered=false; if(rightLaserLine)rightLaserLine.visible=false; }
                 if(activeSliderDrag&&leftMenuHovered){ const pct=Math.max(0,Math.min(1,(leftMenuUV.x*512-50)/412)); let ch=false; if(activeSliderDrag==='scale'||activeSliderDrag==='stepScale'){ const s=Math.round((0.1+pct*4.9)*10)/10; if(activeSliderDrag==='scale'&&selectionScale!==s){selectionScale=s; ch=true;} if(activeSliderDrag==='stepScale'&&copyStepScale!==s){copyStepScale=s; ch=true;} } else { const v=Math.round((-180+pct*360)/15)*15; if(activeSliderDrag==='rotX'&&selectionRotX!==v){selectionRotX=v; ch=true;} if(activeSliderDrag==='rotY'&&selectionRotY!==v){selectionRotY=v; ch=true;} if(activeSliderDrag==='rotZ'&&selectionRotZ!==v){selectionRotZ=v; ch=true;} if(activeSliderDrag==='stepRotX'&&copyStepRotX!==v){copyStepRotX=v; ch=true;} if(activeSliderDrag==='stepRotY'&&copyStepRotY!==v){copyStepRotY=v; ch=true;} if(activeSliderDrag==='stepRotZ'&&copyStepRotZ!==v){copyStepRotZ=v; ch=true;} } if(ch){ if(!activeSliderDrag.startsWith('step'))updateRotatedSelection(); leftMenuNeedsUpdate=true; } }
-                else if(isColorPicking&&colorMenuHovered) pickColorFromCanvas(Math.max(20,Math.min(492,colorMenuUV.x*512)), isPaletteMagnified?Math.max(50,Math.min(450,(1-colorMenuUV.y)*512)):Math.max(155,Math.min(335,(1-colorMenuWV.y)*512)));
+                else if(isColorPicking&&colorMenuHovered) pickColorFromCanvas(Math.max(20,Math.min(492,colorMenuUV.x*512)), isPaletteMagnified?Math.max(50,Math.min(450,(1-colorMenuUV.y)*512)):Math.max(155,Math.min(335,(1-colorMenuUV.y)*512)));
                 if(gripRight) gripRight.getWorldPosition(rightPos); if(gripLeft) gripLeft.getWorldPosition(leftPos);
                 if(isRightGripping&&isLeftGripping){ const dist=rightPos.distanceTo(leftPos); midPos.copy(rightPos).lerp(leftPos,0.5); currentHandVec.subVectors(rightPos,leftPos).normalize(); if(prevGripDist>0){ const sD=dist/prevGripDist; panDelta.copy(midPos).sub(prevMid); tempQuat.setFromUnitVectors(prevHandVec,currentHandVec); if(isVerticalLock){ tempPXZ.set(prevHandVec.x,0,prevHandVec.z).normalize(); tempCXZ.set(currentHandVec.x,0,currentHandVec.z).normalize(); if(tempPXZ.lengthSq()>0.001&&tempCXZ.lengthSq()>0.001)tempQuat.setFromUnitVectors(tempPXZ,tempCXZ); else tempQuat.identity(); } worldGroup.position.add(panDelta).sub(midPos).multiplyScalar(sD).applyQuaternion(tempQuat).add(midPos); worldGroup.scale.multiplyScalar(sD); worldGroup.quaternion.premultiply(tempQuat); } prevGripDist=dist; prevMid.copy(midPos); prevHandVec.copy(currentHandVec); prevRightPos.copy(rightPos); prevLeftPos.copy(leftPos); } else if(isRightGripping){ worldGroup.position.add(tempPos.copy(rightPos).sub(prevRightPos)); prevRightPos.copy(rightPos); } else if(isLeftGripping){ worldGroup.position.add(tempPos.copy(leftPos).sub(prevLeftPos)); prevLeftPos.copy(leftPos); } else prevGripDist=0;
+                
                 if(xrLeft){ leftTargetLocal.copy(leftPointerPos).addScaledVector(leftDir,0.05); worldGroup.worldToLocal(leftTargetLocal); leftTargetLocal.set(Math.round(leftTargetLocal.x/VOXEL_SIZE)*VOXEL_SIZE,Math.round(leftTargetLocal.y/VOXEL_SIZE)*VOXEL_SIZE,Math.round(leftTargetLocal.z/VOXEL_SIZE)*VOXEL_SIZE); cursorLeft.position.copy(leftTargetLocal); cursorLeft.updateMatrix(); cursorLeft.visible=true; } else cursorLeft.visible=false;
-                if(xrRight){ rightTargetLocal.copy(rightPointerPos).addScaledVector(rightDir,0.05); worldGroup.worldToLocal(rightTargetLocal); rightTargetLocal.set(Math.round(rightTargetLocal.x/VOXEL_SIZE)*VOXEL_SIZE,Math.round(rightTargetLocal.y/VOXEL_SIZE)*VOXEL_SIZE,Math.round(rightTargetLocal.z/VOXEL_SIZE)*VOXEL_SIZE); cursorRight.position.copy(rightTargetLocal); cursorRight.updateMatrix(); cursorRight.visible=true; if(activeTool==='select'&&hasSelection&&(transformMode==='draw'||transformMode==='paint')&&!isSettingPivot){ selectionGroup.position.set(Math.round(rightTargetLocal.x/VOXEL_SIZE)*VOXEL_SIZE-Math.round(selectionCenter.x)*VOXEL_SIZE, Math.round(rightTargetLocal.y/VOXEL_SIZE)*VOXEL_SIZE-Math.round(selectionCenter.y)*VOXEL_SIZE, Math.round(rightTargetLocal.z/VOXEL_SIZE)*VOXEL_SIZE-Math.round(selectionCenter.z)*VOXEL_SIZE); selectionGroup.updateMatrix(); } } else cursorRight.visible=false;
+                
+                if(xrRight){ 
+                    rightTargetLocal.copy(rightPointerPos).addScaledVector(rightDir,0.05); worldGroup.worldToLocal(rightTargetLocal); 
+                    rightTargetLocal.set(Math.round(rightTargetLocal.x/VOXEL_SIZE)*VOXEL_SIZE,Math.round(rightTargetLocal.y/VOXEL_SIZE)*VOXEL_SIZE,Math.round(rightTargetLocal.z/VOXEL_SIZE)*VOXEL_SIZE); 
+                    cursorRight.position.copy(rightTargetLocal); cursorRight.updateMatrix(); cursorRight.visible=true; 
+
+                    // NEW Orientation Sync for Draw/Paint
+                    if(hasSelection && (transformMode==='draw' || transformMode==='paint' || transformMode==='move') && !isSettingPivot){
+                        selectionGroup.position.set(rightTargetLocal.x - Math.round(selectionCenter.x)*VOXEL_SIZE, rightTargetLocal.y - Math.round(selectionCenter.y)*VOXEL_SIZE, rightTargetLocal.z - Math.round(selectionCenter.z)*VOXEL_SIZE);
+                        
+                        // Extract rotation and adjust for worldGroup scaling/rotation
+                        const controllerQuat = new THREE.Quaternion().setFromRotationMatrix(xrRight.matrixWorld);
+                        const worldGroupQuatInv = worldGroup.getWorldQuaternion(new THREE.Quaternion()).invert();
+                        const localQuat = controllerQuat.premultiply(worldGroupQuatInv);
+
+                        // Apply smooth visual rotation
+                        selectionGroup.quaternion.copy(localQuat);
+
+                        // Update Discrete Voxel Data
+                        tempSEuler.setFromQuaternion(localQuat, 'XYZ');
+                        const newRX = Math.round(THREE.MathUtils.radToDeg(tempSEuler.x) / 5) * 5;
+                        const newRY = Math.round(THREE.MathUtils.radToDeg(tempSEuler.y) / 5) * 5;
+                        const newRZ = Math.round(THREE.MathUtils.radToDeg(tempSEuler.z) / 5) * 5;
+
+                        if (newRX !== selectionRotX || newRY !== selectionRotY || newRZ !== selectionRotZ) {
+                            selectionRotX = newRX; selectionRotY = newRY; selectionRotZ = newRZ;
+                            updateRotatedSelection();
+                            leftMenuNeedsUpdate = true;
+                        }
+                        selectionGroup.updateMatrix();
+                    }
+                } else cursorRight.visible=false;
                 
                 if(xrRight&&isDrawing){ 
                     hideAllPreviews();
                     if(activeTool==='select'&&hasSelection&&!isSettingPivot){ 
-                        if(transformMode==='draw'){ if(!rightTargetLocal.equals(lastPaintedPos)){ stampSelection(Math.round(rightTargetLocal.x/VOXEL_SIZE)-Math.round(selectionCenter.x),Math.round(rightTargetLocal.y/VOXEL_SIZE)-Math.round(selectionCenter.y),Math.round(rightTargetLocal.z/VOXEL_SIZE)-Math.round(selectionCenter.z)); lastPaintedPos.copy(rightTargetLocal); } } else if(transformMode==='paint'){ if(!rightTargetLocal.equals(lastPaintedPos)){ paintSelection(Math.round(rightTargetLocal.x/VOXEL_SIZE)-Math.round(selectionCenter.x),Math.round(rightTargetLocal.y/VOXEL_SIZE)-Math.round(selectionCenter.y),Math.round(rightTargetLocal.z/VOXEL_SIZE)-Math.round(selectionCenter.z)); lastPaintedPos.copy(rightTargetLocal); } } else { selectionOffset.copy(rightTargetLocal).sub(dragStartCtrlPos); selectionOffset.set(Math.round(selectionOffset.x/VOXEL_SIZE)*VOXEL_SIZE,Math.round(selectionOffset.y/VOXEL_SIZE)*VOXEL_SIZE,Math.round(selectionOffset.z/VOXEL_SIZE)*VOXEL_SIZE); selectionGroup.position.copy(dragStartOffset).add(selectionOffset); selectionGroup.updateMatrix(); } 
+                        if(transformMode==='draw'){ if(!rightTargetLocal.equals(lastPaintedPos)){ stampSelection(Math.round(rightTargetLocal.x/VOXEL_SIZE)-Math.round(selectionCenter.x),Math.round(rightTargetLocal.y/VOXEL_SIZE)-Math.round(selectionCenter.y),Math.round(rightTargetLocal.z/VOXEL_SIZE)-Math.round(selectionCenter.z)); lastPaintedPos.copy(rightTargetLocal); } } else if(transformMode==='paint'){ if(!rightTargetLocal.equals(lastPaintedPos)){ paintSelection(Math.round(rightTargetLocal.x/VOXEL_SIZE)-Math.round(selectionCenter.x),Math.round(rightTargetLocal.y/VOXEL_SIZE)-Math.round(selectionCenter.y),Math.round(rightTargetLocal.z/VOXEL_SIZE)-Math.round(selectionCenter.z)); lastPaintedPos.copy(rightTargetLocal); } } 
                     } else if(activeTool==='select'&&selectMode==='box'&&isPreviewingBox) updateBoxPreview(drawStartPos,rightTargetLocal,true); else if(activeTool==='box'&&isPreviewingBox) updateBoxPreview(drawStartPos,rightTargetLocal,true); else if(activeTool==='brush'){ if(!rightTargetLocal.equals(lastPaintedPos)){ placeBrushVoxels(rightTargetLocal,true); lastPaintedPos.copy(rightTargetLocal); } } else if(activeTool==='sculpt') executeSculpt(rightTargetLocal,true); else if(activeTool==='stroke'&&strokeMode==='continuous'){ if(lastPaintedPos.x===Infinity){ placeBrushVoxels(rightTargetLocal,true); lastPaintedPos.copy(rightTargetLocal); } else if(!rightTargetLocal.equals(lastPaintedPos)){ drawLineVoxels(lastPaintedPos,rightTargetLocal,true); lastPaintedPos.copy(rightTargetLocal); } } else if(activeTool==='sheet'&&xrLeft){ if(lastSheetLeftPos.x===Infinity){ lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,lastSheetLeftPos,lastSheetRightPos,true,brushSize); } else { drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,leftTargetLocal,rightTargetLocal,true,brushSize); lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); } } else if(activeTool==='paint'&&paintMode==='brush'){ if(lastPaintedPos.x===Infinity){ placePaintVoxels(rightTargetLocal); lastPaintedPos.copy(rightTargetLocal); } else if(!rightTargetLocal.equals(lastPaintedPos)){ drawPaintLineVoxels(lastPaintedPos,rightTargetLocal); lastPaintedPos.copy(rightTargetLocal); } } 
                     else if(isPreviewingSphere) updateSpherePreview(drawStartPos,rightTargetLocal,true); 
                     else if(isPreviewingPlane) updatePlanePreview(drawStartPos,rightTargetLocal,true); 
