@@ -368,7 +368,9 @@
         const matSolid = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.1, depthFunc: THREE.LessEqualDepth }); 
         const matGlass = new THREE.MeshStandardMaterial({ roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.35, depthWrite: false, depthFunc: THREE.LessEqualDepth }); 
         const matEmission = new THREE.MeshBasicMaterial(); 
-        const voxelMaterials = [matSolid, matGlass, matEmission];
+        const matMetal = new THREE.MeshStandardMaterial({ roughness: 0.2, metalness: 1.0, depthFunc: THREE.LessEqualDepth });
+        
+        const voxelMaterials = [matSolid, matGlass, matEmission, matMetal];
         const chunks = new Map(); 
 
         class ChunkLayer {
@@ -473,7 +475,7 @@
         class Chunk {
             constructor(cx, cy, cz) {
                 this.cx = cx; this.cy = cy; this.cz = cz;
-                this.layers = new Array(3).fill(null);
+                this.layers = new Array(4).fill(null);
                 this.voxelMatMap = new Int8Array(CHUNK_VOL);
                 this.voxelMatMap.fill(-1);
             }
@@ -496,7 +498,7 @@
                 }
             }
 
-            updateBuffers() { for (let i = 0; i < 3; i++) if (this.layers[i]) this.layers[i].updateBuffers(); }
+            updateBuffers() { for (let i = 0; i < 4; i++) if (this.layers[i]) this.layers[i].updateBuffers(); }
         }
 
         // --- Previews & Cursors ---
@@ -534,7 +536,9 @@
         const selMeshSolid = new THREE.InstancedMesh(voxelGeometry, matSolid, SEL_LIMIT); selMeshSolid.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE); selMeshSolid.matrixAutoUpdate = false; selMeshSolid.instanceMatrix.setUsage(THREE.DynamicDrawUsage); selMeshSolid.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SEL_LIMIT * 3), 3);
         const selMeshGlass = new THREE.InstancedMesh(voxelGeometry, matGlass, SEL_LIMIT); selMeshGlass.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE); selMeshGlass.matrixAutoUpdate = false; selMeshGlass.instanceMatrix.setUsage(THREE.DynamicDrawUsage); selMeshGlass.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SEL_LIMIT * 3), 3);
         const selMeshEmission = new THREE.InstancedMesh(voxelGeometry, matEmission, SEL_LIMIT); selMeshEmission.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE); selMeshEmission.matrixAutoUpdate = false; selMeshEmission.instanceMatrix.setUsage(THREE.DynamicDrawUsage); selMeshEmission.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SEL_LIMIT * 3), 3);
-        selectionGroup.add(selMeshSolid); selectionGroup.add(selMeshGlass); selectionGroup.add(selMeshEmission);
+        const selMeshMetal = new THREE.InstancedMesh(voxelGeometry, matMetal, SEL_LIMIT); selMeshMetal.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE); selMeshMetal.matrixAutoUpdate = false; selMeshMetal.instanceMatrix.setUsage(THREE.DynamicDrawUsage); selMeshMetal.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SEL_LIMIT * 3), 3);
+        
+        selectionGroup.add(selMeshSolid); selectionGroup.add(selMeshGlass); selectionGroup.add(selMeshEmission); selectionGroup.add(selMeshMetal);
 
         const selBoxMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.9 });
         const selBoxMesh = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), selBoxMat);
@@ -563,8 +567,9 @@
                     const m1 = new THREE.InstancedMesh(voxelGeometry, matSolid, 1); m1.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
                     const m2 = new THREE.InstancedMesh(voxelGeometry, matGlass, 1); m2.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
                     const m3 = new THREE.InstancedMesh(voxelGeometry, matEmission, 1); m3.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
+                    const m4 = new THREE.InstancedMesh(voxelGeometry, matMetal, 1); m4.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
                     const bMesh = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), selBoxMat); bMesh.matrixAutoUpdate = false;
-                    pivotGroup.add(m1); pivotGroup.add(m2); pivotGroup.add(m3); pivotGroup.add(bMesh);
+                    pivotGroup.add(m1); pivotGroup.add(m2); pivotGroup.add(m3); pivotGroup.add(m4); pivotGroup.add(bMesh);
                     previewContainer.add(g); previewGroups.push(g);
                 }
                 const g = previewGroups[pIdx];
@@ -573,8 +578,10 @@
                 pivotGroup.children[0].instanceMatrix = selMeshSolid.instanceMatrix; pivotGroup.children[0].instanceColor = selMeshSolid.instanceColor; pivotGroup.children[0].count = selMeshSolid.count; pivotGroup.children[0].visible = selMeshSolid.visible;
                 pivotGroup.children[1].instanceMatrix = selMeshGlass.instanceMatrix; pivotGroup.children[1].instanceColor = selMeshGlass.instanceColor; pivotGroup.children[1].count = selMeshGlass.count; pivotGroup.children[1].visible = selMeshGlass.visible;
                 pivotGroup.children[2].instanceMatrix = selMeshEmission.instanceMatrix; pivotGroup.children[2].instanceColor = selMeshEmission.instanceColor; pivotGroup.children[2].count = selMeshEmission.count; pivotGroup.children[2].visible = selMeshEmission.visible;
-                pivotGroup.children.forEach((m, idx) => { if (idx < 3) { m.position.set(-pCX, -pCY, -pCZ); m.updateMatrix(); } });
-                const bMesh = pivotGroup.children[3]; tempPos.set(pCX, pCY, pCZ); bMesh.position.copy(selBoxMesh.position).sub(tempPos); bMesh.scale.copy(selBoxMesh.scale); bMesh.updateMatrix();
+                pivotGroup.children[3].instanceMatrix = selMeshMetal.instanceMatrix; pivotGroup.children[3].instanceColor = selMeshMetal.instanceColor; pivotGroup.children[3].count = selMeshMetal.count; pivotGroup.children[3].visible = selMeshMetal.visible;
+                
+                pivotGroup.children.forEach((m, idx) => { if (idx < 4) { m.position.set(-pCX, -pCY, -pCZ); m.updateMatrix(); } });
+                const bMesh = pivotGroup.children[4]; tempPos.set(pCX, pCY, pCZ); bMesh.position.copy(selBoxMesh.position).sub(tempPos); bMesh.scale.copy(selBoxMesh.scale); bMesh.updateMatrix();
                 pivotGroup.rotation.set(THREE.MathUtils.degToRad(copyStepRotX * step), THREE.MathUtils.degToRad(copyStepRotY * step), THREE.MathUtils.degToRad(copyStepRotZ * step), 'XYZ');
                 const stScale = Math.pow(copyStepScale, step); pivotGroup.scale.set(stScale, stScale, stScale); pivotGroup.updateMatrix();
                 g.position.set(tgtCX, tgtCY, tgtCZ); g.scale.set(sx, sy, sz); g.rotation.set(0, polarAngle, 0, 'XYZ');
@@ -918,7 +925,13 @@
             } else {
                 colorMenuCtx.fillStyle = '#4facfe'; colorMenuCtx.font = 'bold 22px sans-serif'; colorMenuCtx.textAlign = 'center'; colorMenuCtx.fillText(`Materials & Colors`, 256, 30);
                 drawButton(colorMenuCtx, 30, 45, 220, 45, 'SLOT 1 (MAIN)', activeMatSlot === 0); drawButton(colorMenuCtx, 262, 45, 220, 45, 'SLOT 2 (WIRE/DIV)', activeMatSlot === 1);
-                const mType = matTypes[activeMatSlot]; drawButton(colorMenuCtx, 30, 100, 140, 45, 'SOLID', mType === 0); drawButton(colorMenuCtx, 186, 100, 140, 45, 'GLASS', mType === 1); drawButton(colorMenuCtx, 342, 100, 140, 45, 'EMISSION', mType === 2);
+                
+                const mType = matTypes[activeMatSlot];
+                drawButton(colorMenuCtx, 30, 100, 105, 45, 'SOLID', mType === 0); 
+                drawButton(colorMenuCtx, 145, 100, 105, 45, 'GLASS', mType === 1); 
+                drawButton(colorMenuCtx, 260, 100, 105, 45, 'EMISSION', mType === 2);
+                drawButton(colorMenuCtx, 375, 100, 107, 45, 'METAL', mType === 3);
+
                 drawColorPickerUI(colorMenuCtx, 256, 235, 75, 40, 315, 432, 15, targetColor, false);
                 const cMode = colorModes[activeMatSlot]; drawButton(colorMenuCtx, 30, 340, 105, 40, 'SOLID', cMode === 'solid'); drawButton(colorMenuCtx, 145, 340, 105, 40, 'GRAD-H', cMode === 'grad_h'); drawButton(colorMenuCtx, 260, 340, 105, 40, 'GRAD-V', cMode === 'grad_v'); drawButton(colorMenuCtx, 375, 340, 107, 40, 'SHIFT', cMode === 'shift');
                 const cA = slotColors[activeMatSlot][0], cB = slotColors[activeMatSlot][1];
@@ -951,7 +964,12 @@
 
         function handleColorMenuClick(cx, cy) {
             if (cy >= 45 && cy <= 90) { if (cx >= 30 && cx <= 250) { activeMatSlot = 0; activeColorSubSlot = 0; } if (cx >= 262 && cx <= 482) { activeMatSlot = 1; activeColorSubSlot = 0; } } 
-            else if (cy >= 100 && cy <= 145) { if (cx >= 30 && cx <= 170) matTypes[activeMatSlot] = 0; if (cx >= 186 && cx <= 326) matTypes[activeMatSlot] = 1; if (cx >= 342 && cx <= 482) matTypes[activeMatSlot] = 2; } 
+            else if (cy >= 100 && cy <= 145) { 
+                if (cx >= 30 && cx <= 135) matTypes[activeMatSlot] = 0; 
+                if (cx >= 145 && cx <= 250) matTypes[activeMatSlot] = 1; 
+                if (cx >= 260 && cx <= 365) matTypes[activeMatSlot] = 2;
+                if (cx >= 375 && cx <= 482) matTypes[activeMatSlot] = 3;
+            } 
             else if (cy >= 340 && cy <= 380) { if (cx >= 30 && cx <= 135) { colorModes[activeMatSlot] = 'solid'; activeColorSubSlot = 0; } if (cx >= 145 && cx <= 250) colorModes[activeMatSlot] = 'grad_h'; if (cx >= 260 && cx <= 365) colorModes[activeMatSlot] = 'grad_v'; if (cx >= 375 && cx <= 482) colorModes[activeMatSlot] = 'shift'; } 
             else if (cy >= 390 && cy <= 445) {
                 const sBase = activeMatSlot * 2;
@@ -1038,9 +1056,9 @@
             const dirs = [{d:[1,0,0],v:faceVerts.px}, {d:[-1,0,0],v:faceVerts.nx}, {d:[0,1,0],v:faceVerts.py}, {d:[0,-1,0],v:faceVerts.ny}, {d:[0,0,1],v:faceVerts.pz}, {d:[0,0,-1],v:faceVerts.nz}];
             function hasV(gx, gy, gz) { const cx = gx >> 5, cy = gy >> 5, cz = gz >> 5, k = (cx+65536)+(cy+65536)*131072+(cz+65536)*17179869184, c = chunks.get(k); return c ? c.voxelMatMap[(gx&31)|((gy&31)<<5)|((gz&31)<<10)]!==-1 : false; }
             let vertAcc = [], faceAcc = [], vertexOffset = 1; const vertMap = new Map();
-            const matNames = ["Voxel_Solid", "Voxel_Glass", "Voxel_Emission"];
+            const matNames = ["Voxel_Solid", "Voxel_Glass", "Voxel_Emission", "Voxel_Metal"];
             
-            for (let m = 0; m < 3; m++) {
+            for (let m = 0; m < 4; m++) {
                 faceAcc.push(`\ng ${matNames[m]}\nusemtl ${matNames[m]}\n`);
                 chunks.forEach(chunk => {
                     const layer = chunk.layers[m]; if (!layer || layer.count === 0) return;
@@ -1116,17 +1134,22 @@
         }
 
         function updateSelectionVisuals() {
-            selMeshSolid.count = selMeshGlass.count = selMeshEmission.count = 0;
-            let iS = 0, iG = 0, iE = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+            selMeshSolid.count = selMeshGlass.count = selMeshEmission.count = selMeshMetal.count = 0;
+            let iS = 0, iG = 0, iE = 0, iM = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
             for(let v of selectedVoxels) {
                 tempMatrix.makeTranslation(v.x, v.y, v.z);
                 if (v.mat === 0) { selMeshSolid.setMatrixAt(iS, tempMatrix); selMeshSolid.setColorAt(iS, v.color); iS++; }
                 else if (v.mat === 1) { selMeshGlass.setMatrixAt(iG, tempMatrix); selMeshGlass.setColorAt(iG, v.color); iG++; }
                 else if (v.mat === 2) { selMeshEmission.setMatrixAt(iE, tempMatrix); selMeshEmission.setColorAt(iE, v.color); iE++; }
+                else if (v.mat === 3) { selMeshMetal.setMatrixAt(iM, tempMatrix); selMeshMetal.setColorAt(iM, v.color); iM++; }
                 minX=Math.min(minX, v.x); maxX=Math.max(maxX, v.x); minY=Math.min(minY, v.y); maxY=Math.max(maxY, v.y); minZ=Math.min(minZ, v.z); maxZ=Math.max(maxZ, v.z);
             }
             selMeshSolid.instanceMatrix.needsUpdate = selMeshSolid.instanceColor.needsUpdate = true; selMeshGlass.instanceMatrix.needsUpdate = selMeshGlass.instanceColor.needsUpdate = true; selMeshEmission.instanceMatrix.needsUpdate = selMeshEmission.instanceColor.needsUpdate = true;
-            selMeshSolid.count = iS; selMeshGlass.count = iG; selMeshEmission.count = iE; selMeshSolid.visible = iS > 0; selMeshGlass.visible = iG > 0; selMeshEmission.visible = iE > 0;
+            selMeshMetal.instanceMatrix.needsUpdate = selMeshMetal.instanceColor.needsUpdate = true;
+            
+            selMeshSolid.count = iS; selMeshGlass.count = iG; selMeshEmission.count = iE; selMeshMetal.count = iM;
+            selMeshSolid.visible = iS > 0; selMeshGlass.visible = iG > 0; selMeshEmission.visible = iE > 0; selMeshMetal.visible = iM > 0;
+            
             if (selectedVoxels.length > 0) { selBoxMesh.position.set((minX+maxX)/2*VOXEL_SIZE, (minY+maxY)/2*VOXEL_SIZE, (minZ+maxZ)/2*VOXEL_SIZE); selBoxMesh.scale.set((maxX-minX+1.1)*VOXEL_SIZE, (maxY-minY+1.1)*VOXEL_SIZE, (maxZ-minZ+1.1)*VOXEL_SIZE); selBoxMesh.updateMatrix(); selectionGroup.visible = true; } else selectionGroup.visible = false;
         }
         
