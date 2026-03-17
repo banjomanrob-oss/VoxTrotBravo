@@ -1749,7 +1749,6 @@ function placeBrushVoxels(pos, isP) {
 }
 
 
-
         function placePaintVoxels(pos) {
             const r=brushSize-1, rSq=(r+0.1)*(r+0.1), cGx=Math.round(pos.x/VOXEL_SIZE), cGy=Math.round(pos.y/VOXEL_SIZE), cGz=Math.round(pos.z/VOXEL_SIZE);
             const isInside = (dx,dy,dz) => brushShape==='sphere'?(dx*dx+dy*dy+dz*dz<=rSq):(Math.abs(dx)<=r&&Math.abs(dy)<=r&&Math.abs(dz)<=r);
@@ -1777,6 +1776,7 @@ function drawLineVoxels(start, end, isP) {
 
     const pax = gE.x - gS.x, pay = gE.y - gS.y, paz = gE.z - gS.z;
     const pLenSq = pax*pax + pay*pay + paz*paz;
+    const pLen = Math.sqrt(pLenSq);
 
     for (let gx = minX; gx <= maxX; gx++) {
         for (let gy = minY; gy <= maxY; gy++) {
@@ -1784,10 +1784,11 @@ function drawLineVoxels(start, end, isP) {
                 // 1. Find projection 't' along the line segment
                 let tRaw = pLenSq === 0 ? 0 : ((gx - gS.x) * pax + (gy - gS.y) * pay + (gz - gS.z) * paz) / pLenSq;
                 
-                // 2. Identify if this voxel is at the very ends of the segment
-                // During continuous strokes, we don't want to draw the "caps" 
-                // between segments, otherwise we get internal walls.
-                const isInternalCap = (tRaw <= 0 || tRaw >= 1);
+                // 2. Identify if this voxel is at the very ends of the segment.
+                // To fix "cracks", we allow the sleeve to overlap by about 0.8 voxels.
+                // This ensures the tube segments stitch together at sharp angles.
+                const distFromSegmentRange = tRaw < 0 ? (-tRaw * pLen) : (tRaw > 1 ? (tRaw - 1) * pLen : 0);
+                const isInternalCap = (distFromSegmentRange > 0.8);
                 
                 const t = Math.max(0, Math.min(1, tRaw));
                 const dx = gx - (gS.x + t * pax), dy = gy - (gS.y + t * pay), dz = gz - (gS.z + t * paz);
@@ -1806,13 +1807,13 @@ function drawLineVoxels(start, end, isP) {
                     if (isP) {
                         if (brushVolume === 'shell' && r > 0) {
                             if (distSq > innerLimit) {
-                                // SURFACE: Only draw if it's NOT an internal cap
+                                // SURFACE: Only draw if it's NOT an internal cap (with a tiny overlap for stitching)
                                 if (!isInternalCap) {
                                     const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
                                     setVoxel(gx, gy, gz, true, color, matTypes[0]);
                                 }
                             } else {
-                                // INTERIOR: Always clear to ensure hollow tube
+                                // INTERIOR: Always clear the entire capsule (including caps) to keep tube hollow
                                 setVoxel(gx, gy, gz, false, null);
                             }
                         } else {
