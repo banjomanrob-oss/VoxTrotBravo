@@ -1743,72 +1743,108 @@
             }
         }
 
-        function executeBoxTool(start, end, isP) {
-            let s = start, e = end;
-            if (drawFromCenter) {
-                tempPos.copy(end).sub(start);
-                s = tempStart.copy(start).sub(tempPos);
-                e = end;
+  function executeBoxTool(startPos, endPos, isPainting) {
+    let s = startPos, e = endPos;
+    if (drawFromCenter) {
+        tempPos.copy(endPos).sub(startPos);
+        s = tempStart.copy(startPos).sub(tempPos);
+        e = endPos;
+    }
+
+    const minX = Math.min(Math.round(s.x / VOXEL_SIZE), Math.round(e.x / VOXEL_SIZE));
+    const maxX = Math.max(Math.round(s.x / VOXEL_SIZE), Math.round(e.x / VOXEL_SIZE));
+    const minY = Math.min(Math.round(s.y / VOXEL_SIZE), Math.round(e.y / VOXEL_SIZE));
+    const maxY = Math.max(Math.round(s.y / VOXEL_SIZE), Math.round(e.y / VOXEL_SIZE));
+    const minZ = Math.min(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
+    const maxZ = Math.max(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
+
+    if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
+
+    const w = wireWidth - 1;
+    const divX = new Uint8Array(maxX - minX + 1);
+    const divY = new Uint8Array(maxY - minY + 1);
+    const divZ = new Uint8Array(maxZ - minZ + 1);
+
+    // Calculate grid divider positions
+    if (boxDivX > 1) {
+        const stepX = (maxX - minX) / boxDivX;
+        const h = (boxDivThick - 1) / 2;
+        for (let i = 1; i < boxDivX; i++) {
+            const cx = Math.round(i * stepX);
+            for (let v = Math.ceil(cx - h); v <= Math.floor(cx + h + 0.001); v++) {
+                if (v >= 0 && v < divX.length) divX[v] = 1;
             }
-            const minX=Math.min(Math.round(s.x/VOXEL_SIZE),Math.round(e.x/VOXEL_SIZE)), maxX=Math.max(Math.round(s.x/VOXEL_SIZE),Math.round(e.x/VOXEL_SIZE)), minY=Math.min(Math.round(s.y/VOXEL_SIZE),Math.round(e.y/VOXEL_SIZE)), maxY=Math.max(Math.round(s.y/VOXEL_SIZE),Math.round(e.y/VOXEL_SIZE)), minZ=Math.min(Math.round(s.z/VOXEL_SIZE),Math.round(e.z/VOXEL_SIZE)), maxZ=Math.max(Math.round(s.z/VOXEL_SIZE),Math.round(e.z/VOXEL_SIZE));
-            const w=wireWidth-1, dX=new Uint8Array(maxX-minX+1), dY=new Uint8Array(maxY-minY+1), dZ=new Uint8Array(maxZ-minZ+1), divH=Math.max(0, (boxDivThick-1)/2);
-            
-            if(boxDivX>1) for(let i=1; i<boxDivX; i++) { const cx=Math.round(i*(maxX-minX)/boxDivX); for(let v=Math.ceil(cx-divH); v<=Math.floor(cx+divH+0.001); v++) if(v>=0 && v<dX.length) dX[v]=1; }
-            if(boxDivY>1) for(let i=1; i<boxDivY; i++) { const cy=Math.round(i*(maxY-minY)/boxDivY); for(let v=Math.ceil(cy-divH); v<=Math.floor(cy+divH+0.001); v++) if(v>=0 && v<dY.length) dY[v]=1; }
-            if(boxDivZ>1) for(let i=1; i<boxDivZ; i++) { const cz=Math.round(i*(maxZ-minZ)/boxDivZ); for(let v=Math.ceil(cz-divH); v<=Math.floor(cz+divH+0.001); v++) if(v>=0 && v<dZ.length) dZ[v]=1; }
-            
-            for(let gx=minX; gx<=maxX; gx++) for(let gy=minY; gy<=maxY; gy++) for(let gz=minZ; gz<=maxZ; gz++) {
-                const cM=getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0), cS=getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,1);
+        }
+    }
+    if (boxDivY > 1) {
+        const stepY = (maxY - minY) / boxDivY;
+        const h = (boxDivThick - 1) / 2;
+        for (let i = 1; i < boxDivY; i++) {
+            const cy = Math.round(i * stepY);
+            for (let v = Math.ceil(cy - h); v <= Math.floor(cy + h + 0.001); v++) {
+                if (v >= 0 && v < divY.length) divY[v] = 1;
+            }
+        }
+    }
+    if (boxDivZ > 1) {
+        const stepZ = (maxZ - minZ) / boxDivZ;
+        const h = (boxDivThick - 1) / 2;
+        for (let i = 1; i < boxDivZ; i++) {
+            const cz = Math.round(i * stepZ);
+            for (let v = Math.ceil(cz - h); v <= Math.floor(cz + h + 0.001); v++) {
+                if (v >= 0 && v < divZ.length) divZ[v] = 1;
+            }
+        }
+    }
+
+    for (let gx = minX; gx <= maxX; gx++) {
+        for (let gy = minY; gy <= maxY; gy++) {
+            for (let gz = minZ; gz <= maxZ; gz++) {
+                const cMain = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
+                const cSec = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 1);
                 
                 const isFace = (gx === minX || gx === maxX || gy === minY || gy === maxY || gz === minZ || gz === maxZ);
                 const isOuterX = (gx >= minX && gx <= minX + w) || (gx <= maxX && gx >= maxX - w);
                 const isOuterY = (gy >= minY && gy <= minY + w) || (gy <= maxY && gy >= maxY - w);
                 const isOuterZ = (gz >= minZ && gz <= minZ + w) || (gz <= maxZ && gz >= maxZ - w);
-
+                
                 let onX = isOuterX, onY = isOuterY, onZ = isOuterZ, isDivCoord = false;
-                if (boxDivX > 1 && dX[gx - minX]) { onX = true; isDivCoord = true; }
-                if (boxDivY > 1 && dY[gy - minY]) { onY = true; isDivCoord = true; }
-                if (boxDivZ > 1 && dZ[gz - minZ]) { onZ = true; isDivCoord = true; }
+                if (boxDivX > 1 && divX[gx - minX] === 1) { onX = true; isDivCoord = true; }
+                if (boxDivY > 1 && divY[gy - minY] === 1) { onY = true; isDivCoord = true; }
+                if (boxDivZ > 1 && divZ[gz - minZ] === 1) { onZ = true; isDivCoord = true; }
 
                 const edgeScore = (onX ? 1 : 0) + (onY ? 1 : 0) + (onZ ? 1 : 0);
                 const isEdge = (isOuterX ? 1 : 0) + (isOuterY ? 1 : 0) + (isOuterZ ? 1 : 0) >= 2;
-                let isDivVoxel = (edgeScore >= 2 && isDivCoord); 
-
-                if(clearInterior && isP && !isFace && (boxMode==='shell'||boxMode==='wireframe') && !isDivVoxel) { setVoxel(gx,gy,gz,false,null); continue; }
                 
-                if(boxMode==='wireframe') { 
-                    if(isEdge || isDivVoxel) setVoxel(gx,gy,gz,isP,cS,matTypes[1]); 
-                    else if(wireFill && isFace) setVoxel(gx,gy,gz,isP,cM,matTypes[0]); 
-                } else if(boxMode==='shell') { 
-                    if(isEdge || isDivVoxel) setVoxel(gx,gy,gz,isP,cS,matTypes[1]); 
-                    else if(isFace) setVoxel(gx,gy,gz,isP,cM,matTypes[0]); 
-                } else { 
-                    if(isEdge || isDivVoxel) setVoxel(gx,gy,gz,isP,cS,matTypes[1]); 
-                    else setVoxel(gx,gy,gz,isP,cM,matTypes[0]); 
+                let isDivVoxel = false;
+                if ((boxDivX > 1 || boxDivY > 1 || boxDivZ > 1) && edgeScore >= 2 && isDivCoord) {
+                    isDivVoxel = true;
+                    if (boxGridMode === 'surface' && !isFace) isDivVoxel = false;
                 }
-            }
-            leftMenuNeedsUpdate = true;
-        }
 
-        function executeQuadSphereTool(start, end, isP) {
-            let s = start, e = end;
-            if (drawFromCenter) {
-                tempPos.copy(end).sub(start);
-                s = tempStart.copy(start).sub(tempPos);
-                e = end;
-            }
-            const minX=Math.min(Math.round(s.x/VOXEL_SIZE),Math.round(e.x/VOXEL_SIZE)), maxX=Math.max(Math.round(s.x/VOXEL_SIZE),Math.round(e.x/VOXEL_SIZE)), minY=Math.min(Math.round(s.y/VOXEL_SIZE),Math.round(e.y/VOXEL_SIZE)), maxY=Math.max(Math.round(s.y/VOXEL_SIZE),Math.round(e.y/VOXEL_SIZE)), minZ=Math.min(Math.round(s.z/VOXEL_SIZE),Math.round(e.z/VOXEL_SIZE)), maxZ=Math.max(Math.round(s.z/VOXEL_SIZE),Math.round(e.z/VOXEL_SIZE));
-            const rx=(maxX-minX)/2+0.5, ry=(maxY-minY)/2+0.5, rz=(maxZ-minZ)/2+0.5, cx=(minX+maxX)/2, cy=(minY+maxY)/2, cz=(minZ+maxZ)/2;
-            const isInside = (gx,gy,gz) => { const nx=(gx-cx)/rx, ny=(gy-cy)/ry, nz=(gz-cz)/rz; return (nx*nx+ny*ny+nz*nz)<=1.0; };
-            for(let gx=minX; gx<=maxX; gx++) for(let gy=minY; gy<=maxY; gy++) for(let gz=minZ; gz<=maxZ; gz++) {
-                if(isInside(gx,gy,gz)) {
-                    const isS = (!isInside(gx+1,gy,gz)||!isInside(gx-1,gy,gz)||!isInside(gx,gy+1,gz)||!isInside(gx,gy-1)||!isInside(gx,gy,gz+1)||!isInside(gx,gy-1));
-                    if(clearInterior && isP && sphereMode==='shell' && !isS) { setVoxel(gx,gy,gz,false,null); continue; }
-                    if(sphereMode==='shell') { if(isS) setVoxel(gx,gy,gz,isP,getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0),matTypes[0]); } else setVoxel(gx,gy,gz,isP,getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0),matTypes[0]);
+                // Handle interior clearing logic
+                if (clearInterior && isPainting && !isFace && (boxMode === 'shell' || boxMode === 'wireframe')) {
+                    if (!(isDivVoxel && boxGridMode === 'internal')) {
+                        setVoxel(gx, gy, gz, false, null);
+                        continue;
+                    }
+                }
+
+                if (boxMode === 'wireframe') {
+                    if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
+                    else if (wireFill && isFace) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                } else if (boxMode === 'shell') {
+                    if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
+                    else if (isFace) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                } else {
+                    if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
+                    else setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
                 }
             }
-            leftMenuNeedsUpdate = true;
         }
+    }
+    leftMenuNeedsUpdate = true;
+}
         
         function executeIcosahedronTool(start, end, isP) {
             let s = start, e = end;
@@ -1837,143 +1873,255 @@
             leftMenuNeedsUpdate = true;
         }
 
-        function executeCylinderTool(start, end, isP) {
-            let s = start, e = end;
-            if (drawFromCenter) {
-                tempPos.copy(end).sub(start);
-                s = tempStart.copy(start).sub(tempPos);
-                e = end;
-            }
-            const minX=Math.min(Math.round(s.x/VOXEL_SIZE),Math.round(e.x/VOXEL_SIZE)), maxX=Math.max(Math.round(s.x/VOXEL_SIZE),Math.round(e.x/VOXEL_SIZE)), minY=Math.min(Math.round(s.y/VOXEL_SIZE),Math.round(e.y/VOXEL_SIZE)), maxY=Math.max(Math.round(s.y/VOXEL_SIZE),Math.round(e.y/VOXEL_SIZE)), minZ=Math.min(Math.round(s.z/VOXEL_SIZE),Math.round(e.z/VOXEL_SIZE)), maxZ=Math.max(Math.round(s.z/VOXEL_SIZE),Math.round(e.z/VOXEL_SIZE));
-            
-            const cU = (cylinderAxis === 'X' ? minY + maxY : minX + maxX) / 2;
-            const cV = (cylinderAxis === 'X' ? minZ + maxZ : (cylinderAxis === 'Y' ? minZ + maxZ : minY + maxY)) / 2;
-            const rU = (cylinderAxis === 'X' ? maxY - minY : maxX - minX) / 2;
-            const rV = (cylinderAxis === 'X' ? maxZ - minZ : (cylinderAxis === 'Y' ? maxZ - minZ : maxY - minY)) / 2;
-            const minW = cylinderAxis === 'X' ? minX : (cylinderAxis === 'Y' ? minY : minZ);
-            const maxW = cylinderAxis === 'X' ? maxX : (cylinderAxis === 'Y' ? maxY : maxZ);
-            
-            const N = cylinderSides < 3 ? 0 : cylinderSides;
-            const piN = N === 0 ? 0 : Math.PI / N;
-            
-            const isInside = (gx, gy, gz) => {
-                const gw = cylinderAxis === 'X' ? gx : (cylinderAxis === 'Y' ? gy : gz);
-                const gu = cylinderAxis === 'X' ? gy : gx;
-                const gv = cylinderAxis === 'X' ? gz : (cylinderAxis === 'Y' ? gz : gy);
-                
-                if (gw < minW || gw > maxW) return false;
-                
-                const nu = rU === 0 ? 0 : (gu - cU) / rU;
-                const nv = rV === 0 ? 0 : (gv - cV) / rV;
-                const rNorm = Math.sqrt(nu * nu + nv * nv);
-                if (rNorm === 0) return true;
-                
-                let rLim = 1.0;
-                if (N !== 0) {
-                    const phi = Math.atan2(nv, nu);
-                    const ang = ((phi + piN) % (2 * piN) + 2 * piN) % (2 * piN);
-                    rLim = 1 / Math.cos(ang - piN);
-                }
-                return rNorm <= rLim + 0.001;
-            };
+       function executeCylinderTool(startPos, endPos, isPainting) {
+    let s = startPos, e = endPos;
+    if (drawFromCenter) {
+        tempPos.copy(endPos).sub(startPos);
+        s = tempStart.copy(startPos).sub(tempPos);
+        e = endPos;
+    }
 
-            for (let gx = minX; gx <= maxX; gx++) {
-                for (let gy = minY; gy <= maxY; gy++) {
-                    for (let gz = minZ; gz <= maxZ; gz++) {
-                        if (isInside(gx, gy, gz)) {
-                            const isS = (!isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) || !isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1) || !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1));
-                            const gw = cylinderAxis === 'X' ? gx : (cylinderAxis === 'Y' ? gy : gz);
-                            const isCap = (gw === minW || gw === maxW);
-                            const cM = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
-                            const cS = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 1);
+    const rMinX = Math.round(s.x / VOXEL_SIZE), rMaxX = Math.round(e.x / VOXEL_SIZE);
+    const rMinY = Math.round(s.y / VOXEL_SIZE), rMaxY = Math.round(e.y / VOXEL_SIZE);
+    const rMinZ = Math.round(s.z / VOXEL_SIZE), rMaxZ = Math.round(e.z / VOXEL_SIZE);
+    
+    const minX = Math.min(rMinX, rMaxX), maxX = Math.max(rMinX, rMaxX);
+    const minY = Math.min(rMinY, rMaxY), maxY = Math.max(rMinY, rMaxY);
+    const minZ = Math.min(rMinZ, rMaxZ), maxZ = Math.max(rMinZ, rMaxZ);
 
-                            if (cylinderMode === 'wireframe') {
-                                let isEdge = isS; // default for circle
-                                if (N !== 0) {
-                                    isEdge = false;
-                                    const gu = cylinderAxis === 'X' ? gy : gx;
-                                    const gv = cylinderAxis === 'X' ? gz : (cylinderAxis === 'Y' ? gz : gy);
-                                    const nu = (gu - cU) / rU, nv = (gv - cV) / rV;
-                                    const phi = Math.atan2(nv, nu);
-                                    const r_scaled = Math.sqrt(nu*nu + nv*nv) * Math.max(rU, rV);
-                                    for(let i=0; i < N; i++) {
-                                        const tp = (i * (2 * Math.PI / N));
-                                        let diff = Math.abs(phi - tp);
-                                        if (diff * r_scaled <= (wireWidth - 0.2)) { isEdge = true; break; }
-                                    }
+    if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
+
+    const cX = (minX + maxX) / 2, cY = (minY + maxY) / 2, cZ = (minZ + maxZ) / 2;
+    const rX = (maxX - minX) / 2, rY = (maxY - minY) / 2, rZ = (maxZ - minZ) / 2;
+    
+    const axis = cylinderAxis;
+    const ru = (axis === 'X' ? rY : rX), rv = (axis === 'X' ? rZ : (axis === 'Y' ? rZ : rY));
+    const invRu = ru > 0 ? 1 / ru : 0, invRv = rv > 0 ? 1 / rv : 0;
+    const cu = axis === 'X' ? cY : cX, cv = axis === 'X' ? cZ : (axis === 'Y' ? cZ : cY);
+    const minW = axis === 'X' ? minX : (axis === 'Y' ? minY : minZ);
+    const maxW = axis === 'X' ? maxX : (axis === 'Y' ? maxY : maxZ);
+    
+    const N = cylinderSides < 3 ? 0 : cylinderSides;
+    const PI_N = N === 0 ? 0 : Math.PI / N;
+    const max_r = N === 0 ? 1 : 1 / Math.cos(PI_N);
+    
+    const loopMinX = axis === 'X' ? minX : Math.floor(cX - rX * max_r);
+    const loopMaxX = axis === 'X' ? maxX : Math.ceil(cX + rX * max_r);
+    const loopMinY = axis === 'Y' ? minY : Math.floor(cY - rY * max_r);
+    const loopMaxY = axis === 'Y' ? maxY : Math.ceil(cY + rY * max_r);
+    const loopMinZ = axis === 'Z' ? minZ : Math.floor(cZ - rZ * max_r);
+    const loopMaxZ = axis === 'Z' ? maxZ : Math.ceil(cZ + rZ * max_r);
+
+    const isInside = (gx, gy, gz) => {
+        const gw = axis === 'X' ? gx : (axis === 'Y' ? gy : gz);
+        const gu = axis === 'X' ? gy : gx, gv = axis === 'X' ? gz : (axis === 'Y' ? gz : gy);
+        if (gw < minW || gw > maxW) return false;
+        const nu = (gu - cu) * invRu, nv = (gv - cv) * invRv;
+        const r_norm = Math.sqrt(nu * nu + nv * nv);
+        if (r_norm === 0) return true;
+        let r_limit = 1.0;
+        if (N !== 0) {
+            const phi = Math.atan2(nv, nu);
+            const angle = ((phi + PI_N) % (2 * Math.PI / N) + (2 * Math.PI / N)) % (2 * Math.PI / N);
+            r_limit = 1.0 / Math.cos(angle - PI_N);
+        }
+        return r_norm <= r_limit + 0.001;
+    };
+
+    for (let gx = loopMinX; gx <= loopMaxX; gx++) {
+        for (let gy = loopMinY; gy <= loopMaxY; gy++) {
+            for (let gz = loopMinZ; gz <= loopMaxZ; gz++) {
+                if (isInside(gx, gy, gz)) {
+                    const isSurface = (!isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) || !isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1, gz) || !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1));
+                    const gw = axis === 'X' ? gx : (axis === 'Y' ? gy : gz);
+                    const isCap = (gw === minW || gw === maxW);
+                    
+                    let shouldDraw = false, drawColor = getDrawColor(gx, gy, gz, loopMinX, loopMaxX, loopMinY, loopMaxY, 0), drawMat = matTypes[0];
+                    
+                    if (cylinderMode === 'solid') {
+                        shouldDraw = true;
+                    } else if (cylinderMode === 'shell') {
+                        if (isSurface) {
+                            if (!cylinderCap && isCap) {
+                                // Only draw edge of cap if cylinder is uncapped
+                                let sideS = false;
+                                if (axis === 'X') sideS = !isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1, gz) || !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1);
+                                if (axis === 'Y') sideS = !isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) || !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1);
+                                if (axis === 'Z') sideS = !isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) || !isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1, gz);
+                                if (sideS) shouldDraw = true;
+                            } else shouldDraw = true;
+                        } else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null);
+                    } else if (cylinderMode === 'wireframe') {
+                        if (isSurface) {
+                            let isEdge = false;
+                            if (isCap) {
+                                let sideS = false;
+                                if (axis === 'X') sideS = !isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1, gz) || !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1);
+                                if (axis === 'Y') sideS = !isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) || !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1);
+                                if (axis === 'Z') sideS = !isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) || !isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1, gz);
+                                if (sideS) isEdge = true;
+                            }
+                            if (N !== 0 && !isEdge) {
+                                const gu = axis === 'X' ? gy : gx, gv = axis === 'X' ? gz : (axis === 'Y' ? gz : gy);
+                                const nu = (gu - cu) * invRu, nv = (gv - cv) * invRv;
+                                let phi = Math.atan2(nv, nu); if (phi < 0) phi += 2 * Math.PI;
+                                const r_scaled = Math.sqrt(nu * nu + nv * nv) * ((rX + rY + rZ) / 3);
+                                for (let i = 0; i < N; i++) {
+                                    const tp = (i * (2 * Math.PI / N) - Math.PI / N + 2 * Math.PI) % (2 * Math.PI);
+                                    let diff = Math.abs(phi - tp); if (diff > Math.PI) diff = 2 * Math.PI - diff;
+                                    if (diff * r_scaled <= (wireWidth - 0.2)) { isEdge = true; break; }
                                 }
-                                if (isEdge || isCap) setVoxel(gx, gy, gz, isP, cS, matTypes[1]);
-                                else if (wireFill && isS) setVoxel(gx, gy, gz, isP, cM, matTypes[0]);
-                            } else if (cylinderMode === 'shell') {
-                                if (clearInterior && isP && !isS && !isCap) setVoxel(gx, gy, gz, false, null);
-                                else if (isS || (cylinderCap && isCap)) setVoxel(gx, gy, gz, isP, cM, matTypes[0]);
-                            } else {
-                                setVoxel(gx, gy, gz, isP, cM, matTypes[0]);
+                            }
+                            if (isEdge) {
+                                shouldDraw = true; drawColor = getDrawColor(gx, gy, gz, loopMinX, loopMaxX, loopMinY, loopMaxY, 1); drawMat = matTypes[1];
+                            } else if (wireFill) {
+                                shouldDraw = true; if (!cylinderCap && isCap) shouldDraw = false;
+                            }
+                        } else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null);
+                    }
+                    if (shouldDraw) setVoxel(gx, gy, gz, isPainting, drawColor, drawMat);
+                }
+            }
+        }
+    }
+    leftMenuNeedsUpdate = true;
+}
+
+        function executeTriangleTool(startPos, endPos, isPainting) {
+    let s = startPos, e = endPos;
+    if (drawFromCenter) {
+        tempPos.copy(endPos).sub(startPos);
+        s = tempStart.copy(startPos).sub(tempPos);
+        e = endPos;
+    }
+
+    const rMinX = Math.round(s.x / VOXEL_SIZE), rMaxX = Math.round(e.x / VOXEL_SIZE);
+    const rMinY = Math.round(s.y / VOXEL_SIZE), rMaxY = Math.round(e.y / VOXEL_SIZE);
+    const rMinZ = Math.round(s.z / VOXEL_SIZE), rMaxZ = Math.round(e.z / VOXEL_SIZE);
+    
+    const minX = Math.min(rMinX, rMaxX), maxX = Math.max(rMinX, rMaxX);
+    const minY = Math.min(rMinY, rMaxY), maxY = Math.max(rMinY, rMaxY);
+    const minZ = Math.min(rMinZ, rMaxZ), maxZ = Math.max(rMinZ, rMaxZ);
+
+    if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
+
+    const axMap = { 
+        'X': { minW: minX, maxW: maxX, startW: Math.round(s.x / VOXEL_SIZE), endW: rMaxX }, 
+        'Y': { minW: minY, maxW: maxY, startW: Math.round(s.y / VOXEL_SIZE), endW: rMaxY }, 
+        'Z': { minW: minZ, maxW: maxZ, startW: Math.round(s.z / VOXEL_SIZE), endW: rMaxZ } 
+    };
+    const ax = axMap[triangleAxis];
+    const isFlipped = ax.startW > ax.endW;
+    const baseW = isFlipped ? ax.maxW : ax.minW;
+    
+    const cX = (minX + maxX) / 2, cY = (minY + maxY) / 2, cZ = (minZ + maxZ) / 2;
+    const rX = (maxX - minX) / 2, rY = (maxY - minY) / 2, rZ = (maxZ - minZ) / 2;
+    
+    const N = (triangleType === 'cone') ? 0 : (triangleType === 'tetra' ? 3 : pyramidLegs);
+    const max_r = N === 0 ? 1 : 1 / Math.cos(Math.PI / N);
+    
+    const loopMinX = triangleAxis === 'X' ? minX : Math.floor(cX - rX * max_r);
+    const loopMaxX = triangleAxis === 'X' ? maxX : Math.ceil(cX + rX * max_r);
+    const loopMinY = triangleAxis === 'Y' ? minY : Math.floor(cY - rY * max_r);
+    const loopMaxY = triangleAxis === 'Y' ? maxY : Math.ceil(cY + rY * max_r);
+    const loopMinZ = triangleAxis === 'Z' ? minZ : Math.floor(cZ - rZ * max_r);
+    const loopMaxZ = triangleAxis === 'Z' ? maxZ : Math.ceil(cZ + rZ * max_r);
+    
+    const cu = triangleAxis === 'X' ? cY : cX, cv = triangleAxis === 'X' ? cZ : (triangleAxis === 'Y' ? cZ : cY);
+    const ru = triangleAxis === 'X' ? rY : rX, rv = triangleAxis === 'X' ? rZ : (triangleAxis === 'Y' ? rZ : rY);
+    const invRu = ru > 0 ? 1 / ru : 0, invRv = rv > 0 ? 1 / rv : 0;
+    const PI_N = N === 0 ? 0 : Math.PI / N;
+    
+    const isInside = (gx, gy, gz) => {
+        const gw = triangleAxis === 'X' ? gx : (triangleAxis === 'Y' ? gy : gz);
+        const gu = triangleAxis === 'X' ? gy : gx, gv = triangleAxis === 'X' ? gz : (triangleAxis === 'Y' ? gz : gy);
+        if (gw < ax.minW || gw > ax.maxW) return false;
+        const h = (ax.maxW === ax.minW) ? 0 : Math.abs(gw - baseW) / (ax.maxW - ax.minW);
+        const nu = (gu - cu) * invRu, nv = (gv - cv) * invRv;
+        const r_norm = Math.sqrt(nu * nu + nv * nv);
+        if (r_norm === 0) return true;
+        let r_limit = 1.0;
+        if (N !== 0) {
+            const phi = Math.atan2(nv, nu);
+            const angle = ((phi + PI_N) % (2 * Math.PI / N) + (2 * Math.PI / N)) % (2 * Math.PI / N);
+            r_limit = 1.0 / Math.cos(angle - PI_N);
+        }
+        return r_norm <= r_limit * (1 - h) + 0.001;
+    };
+
+    const divW = new Uint8Array(ax.maxW - ax.minW + 1);
+    if (triangleDivs > 1) {
+        const step = (ax.maxW - ax.minW) / triangleDivs;
+        for (let i = 1; i < triangleDivs; i++) {
+            const center = Math.round(isFlipped ? ax.maxW - i * step : ax.minW + i * step);
+            const half = (triangleDivThick - 1) / 2;
+            for (let v = Math.ceil(center - half); v <= Math.floor(center + half + 0.001); v++) {
+                const idx = v - ax.minW;
+                if (idx >= 0 && idx < divW.length) divW[idx] = 1;
+            }
+        }
+    }
+
+    for (let gx = loopMinX; gx <= loopMaxX; gx++) {
+        for (let gy = loopMinY; gy <= loopMaxY; gy++) {
+            for (let gz = loopMinZ; gz <= loopMaxZ; gz++) {
+                if (isInside(gx, gy, gz)) {
+                    const cMain = getDrawColor(gx, gy, gz, loopMinX, loopMaxX, loopMinY, loopMaxY, 0);
+                    const cSec = getDrawColor(gx, gy, gz, loopMinX, loopMaxX, loopMinY, loopMaxY, 1);
+                    const gw = triangleAxis === 'X' ? gx : (triangleAxis === 'Y' ? gy : gz);
+                    const gu = triangleAxis === 'X' ? gy : gx, gv = triangleAxis === 'X' ? gz : (triangleAxis === 'Y' ? gz : gy);
+                    
+                    let isSurf = (!isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) || !isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1, gz) || !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1));
+                    
+                    // Uncapped logic
+                    if ((triangleMode === 'shell' || triangleMode === 'wireframe') && isSurf && !triangleCap && gw === baseW) {
+                        let isE = false;
+                        if (triangleAxis === 'X' && (!isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1, gz) || !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1))) isE = true;
+                        if (triangleAxis === 'Y' && (!isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) || !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1))) isE = true;
+                        if (triangleAxis === 'Z' && (!isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) || !isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1, gz))) isE = true;
+                        if (!isE) isSurf = false;
+                    }
+
+                    let isDivV = (triangleDivs > 1 && divW[gw - ax.minW] === 1);
+                    if (triangleGridMode === 'surface' && !isSurf) isDivV = false;
+
+                    let isE = Math.abs(gw - baseW) < wireWidth;
+                    const nu = (gu - cu) * invRu, nv = (gv - cv) * invRv;
+                    let phi = Math.atan2(nv, nu); if (phi < 0) phi += 2 * Math.PI;
+                    const r_scaled = Math.sqrt(nu * nu + nv * nv) * ((rX + rY + rZ) / 3);
+                    if (r_scaled < wireWidth) isE = true;
+                    else {
+                        const N_legs = N === 0 ? 8 : N;
+                        for (let i = 0; i < N_legs; i++) {
+                            const tp = (i * (2 * Math.PI / N_legs) - (N === 0 ? 0 : Math.PI / N_legs) + 2 * Math.PI) % (2 * Math.PI);
+                            let diff = Math.abs(phi - tp); if (diff > Math.PI) diff = 2 * Math.PI - diff;
+                            if (diff * r_scaled <= (wireWidth - 0.2)) { isE = true; break; }
+                        }
+                    }
+
+                    if (triangleMode === 'wireframe') {
+                        if (isSurf) {
+                            if (isE || isDivV) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
+                            else if (wireFill) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                        } else {
+                            if (isDivV && triangleGridMode === 'internal') setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
+                            else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null);
+                        }
+                    } else {
+                        if (clearInterior && isPainting && !isSurf && triangleMode === 'shell') {
+                            if (!(isDivV && triangleGridMode === 'internal')) {
+                                setVoxel(gx, gy, gz, false, null); continue;
                             }
                         }
+                        if ((isE && isSurf) || isDivV) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
+                        else if (triangleMode === 'solid' || isSurf) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
                     }
                 }
             }
-            leftMenuNeedsUpdate = true;
         }
-
-        function executeTriangleTool(start, end, isP) {
-            let s = start, e = end;
-            if (drawFromCenter) {
-                tempPos.copy(end).sub(start);
-                s = tempStart.copy(start).sub(tempPos);
-                e = end;
-            }
-            const minX=Math.min(Math.round(s.x/VOXEL_SIZE),Math.round(e.x/VOXEL_SIZE)), maxX=Math.max(Math.round(s.x/VOXEL_SIZE),Math.round(e.x/VOXEL_SIZE)), minY=Math.min(Math.round(s.y/VOXEL_SIZE),Math.round(e.y/VOXEL_SIZE)), maxY=Math.max(Math.round(s.y/VOXEL_SIZE),Math.round(e.y/VOXEL_SIZE)), minZ=Math.min(Math.round(s.z/VOXEL_SIZE),Math.round(e.z/VOXEL_SIZE)), maxZ=Math.max(Math.round(s.z/VOXEL_SIZE),Math.round(e.z/VOXEL_SIZE));
-            
-            const startW = (triangleAxis==='Y'?s.y:triangleAxis==='X'?s.x:s.z)/VOXEL_SIZE;
-            const endW = (triangleAxis==='Y'?e.y:triangleAxis==='X'?e.x:e.z)/VOXEL_SIZE;
-            const baseW = startW < endW ? (triangleAxis==='Y'?minY:triangleAxis==='X'?minX:minZ) : (triangleAxis==='Y'?maxY:triangleAxis==='X'?maxX:maxZ);
-            
-            const rU=(triangleAxis==='X'?maxY-minY:maxX-minX)/2, rV=(triangleAxis==='X'?maxZ-minZ:(triangleAxis==='Y'?maxZ-minZ:maxY-minY))/2;
-            const cU=(triangleAxis==='X'?minY+maxY:minX+maxX)/2, cV=(triangleAxis==='X'?minZ+maxZ:(triangleAxis==='Y'?minZ+maxZ:minY+maxY))/2;
-            const hW=Math.max(1, (triangleAxis==='Y'?maxY-minY:triangleAxis==='X'?maxX-minX:maxZ-minZ));
-            
-            const N = triangleType === 'cone' ? 0 : (triangleType === 'tetra' ? 3 : pyramidLegs);
-
-            const isInside = (gx, gy, gz) => {
-                const gw = triangleAxis === 'X' ? gx : (triangleAxis === 'Y' ? gy : gz);
-                const gu = triangleAxis === 'X' ? gy : gx;
-                const gv = triangleAxis === 'X' ? gz : (triangleAxis === 'Y' ? gz : gy);
-                
-                const h = Math.abs(gw - baseW) / hW; 
-                if (h > 1.001) return false;
-                
-                const nu = (gu - cU) / rU, nv = (gv - cV) / rV;
-                const r_norm = Math.sqrt(nu * nu + nv * nv);
-                let r_limit = 1.0; 
-
-                if (N !== 0) {
-                    const phi = Math.atan2(nv, nu);
-                    const PI_N = Math.PI / N;
-                    const angle = ((phi + PI_N) % (2*PI_N) + 2*PI_N) % (2*PI_N);
-                    r_limit = 1.0 / Math.cos(angle - PI_N);
-                }
-                return r_norm <= r_limit * (1 - h) + 0.001;
-            };
-
-            for(let gx=minX; gx<=maxX; gx++) {
-                for(let gy=minY; gy<=maxY; gy++) {
-                    for(let gz=minZ; gz<=maxZ; gz++) {
-                        if (isInside(gx, gy, gz)) {
-                            const isS = (!isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) || !isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1) || !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1));
-                            const gw = triangleAxis === 'X' ? gx : (triangleAxis === 'Y' ? gy : gz);
-                            const isBase = (gw === baseW);
-                            
-                            if (triangleMode === 'shell' && clearInterior && isP && !isS && !isBase) setVoxel(gx, gy, gz, false, null);
-                            else if (triangleMode === 'solid' || isS || (triangleCap && isBase)) setVoxel(gx, gy, gz, isP, getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0), matTypes[0]);
-                        }
-                    }
-                }
-            }
-            leftMenuNeedsUpdate = true;
-        }
-
+    }
+    leftMenuNeedsUpdate = true;
+}
         function executePlaneTool(start, end, isP) {
             let s = start, e = end;
             if (drawFromCenter) {
@@ -2043,35 +2191,9 @@
         }
 
         function onSelectEnd() {
-            // Run the tools while state is active
-            if (this === xrRight) { 
-                if (activeTool === 'select' && selectMode === 'box' && isPreviewingBox) executeSelectBox(drawStartPos, rightTargetLocal);
-                if (activeTool === 'box' && isPreviewingBox) executeBoxTool(drawStartPos, rightTargetLocal, true);
-                if (activeTool === 'quadsphere' && isPreviewingSphere) executeQuadSphereTool(drawStartPos, rightTargetLocal, true);
-                if (activeTool === 'cylinder' && isPreviewingCylinder) executeCylinderTool(drawStartPos, rightTargetLocal, true);
-                if (activeTool === 'plane' && isPreviewingPlane) executePlaneTool(drawStartPos, rightTargetLocal, true);
-                if (activeTool === 'triangle' && isPreviewingTriangle) executeTriangleTool(drawStartPos, rightTargetLocal, true);
-                if (activeTool === 'icosahedron' && isPreviewingIcosahedron) executeIcosahedronTool(drawStartPos, rightTargetLocal, true);
-                
-                isDrawing = false;
-                lastPaintedPos.set(Infinity, Infinity, Infinity);
-                if (activeTool === 'sheet') lastSheetLeftPos.set(Infinity, Infinity, Infinity);
-            } else if (this === xrLeft) { 
-                if (activeTool === 'box' && isPreviewingBox) executeBoxTool(drawStartPos, leftTargetLocal, false);
-                if (activeTool === 'quadsphere' && isPreviewingSphere) executeQuadSphereTool(drawStartPos, leftTargetLocal, false);
-                if (activeTool === 'cylinder' && isPreviewingCylinder) executeCylinderTool(drawStartPos, leftTargetLocal, false);
-                if (activeTool === 'plane' && isPreviewingPlane) executePlaneTool(drawStartPos, leftTargetLocal, false);
-                if (activeTool === 'triangle' && isPreviewingTriangle) executeTriangleTool(drawStartPos, leftTargetLocal, false);
-                if (activeTool === 'icosahedron' && isPreviewingIcosahedron) executeIcosahedronTool(drawStartPos, leftTargetLocal, false);
-                
-                isErasing = false;
-                lastErasedPos.set(Infinity, Infinity, Infinity);
-                if (activeTool === 'sheet') lastSheetLeftPos.set(Infinity, Infinity, Infinity);
-            }
-            
-            // ONLY THEN clear the state
+            if (this === xrRight) { if(activeSliderDrag) activeSliderDrag=null; else if(isColorPicking) { isColorPicking=isPaletteMagnified=false; updateColorMenuTexture(); } else { isDrawing=false; if(activeTool==='select'&&selectMode==='box'&&isPreviewingBox){ executeSelectBox(drawStartPos,rightTargetLocal); isPreviewingBox=false; boxPreviewMesh.visible=false; } if(activeTool==='box'&&isPreviewingBox){ executeBoxTool(drawStartPos,rightTargetLocal,true); isPreviewingBox=false; boxPreviewMesh.visible=false; } if(activeTool==='quadsphere'&&isPreviewingSphere){ executeQuadSphereTool(drawStartPos,rightTargetLocal,true); isPreviewingSphere=false; spherePreviewMesh.visible=false; } if(activeTool==='cylinder'&&isPreviewingCylinder){ executeCylinderTool(drawStartPos,rightTargetLocal,true); isPreviewingCylinder=false; cylinderPreviewMesh.visible=false; } if(activeTool==='plane'&&isPreviewingPlane){ executePlaneTool(drawStartPos,rightTargetLocal,true); isPreviewingPlane=false; boxPreviewMesh.visible=false; } if(activeTool==='triangle'&&isPreviewingTriangle){ executeTriangleTool(drawStartPos,rightTargetLocal,true); isPreviewingTriangle=false; conePreviewMesh.visible=false; } if(activeTool==='icosahedron'&&isPreviewingIcosahedron){ executeIcosahedronTool(drawStartPos,rightTargetLocal,true); isPreviewingIcosahedron=false; polyPreviewMesh.visible=false; } lastPaintedPos.set(Infinity,Infinity,Infinity); if(activeTool==='sheet')lastSheetLeftPos.set(Infinity,Infinity,Infinity); } }
+            else if (this === xrLeft) { isErasing=false; if(activeTool==='box'&&isPreviewingBox){ executeBoxTool(drawStartPos,leftTargetLocal,false); isPreviewingBox=false; boxPreviewMesh.visible=false; } if(activeTool==='quadsphere'&&isPreviewingSphere){ executeQuadSphereTool(drawStartPos,leftTargetLocal,false); isPreviewingSphere=false; spherePreviewMesh.visible=false; } if(activeTool==='cylinder'&&isPreviewingCylinder){ executeCylinderTool(drawStartPos,leftTargetLocal,false); isPreviewingCylinder=false; cylinderPreviewMesh.visible=false; } if(activeTool==='plane'&&isPreviewingPlane){ executePlaneTool(drawStartPos,leftTargetLocal,false); isPreviewingPlane=false; boxPreviewMesh.visible=false; } if(activeTool==='triangle'&&isPreviewingTriangle){ executeTriangleTool(drawStartPos,leftTargetLocal,false); isPreviewingTriangle=false; conePreviewMesh.visible=false; } if(activeTool==='icosahedron'&&isPreviewingIcosahedron){ executeIcosahedronTool(drawStartPos,leftTargetLocal,false); isPreviewingIcosahedron=false; polyPreviewMesh.visible=false; } lastErasedPos.set(Infinity,Infinity,Infinity); if(activeTool==='sheet')lastSheetLeftPos.set(Infinity,Infinity,Infinity); }
             hideAllPreviews();
-            isPreviewingBox = isPreviewingSphere = isPreviewingPlane = isPreviewingTriangle = isPreviewingCylinder = isPreviewingIcosahedron = false;
             lockCtx.active = false;
         }
 
