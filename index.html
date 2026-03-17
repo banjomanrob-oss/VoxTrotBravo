@@ -1705,8 +1705,8 @@ function updatePlanePreview(start, end, isPainting) {
 
 function placeBrushVoxels(pos, isP) {
     const r = brushSize - 1;
-    // Using 0.5 offset for cleaner voxel spheres
-    const rSq = (r + 0.5) * (r + 0.5); 
+    // We use a slightly tighter rSq for the outer boundary to keep the shell thin
+    const rSqOuter = (r + 0.4) * (r + 0.4); 
     const cGx = Math.round(pos.x / VOXEL_SIZE);
     const cGy = Math.round(pos.y / VOXEL_SIZE);
     const cGz = Math.round(pos.z / VOXEL_SIZE);
@@ -1714,7 +1714,7 @@ function placeBrushVoxels(pos, isP) {
     // Helper to determine if a relative coordinate is within the brush shape
     const isInside = (dx, dy, dz) => {
         if (brushShape === 'sphere') {
-            return (dx * dx + dy * dy + dz * dz <= rSq);
+            return (dx * dx + dy * dy + dz * dz <= rSqOuter);
         } else {
             return (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
         }
@@ -1727,7 +1727,7 @@ function placeBrushVoxels(pos, isP) {
     for (let dx = -r; dx <= r; dx++) {
         for (let dy = -r; dy <= r; dy++) {
             for (let dz = -r; dz <= r; dz++) {
-                // Skip coordinates outside the brush volume
+                // Skip coordinates outside the primary brush volume
                 if (!isInside(dx, dy, dz)) continue;
 
                 const gx = cGx + dx;
@@ -1737,7 +1737,8 @@ function placeBrushVoxels(pos, isP) {
                 if (isP) {
                     // DRAWING LOGIC
                     if (brushVolume === 'shell' && r > 0) {
-                        // A voxel is on the surface if any of its 6 neighbors are outside the shape
+                        // A voxel is on the surface if ANY neighbor is outside the shape.
+                        // We check the 6 immediate faces.
                         const isSurface = !isInside(dx + 1, dy, dz) || 
                                           !isInside(dx - 1, dy, dz) || 
                                           !isInside(dx, dy + 1, dz) || 
@@ -1750,17 +1751,19 @@ function placeBrushVoxels(pos, isP) {
                             const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
                             setVoxel(gx, gy, gz, true, color, matTypes[0]);
                         } else {
-                            // IMPORTANT: Explicitly clear interior voxels to keep the path hollow
-                            // during continuous strokes.
+                            // AGGRESSIVE CLEARING: 
+                            // When moving in a continuous stroke, the interior of the current 
+                            // sphere MUST erase any voxels placed by previous steps to keep 
+                            // the tube hollow.
                             setVoxel(gx, gy, gz, false, null);
                         }
                     } else {
-                        // SOLID MODE: Just place the voxel
+                        // SOLID MODE: Standard behavior
                         const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
                         setVoxel(gx, gy, gz, true, color, matTypes[0]);
                     }
                 } else {
-                    // ERASING LOGIC: Always remove the voxel regardless of shell/solid setting
+                    // ERASING LOGIC: Always remove the voxel
                     setVoxel(gx, gy, gz, false, null);
                 }
             }
