@@ -1704,15 +1704,69 @@ function updatePlanePreview(start, end, isPainting) {
         }
 
         function placeBrushVoxels(pos, isP) {
-            const r=brushSize-1, rSq=(r+0.1)*(r+0.1), cGx=Math.round(pos.x/VOXEL_SIZE), cGy=Math.round(pos.y/VOXEL_SIZE), cGz=Math.round(pos.z/VOXEL_SIZE);
-            const isInside = (dx,dy,dz) => brushShape==='sphere'?(dx*dx+dy*dy+dz*dz<=rSq):(Math.abs(dx)<=r&&Math.abs(dy)<=r&&Math.abs(dz)<=r);
-            for (let dx=-r; dx<=r; dx++) for (let dy=-r; dy<=r; dy++) for (let dz=-r; dz<=r; dz++) {
-                if(!isInside(dx,dy,dz)) continue;
-                if(brushVolume==='shell'&&r>0) { const sur = !isInside(dx+1,dy,dz)||!isInside(dx-1,dy,dz)||!isInside(dx,dy+1,dz)||!isInside(dx,dy-1,dz)||!isInside(dx,dy,dz+1)||!isInside(dx,dy-1); if(!sur) continue; }
-                setVoxel(cGx+dx, cGy+dy, cGz+dz, isP, getDrawColor(cGx+dx, cGy+dy, cGz+dz, cGx-r, cGx+r, cGy-r, cGy+r, 0), matTypes[0]);
-            }
-            leftMenuNeedsUpdate = true;
+    // Determine radius: brushSize 1 means 1 voxel, 2 means 3x3x3, etc.
+    const r = brushSize - 1;
+    const rSq = (r + 0.2) * (r + 0.2); 
+    const cGx = Math.round(pos.x / VOXEL_SIZE);
+    const cGy = Math.round(pos.y / VOXEL_SIZE);
+    const cGz = Math.round(pos.z / VOXEL_SIZE);
+
+    const isInside = (dx, dy, dz) => {
+        if (brushShape === 'sphere') {
+            return (dx * dx + dy * dy + dz * dz <= rSq);
+        } else {
+            return (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
         }
+    };
+
+    // Calculate bounds for gradients
+    const minX = cGx - r, maxX = cGx + r;
+    const minY = cGy - r, maxY = cGy + r;
+
+    for (let dx = -r; dx <= r; dx++) {
+        for (let dy = -r; dy <= r; dy++) {
+            for (let dz = -r; dz <= r; dz++) {
+                // Skip if this coordinate is not part of the brush shape
+                if (!isInside(dx, dy, dz)) continue;
+
+                const gx = cGx + dx;
+                const gy = cGy + dy;
+                const gz = cGz + dz;
+
+                if (isP) { 
+                    // DRAWING LOGIC
+                    if (brushVolume === 'shell' && r > 0) {
+                        const isSurface = !isInside(dx + 1, dy, dz) || 
+                                          !isInside(dx - 1, dy, dz) || 
+                                          !isInside(dx, dy + 1, dz) || 
+                                          !isInside(dx, dy - 1, dz) || 
+                                          !isInside(dx, dy, dz + 1) || 
+                                          !isInside(dx, dy, dz - 1);
+                        
+                        if (!isSurface) {
+                            // If we are inside the shell, explicitly REMOVE voxels.
+                            // This ensures the path stays hollow during continuous strokes.
+                            setVoxel(gx, gy, gz, false, null);
+                            continue; 
+                        }
+                    }
+                    
+                    // Place the voxel with current color/material
+                    const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
+                    setVoxel(gx, gy, gz, true, color, matTypes[0]);
+
+                } else {
+                    // ERASING LOGIC
+                    // We keep the eraser as a solid volume even in shell mode 
+                    // so that it's easier to clean up mistakes.
+                    setVoxel(gx, gy, gz, false, null);
+                }
+            }
+        }
+    }
+    leftMenuNeedsUpdate = true;
+}
+
 
         function placePaintVoxels(pos) {
             const r=brushSize-1, rSq=(r+0.1)*(r+0.1), cGx=Math.round(pos.x/VOXEL_SIZE), cGy=Math.round(pos.y/VOXEL_SIZE), cGz=Math.round(pos.z/VOXEL_SIZE);
