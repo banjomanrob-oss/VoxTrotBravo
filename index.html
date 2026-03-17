@@ -1703,9 +1703,11 @@ function updatePlanePreview(start, end, isPainting) {
             leftMenuNeedsUpdate = true;
         }
 
+
+
+
 function placeBrushVoxels(pos, isP) {
-    // This is still used for the very first click of a stroke
-    // or for the standard Brush tool.
+    // Used for individual clicks or the standard Brush tool.
     const r = brushSize - 1;
     const rSq = (r + 0.4) * (r + 0.4);
     const cGx = Math.round(pos.x / VOXEL_SIZE);
@@ -1726,10 +1728,15 @@ function placeBrushVoxels(pos, isP) {
                 const gx = cGx + dx, gy = cGy + dy, gz = cGz + dz;
 
                 if (isP) {
-                    const isSurf = !isInside(dx+1,dy,dz) || !isInside(dx-1,dy,dz) || !isInside(dx,dy+1,dz) || !isInside(dx,dy-1,dz) || !isInside(dx,dy,dz+1) || !isInside(dx,dy-1,dz);
                     if (brushVolume === 'shell' && r > 0) {
-                        if (isSurf) setVoxel(gx, gy, gz, true, getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0), matTypes[0]);
-                        else setVoxel(gx, gy, gz, false, null); // Clear interior
+                        const isSurf = !isInside(dx+1,dy,dz) || !isInside(dx-1,dy,dz) || 
+                                       !isInside(dx,dy+1,dz) || !isInside(dx,dy-1,dz) || 
+                                       !isInside(dx,dy,dz+1) || !isInside(dx,dy-1,dz);
+                        if (isSurf) {
+                            setVoxel(gx, gy, gz, true, getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0), matTypes[0]);
+                        } else {
+                            setVoxel(gx, gy, gz, false, null);
+                        }
                     } else {
                         setVoxel(gx, gy, gz, true, getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0), matTypes[0]);
                     }
@@ -1741,6 +1748,8 @@ function placeBrushVoxels(pos, isP) {
     }
 }
 
+
+
         function placePaintVoxels(pos) {
             const r=brushSize-1, rSq=(r+0.1)*(r+0.1), cGx=Math.round(pos.x/VOXEL_SIZE), cGy=Math.round(pos.y/VOXEL_SIZE), cGz=Math.round(pos.z/VOXEL_SIZE);
             const isInside = (dx,dy,dz) => brushShape==='sphere'?(dx*dx+dy*dy+dz*dz<=rSq):(Math.abs(dx)<=r&&Math.abs(dy)<=r&&Math.abs(dz)<=r);
@@ -1751,46 +1760,45 @@ function placeBrushVoxels(pos, isP) {
             }
         }
 
+
+
+
+
 function drawLineVoxels(start, end, isP) {
-    // REDESIGN: Treat the segment as a geometric tube/capsule
     const r = brushSize - 1;
     const rVoxel = r;
     
-    // Grid coordinates
     const gS = { x: Math.round(start.x / VOXEL_SIZE), y: Math.round(start.y / VOXEL_SIZE), z: Math.round(start.z / VOXEL_SIZE) };
     const gE = { x: Math.round(end.x / VOXEL_SIZE), y: Math.round(end.y / VOXEL_SIZE), z: Math.round(end.z / VOXEL_SIZE) };
 
-    // Bounding box of the segment plus brush radius
     const minX = Math.min(gS.x, gE.x) - rVoxel, maxX = Math.max(gS.x, gE.x) + rVoxel;
     const minY = Math.min(gS.y, gE.y) - rVoxel, maxY = Math.max(gS.y, gE.y) + rVoxel;
     const minZ = Math.min(gS.z, gE.z) - rVoxel, maxZ = Math.max(gS.z, gE.z) + rVoxel;
 
-    // Line segment math helpers
     const pax = gE.x - gS.x, pay = gE.y - gS.y, paz = gE.z - gS.z;
     const pLenSq = pax*pax + pay*pay + paz*paz;
 
     for (let gx = minX; gx <= maxX; gx++) {
         for (let gy = minY; gy <= maxY; gy++) {
             for (let gz = minZ; gz <= maxZ; gz++) {
-                // Calculate distance from voxel (gx, gy, gz) to segment gS -> gE
-                let t = pLenSq === 0 ? 0 : ((gx - gS.x) * pax + (gy - gS.y) * pay + (gz - gS.z) * paz) / pLenSq;
-                t = Math.max(0, Math.min(1, t));
+                // 1. Find projection 't' along the line segment
+                let tRaw = pLenSq === 0 ? 0 : ((gx - gS.x) * pax + (gy - gS.y) * pay + (gz - gS.z) * paz) / pLenSq;
                 
-                const closestX = gS.x + t * pax;
-                const closestY = gS.y + t * pay;
-                const closestZ = gS.z + t * paz;
+                // 2. Identify if this voxel is at the very ends of the segment
+                // During continuous strokes, we don't want to draw the "caps" 
+                // between segments, otherwise we get internal walls.
+                const isInternalCap = (tRaw <= 0 || tRaw >= 1);
                 
-                const dx = gx - closestX, dy = gy - closestY, dz = gz - closestZ;
+                const t = Math.max(0, Math.min(1, tRaw));
+                const dx = gx - (gS.x + t * pax), dy = gy - (gS.y + t * pay), dz = gz - (gS.z + t * paz);
                 
                 let distSq;
                 if (brushShape === 'sphere') {
                     distSq = dx*dx + dy*dy + dz*dz;
                 } else {
-                    // "Cube" distance is the Max of absolute differences
                     distSq = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz));
                 }
 
-                // Thresholds for Shell/Solid
                 const outerLimit = brushShape === 'sphere' ? (r + 0.4) * (r + 0.4) : r;
                 const innerLimit = brushShape === 'sphere' ? (r - 0.6) * (r - 0.6) : r - 1;
 
@@ -1798,20 +1806,22 @@ function drawLineVoxels(start, end, isP) {
                     if (isP) {
                         if (brushVolume === 'shell' && r > 0) {
                             if (distSq > innerLimit) {
-                                // Surface of the tube
-                                const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
-                                setVoxel(gx, gy, gz, true, color, matTypes[0]);
+                                // SURFACE: Only draw if it's NOT an internal cap
+                                if (!isInternalCap) {
+                                    const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
+                                    setVoxel(gx, gy, gz, true, color, matTypes[0]);
+                                }
                             } else {
-                                // Interior of the tube: Aggressively Clear
+                                // INTERIOR: Always clear to ensure hollow tube
                                 setVoxel(gx, gy, gz, false, null);
                             }
                         } else {
-                            // Solid tube
+                            // SOLID: Standard tube behavior
                             const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
                             setVoxel(gx, gy, gz, true, color, matTypes[0]);
                         }
                     } else {
-                        // Erase the whole tube volume
+                        // ERASE: Remove entire volume
                         setVoxel(gx, gy, gz, false, null);
                     }
                 }
@@ -1820,6 +1830,9 @@ function drawLineVoxels(start, end, isP) {
     }
     leftMenuNeedsUpdate = true;
 }
+
+
+
 
 
         function calculateFloodFill(sX, sY, sZ) {
