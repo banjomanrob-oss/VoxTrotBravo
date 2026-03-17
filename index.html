@@ -1703,49 +1703,73 @@ function updatePlanePreview(start, end, isPainting) {
             leftMenuNeedsUpdate = true;
         }
 
-
-
-
 function placeBrushVoxels(pos, isP) {
-    // Used for individual clicks or the standard Brush tool.
     const r = brushSize - 1;
-    const rSq = (r + 0.4) * (r + 0.4);
+    // We use a slightly tighter rSq for the outer boundary to keep the shell thin
+    const rSqOuter = (r + 0.4) * (r + 0.4); 
     const cGx = Math.round(pos.x / VOXEL_SIZE);
     const cGy = Math.round(pos.y / VOXEL_SIZE);
     const cGz = Math.round(pos.z / VOXEL_SIZE);
 
+    // Helper to determine if a relative coordinate is within the brush shape
     const isInside = (dx, dy, dz) => {
-        if (brushShape === 'sphere') return (dx * dx + dy * dy + dz * dz <= rSq);
-        return (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
+        if (brushShape === 'sphere') {
+            return (dx * dx + dy * dy + dz * dz <= rSqOuter);
+        } else {
+            return (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
+        }
     };
 
-    const minX = cGx - r, maxX = cGx + r, minY = cGy - r, maxY = cGy + r;
+    // Determine the bounds for color gradients
+    const minX = cGx - r, maxX = cGx + r;
+    const minY = cGy - r, maxY = cGy + r;
 
     for (let dx = -r; dx <= r; dx++) {
         for (let dy = -r; dy <= r; dy++) {
             for (let dz = -r; dz <= r; dz++) {
+                // Skip coordinates outside the primary brush volume
                 if (!isInside(dx, dy, dz)) continue;
-                const gx = cGx + dx, gy = cGy + dy, gz = cGz + dz;
+
+                const gx = cGx + dx;
+                const gy = cGy + dy;
+                const gz = cGz + dz;
 
                 if (isP) {
+                    // DRAWING LOGIC
                     if (brushVolume === 'shell' && r > 0) {
-                        const isSurf = !isInside(dx+1,dy,dz) || !isInside(dx-1,dy,dz) || 
-                                       !isInside(dx,dy+1,dz) || !isInside(dx,dy-1,dz) || 
-                                       !isInside(dx,dy,dz+1) || !isInside(dx,dy-1,dz);
-                        if (isSurf) {
-                            setVoxel(gx, gy, gz, true, getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0), matTypes[0]);
+                        // A voxel is on the surface if ANY neighbor is outside the shape.
+                        // We check the 6 immediate faces.
+                        const isSurface = !isInside(dx + 1, dy, dz) || 
+                                          !isInside(dx - 1, dy, dz) || 
+                                          !isInside(dx, dy + 1, dz) || 
+                                          !isInside(dx, dy - 1, dz) || 
+                                          !isInside(dx, dy, dz + 1) || 
+                                          !isInside(dx, dy, dz - 1);
+                        
+                        if (isSurface) {
+                            // Place the shell voxel
+                            const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
+                            setVoxel(gx, gy, gz, true, color, matTypes[0]);
                         } else {
+                            // AGGRESSIVE CLEARING: 
+                            // When moving in a continuous stroke, the interior of the current 
+                            // sphere MUST erase any voxels placed by previous steps to keep 
+                            // the tube hollow.
                             setVoxel(gx, gy, gz, false, null);
                         }
                     } else {
-                        setVoxel(gx, gy, gz, true, getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0), matTypes[0]);
+                        // SOLID MODE: Standard behavior
+                        const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
+                        setVoxel(gx, gy, gz, true, color, matTypes[0]);
                     }
                 } else {
+                    // ERASING LOGIC: Always remove the voxel
                     setVoxel(gx, gy, gz, false, null);
                 }
             }
         }
     }
+    leftMenuNeedsUpdate = true;
 }
 
 
@@ -1759,82 +1783,34 @@ function placeBrushVoxels(pos, isP) {
             }
         }
 
+        function drawLineVoxels(start, end, isP) {
+            const dist=start.distanceTo(end), steps=Math.min(600, Math.max(1, Math.ceil(dist/(VOXEL_SIZE*0.25)))); let lastG = {x:Infinity,y:Infinity,z:Infinity};
+            for (let i=0; i<=steps; i++) { tempPos.lerpVectors(start, end, i/steps); const gx=Math.round(tempPos.x/VOXEL_SIZE), gy=Math.round(tempPos.y/VOXEL_SIZE), gz=Math.round(tempPos.z/VOXEL_SIZE); if(gx!==lastG.x||gy!==lastG.y||gz!==lastG.z){ placeBrushVoxels(tempPos, isP); lastG={x:gx,y:gy,z:gz}; } }
+        }
 
+        function drawPaintLineVoxels(start, end) {
+            const dist=start.distanceTo(end), steps=Math.min(600, Math.max(1, Math.ceil(dist/(VOXEL_SIZE*0.25)))); let lastG = {x:Infinity,y:Infinity,z:Infinity};
+            for (let i=0; i<=steps; i++) { tempPos.lerpVectors(start, end, i/steps); const gx=Math.round(tempPos.x/VOXEL_SIZE), gy=Math.round(tempPos.y/VOXEL_SIZE), gz=Math.round(tempPos.z/VOXEL_SIZE); if(gx!==lastG.x||gy!==lastG.y||gz!==lastG.z){ placePaintVoxels(tempPos); lastG={x:gx,y:gy,z:gz}; } }
+        }
 
-
-
-function drawLineVoxels(start, end, isP) {
-    const r = brushSize - 1;
-    const rVoxel = r;
-    
-    const gS = { x: Math.round(start.x / VOXEL_SIZE), y: Math.round(start.y / VOXEL_SIZE), z: Math.round(start.z / VOXEL_SIZE) };
-    const gE = { x: Math.round(end.x / VOXEL_SIZE), y: Math.round(end.y / VOXEL_SIZE), z: Math.round(end.z / VOXEL_SIZE) };
-
-    const minX = Math.min(gS.x, gE.x) - rVoxel, maxX = Math.max(gS.x, gE.x) + rVoxel;
-    const minY = Math.min(gS.y, gE.y) - rVoxel, maxY = Math.max(gS.y, gE.y) + rVoxel;
-    const minZ = Math.min(gS.z, gE.z) - rVoxel, maxZ = Math.max(gS.z, gE.z) + rVoxel;
-
-    const pax = gE.x - gS.x, pay = gE.y - gS.y, paz = gE.z - gS.z;
-    const pLenSq = pax*pax + pay*pay + paz*paz;
-    const pLen = Math.sqrt(pLenSq);
-
-    for (let gx = minX; gx <= maxX; gx++) {
-        for (let gy = minY; gy <= maxY; gy++) {
-            for (let gz = minZ; gz <= maxZ; gz++) {
-                // 1. Find projection 't' along the line segment
-                let tRaw = pLenSq === 0 ? 0 : ((gx - gS.x) * pax + (gy - gS.y) * pay + (gz - gS.z) * paz) / pLenSq;
-                
-                // 2. Identify if this voxel is at the very ends of the segment.
-                // To fix "cracks", we allow the sleeve to overlap by about 0.8 voxels.
-                // This ensures the tube segments stitch together at sharp angles.
-                const distFromSegmentRange = tRaw < 0 ? (-tRaw * pLen) : (tRaw > 1 ? (tRaw - 1) * pLen : 0);
-                const isInternalCap = (distFromSegmentRange > 0.8);
-                
-                const t = Math.max(0, Math.min(1, tRaw));
-                const dx = gx - (gS.x + t * pax), dy = gy - (gS.y + t * pay), dz = gz - (gS.z + t * paz);
-                
-                let distSq;
-                if (brushShape === 'sphere') {
-                    distSq = dx*dx + dy*dy + dz*dz;
-                } else {
-                    distSq = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz));
-                }
-
-                const outerLimit = brushShape === 'sphere' ? (r + 0.4) * (r + 0.4) : r;
-                const innerLimit = brushShape === 'sphere' ? (r - 0.6) * (r - 0.6) : r - 1;
-
-                if (distSq <= outerLimit) {
-                    if (isP) {
-                        if (brushVolume === 'shell' && r > 0) {
-                            if (distSq > innerLimit) {
-                                // SURFACE: Only draw if it's NOT an internal cap (with a tiny overlap for stitching)
-                                if (!isInternalCap) {
-                                    const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
-                                    setVoxel(gx, gy, gz, true, color, matTypes[0]);
-                                }
-                            } else {
-                                // INTERIOR: Always clear the entire capsule (including caps) to keep tube hollow
-                                setVoxel(gx, gy, gz, false, null);
-                            }
-                        } else {
-                            // SOLID: Standard tube behavior
-                            const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
-                            setVoxel(gx, gy, gz, true, color, matTypes[0]);
-                        }
-                    } else {
-                        // ERASE: Remove entire volume
-                        setVoxel(gx, gy, gz, false, null);
+        function drawSheetQuad(pL1, pR1, pL2, pR2, isP, thick) {
+            const minX = Math.round(Math.min(pL1.x, pR1.x, pL2.x, pR2.x)/VOXEL_SIZE)-thick, maxX = Math.round(Math.max(pL1.x, pR1.x, pL2.x, pR2.x)/VOXEL_SIZE)+thick;
+            const minY = Math.round(Math.min(pL1.y, pR1.y, pL2.y, pR2.y)/VOXEL_SIZE)-thick, maxY = Math.round(Math.max(pL1.y, pR1.y, pL2.y, pR2.y)/VOXEL_SIZE)+thick;
+            const distL=pL1.distanceTo(pL2), distR=pR1.distanceTo(pR2), stepsV=Math.max(1, Math.ceil(Math.max(distL,distR)/(VOXEL_SIZE*0.25))), r=thick-1, rSq=(r+0.1)*(r+0.1);
+            fillVisited.clear(); const isInside = (dx,dy,dz) => brushShape==='sphere'?(dx*dx+dy*dy+dz*dz<=rSq):(Math.abs(dx)<=r&&Math.abs(dy)<=r&&Math.abs(dz)<=r);
+            for (let v=0; v<=stepsV; v++) {
+                sheetPosL.copy(pL1).lerp(pL2, v/stepsV); sheetPosR.copy(pR1).lerp(pR2, v/stepsV); const distU=sheetPosL.distanceTo(sheetPosR), stepsU=Math.max(1, Math.ceil(distU/(VOXEL_SIZE*0.25)));
+                for (let u=0; u<=stepsU; u++) {
+                    tempPos.copy(sheetPosL).lerp(sheetPosR, u/stepsU); const cx=Math.round(tempPos.x/VOXEL_SIZE), cy=Math.round(tempPos.y/VOXEL_SIZE), cz=Math.round(tempPos.z/VOXEL_SIZE);
+                    for (let dx=-r; dx<=r; dx++) for (let dy=-r; dy<=r; dy++) for (let dz=-r; dz<=r; dz++) {
+                        if(!isInside(dx,dy,dz)) continue;
+                        if(brushVolume==='shell'&&r>0) { const sur = !isInside(dx+1,dy,dz)||!isInside(dx-1,dy,dz)||!isInside(dx,dy+1,dz)||!isInside(dx,dy-1)||!isInside(dx,dy,dz+1)||!isInside(dx,dy-1); if(!sur) continue; }
+                        const hash=(cx+dx+32768)+(cy+dy+32768)*65536+(cz+dz+32768)*4294967296; if(!fillVisited.has(hash)) { fillVisited.add(hash); setVoxel(cx+dx, cy+dy, cz+dz, isP, getDrawColor(cx+dx,cy+dy,cz+dz,minX,maxX,minY,maxY,0), matTypes[0]); }
                     }
                 }
             }
+            leftMenuNeedsUpdate = true;
         }
-    }
-    leftMenuNeedsUpdate = true;
-}
-
-
-
-
 
         function calculateFloodFill(sX, sY, sZ) {
             hoveredFillCoords.length = 0; const targetMat = getVoxelMatAndColor(sX, sY, sZ, targetQueryColor); if(targetMat===-1) return;
