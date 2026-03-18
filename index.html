@@ -1735,7 +1735,8 @@ function updatePlanePreview(start, end, isPainting) {
             selVisited.clear(); selQueue.length = 0; selQueue.push(startX, startY, startZ); selVisited.add((startX+32768)+(startY+32768)*65536+(startZ+32768)*4294967296);
             baseSelectionCount = 0; let qH = 0;
             while(qH < selQueue.length && baseSelectionCount < SEL_LIMIT) {
-                const x=selQueue[qH++], y=selQueue[qH++], z=selQueue[qH++]; m=getVoxelMatAndColor(x,y,z,tempColor);
+                const x=selQueue[qH++], y=selQueue[qH++], z=selQueue[qH++]; 
+                const m=getVoxelMatAndColor(x,y,z,tempColor);
                 if (m !== -1) {
                     const v = baseSelection[baseSelectionCount++]; v.x=x; v.y=y; v.z=z; v.color.copy(tempColor); v.mat=m;
                     for(let i=0; i<SEL_DIRS.length; i+=3) {
@@ -2478,20 +2479,30 @@ function placeBrushVoxels(pos, isP) {
                     rightTargetLocal.set(Math.round(rightTargetLocal.x/VOXEL_SIZE)*VOXEL_SIZE,Math.round(rightTargetLocal.y/VOXEL_SIZE)*VOXEL_SIZE,Math.round(rightTargetLocal.z/VOXEL_SIZE)*VOXEL_SIZE); 
                     cursorRight.position.copy(rightTargetLocal); cursorRight.updateMatrix(); cursorRight.visible=true; 
 
-                    if(hasSelection && (transformMode==='draw' || transformMode==='paint' || transformMode==='move') && !isSettingPivot){
-                        selectionGroup.position.set(rightTargetLocal.x - Math.round(selectionCenter.x)*VOXEL_SIZE, rightTargetLocal.y - Math.round(selectionCenter.y)*VOXEL_SIZE, rightTargetLocal.z - Math.round(selectionCenter.z)*VOXEL_SIZE);
-                        tempQuat.setFromRotationMatrix(xrRight.matrixWorld);
-                        worldGroup.getWorldQuaternion(tempQuat2).invert();
-                        const localQuat = tempQuat.premultiply(tempQuat2);
-                        selectionGroup.quaternion.copy(localQuat);
-                        tempSEuler.setFromQuaternion(localQuat, 'XYZ');
-                        const newRX = Math.round(THREE.MathUtils.radToDeg(tempSEuler.x) / 5) * 5;
-                        const newRY = Math.round(THREE.MathUtils.radToDeg(tempSEuler.y) / 5) * 5;
-                        const newRZ = Math.round(THREE.MathUtils.radToDeg(tempSEuler.z) / 5) * 5;
-                        if (newRX !== selectionRotX || newRY !== selectionRotY || newRZ !== selectionRotZ) {
-                            selectionRotX = newRX; selectionRotY = newRY; selectionRotZ = newRZ;
-                            updateRotatedSelection();
-                            leftMenuNeedsUpdate = true;
+                    if(hasSelection && !isSettingPivot){
+                        // Snap to controller tip for brush-style modes (Draw/Paint)
+                        if (transformMode === 'draw' || transformMode === 'paint') {
+                            selectionGroup.position.set(rightTargetLocal.x - Math.round(selectionCenter.x)*VOXEL_SIZE, rightTargetLocal.y - Math.round(selectionCenter.y)*VOXEL_SIZE, rightTargetLocal.z - Math.round(selectionCenter.z)*VOXEL_SIZE);
+                            
+                            tempQuat.setFromRotationMatrix(xrRight.matrixWorld);
+                            worldGroup.getWorldQuaternion(tempQuat2).invert();
+                            const localQuat = tempQuat.premultiply(tempQuat2);
+                            selectionGroup.quaternion.copy(localQuat);
+                            
+                            tempSEuler.setFromQuaternion(localQuat, 'XYZ');
+                            const newRX = Math.round(THREE.MathUtils.radToDeg(tempSEuler.x) / 5) * 5;
+                            const newRY = Math.round(THREE.MathUtils.radToDeg(tempSEuler.y) / 5) * 5;
+                            const newRZ = Math.round(THREE.MathUtils.radToDeg(tempSEuler.z) / 5) * 5;
+                            
+                            if (newRX !== selectionRotX || newRY !== selectionRotY || newRZ !== selectionRotZ) {
+                                selectionRotX = newRX; selectionRotY = newRY; selectionRotZ = newRZ;
+                                updateRotatedSelection();
+                                leftMenuNeedsUpdate = true;
+                            }
+                        } 
+                        // Drag relative to start position for Move/Copy
+                        else if (isDrawing && (transformMode === 'move' || transformMode === 'copy')) {
+                            selectionGroup.position.copy(dragStartOffset).add(rightTargetLocal).sub(dragStartCtrlPos);
                         }
                         selectionGroup.updateMatrix();
                     }
