@@ -1283,16 +1283,7 @@ function updatePlanePreview(start, end, isPainting) {
             if (activeTool === 'select' && hasSelection) {
                 if (cy >= 60 && cy <= 90) {
                     let newM = transformMode; if (cx >= 50 && cx <= 130) { newM = 'move'; isSettingPivot = false; } else if (cx >= 135 && cx <= 215) { newM = 'copy'; isSettingPivot = false; } else if (cx >= 220 && cx <= 300) { newM = 'draw'; isSettingPivot = false; } else if (cx >= 305 && cx <= 385) { newM = 'paint'; isSettingPivot = false; } else if (cx >= 390 && cx <= 475) isSettingPivot = !isSettingPivot;
-                    if (newM !== transformMode) { 
-                        const isMoving = (newM === 'move');
-                        // If switching TO move, we erase the selection from the world (symmetrically)
-                        // If switching FROM move to something else, we restore it
-                        for(let i = 0; i < baseSelectionCount; i++) { 
-                            const v = baseSelection[i]; 
-                            setVoxel(v.x, v.y, v.z, !isMoving, v.color, v.mat); 
-                        }
-                        transformMode = newM; 
-                    }
+                    if (newM !== transformMode) { transformMode = newM; if (transformMode === 'copy' || transformMode === 'draw' || transformMode === 'paint') for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxel(v.x, v.y, v.z, true, v.color, v.mat); } else for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxel(v.x, v.y, v.z, false, null); } }
                 }
                 if (transformMode === 'copy') { if (cy >= 260 && cy <= 290) { if (cx >= 50 && cx <= 130) numCopies = Math.max(1, numCopies - 1); if (cx >= 382 && cx <= 462) numCopies = Math.min(20, numCopies + 1); } if (cy >= 445 && cy <= 485) { if (cx >= 50 && cx <= 180) applySelection(); if (cx >= 190 && cx <= 320) cancelSelection(); if (cx >= 330 && cx <= 462) deleteSelection(); } }
                 else { if (cy >= 270 && cy <= 310) { if (cx >= 50 && cx <= 180) applySelection(); if (cx >= 190 && cx <= 320) cancelSelection(); if (cx >= 330 && cx <= 462) deleteSelection(); } }
@@ -1720,7 +1711,7 @@ function updatePlanePreview(start, end, isPainting) {
         function finalizeSelection() {
             transformMode = 'move'; numCopies = 1; selectionRotX = selectionRotY = selectionRotZ = 0; selectionScale = 1.0;
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-            for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxelCore(v.x, v.y, v.z, false, null); minX=Math.min(minX, v.x); maxX=Math.max(maxX, v.x); minY=Math.min(minY, v.y); maxY=Math.max(maxY, v.y); minZ=Math.min(minZ, v.z); maxZ=Math.max(maxZ, v.z); }
+            for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxel(v.x, v.y, v.z, false, null); minX=Math.min(minX, v.x); maxX=Math.max(maxX, v.x); minY=Math.min(minY, v.y); maxY=Math.max(maxY, v.y); minZ=Math.min(minZ, v.z); maxZ=Math.max(maxZ, v.z); }
             hasSelection = true; selectionGroup.position.set(0,0,0); selectionCenter.set((minX+maxX)/2, (minY+maxY)/2, (minZ+maxZ)/2);
             pivotPoint.copy(selectionCenter); pivotIndicator.position.set(pivotPoint.x*VOXEL_SIZE, pivotPoint.y*VOXEL_SIZE, pivotPoint.z*VOXEL_SIZE); pivotIndicator.updateMatrix(); pivotIndicator.visible = true;
             selectedVoxelsCount = baseSelectionCount; for(let i=0; i<baseSelectionCount; i++) { const s=selectedVoxels[i], b=baseSelection[i]; s.x=b.x; s.y=b.y; s.z=b.z; s.color.copy(b.color); s.mat=b.mat; } updateSelectionVisuals(); leftMenuNeedsUpdate = true;
@@ -1761,73 +1752,23 @@ function updatePlanePreview(start, end, isPainting) {
         }
 
         function applySelection() {
-            const oX = Math.round(selectionGroup.position.x / VOXEL_SIZE);
-            const oY = Math.round(selectionGroup.position.y / VOXEL_SIZE);
-            const oZ = Math.round(selectionGroup.position.z / VOXEL_SIZE);
-            const steps = transformMode === 'copy' ? numCopies : 1;
-            const pCX = pivotPoint.x, pCY = pivotPoint.y, pCZ = pivotPoint.z;
-            
-            // Track placed voxels to prevent doubling in high-symmetry modes
-            const placedSet = new Set();
-
-            for (let s = 1; s <= steps; s++) {
-                // Calculate step rotation/scale
-                tempSEuler.set(THREE.MathUtils.degToRad(copyStepRotX * s), THREE.MathUtils.degToRad(copyStepRotY * s), THREE.MathUtils.degToRad(copyStepRotZ * s), 'XYZ');
-                const scl = Math.pow(copyStepScale, s);
-                tempSMat.makeRotationFromEuler(tempSEuler);
-                tempScaleMat.makeScale(scl, scl, scl);
-                tempSMat.multiply(tempScaleMat);
-
-                for (let i = 0; i < activeSymmetries.length; i++) {
-                    const sym = activeSymmetries[i];
-                    // Calculate symmetry-transformed base offset
-                    const bx = (pCX + oX * s) * sym.sx;
-                    const by = (pCY + oY * s) * sym.sy;
-                    const bz = (pCZ + oZ * s) * sym.sz;
-                    let fx = bx, fz = bz, rotAngle = 0;
-                    if (sym.p > 0) {
-                        rotAngle = sym.p * 2 * Math.PI / polarSymmetry;
-                        fx = bx * sym.cos + bz * sym.sin;
-                        fz = -bx * sym.sin + bz * sym.cos;
-                    }
-
-                    for (let j = 0; j < selectedVoxelsCount; j++) {
-                        const v = selectedVoxels[j];
-                        // 1. Pivot-relative rotation/scale
-                        tempPos.set(v.x - pCX, v.y - pCY, v.z - pCZ).applyMatrix4(tempSMat);
-                        // 2. Apply symmetry to the rotated voxel
-                        const rx = tempPos.x * sym.sx, ry = tempPos.y * sym.sy, rz = tempPos.z * sym.sz;
-                        let frx = rx, frz = rz;
-                        if (rotAngle !== 0) {
-                            frx = rx * sym.cos + rz * sym.sin;
-                            frz = -rx * sym.sin + rz * sym.cos;
-                        }
-                        // 3. Final World Coordinates
-                        const finalX = Math.round(fx + frx), finalY = Math.round(by + ry), finalZ = Math.round(fz + frz);
-                        const hash = (finalX + 32768) + (finalY + 32768) * 65536 + (finalZ + 32768) * 4294967296;
-                        if (!placedSet.has(hash)) {
-                            placedSet.add(hash);
-                            setVoxelCore(finalX, finalY, finalZ, true, v.color, v.mat);
-                        }
-                    }
+            const oX=Math.round(selectionGroup.position.x/VOXEL_SIZE), oY=Math.round(selectionGroup.position.y/VOXEL_SIZE), oZ=Math.round(selectionGroup.position.z/VOXEL_SIZE);
+            if (transformMode === 'copy') {
+                const pCX=pivotPoint.x, pCY=pivotPoint.y, pCZ=pivotPoint.z; origMap.clear(); for(let i=0; i<selectedVoxelsCount; i++){ const v=selectedVoxels[i]; origMap.set((v.x+32768)+(v.y+32768)*65536+(v.z+32768)*4294967296, v); }
+                for (let s=1; s<=numCopies; s++) {
+                    tempSEuler.set(THREE.MathUtils.degToRad(copyStepRotX*s), THREE.MathUtils.degToRad(copyStepRotY*s), THREE.MathUtils.degToRad(copyStepRotZ*s), 'XYZ');
+                    const scl=Math.pow(copyStepScale, s); tempSMat.makeRotationFromEuler(tempSEuler); tempScaleMat.makeScale(scl, scl, scl); tempSMat.multiply(tempScaleMat); tempInvMat.copy(tempSMat).invert();
+                    let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity, minZ=Infinity, maxZ=-Infinity;
+                    for(let i=0; i<selectedVoxelsCount; i++) { const v=selectedVoxels[i]; tempPos.set(v.x-pCX, v.y-pCY, v.z-pCZ).applyMatrix4(tempSMat); const rx=pCX+oX*s+tempPos.x, ry=pCY+oY*s+tempPos.y, rz=pCZ+oZ*s+tempPos.z; minX=Math.min(minX, rx); maxX=Math.max(maxX, rx); minY=Math.min(minY, ry); maxY=Math.max(maxY, ry); minZ=Math.min(minZ, rz); maxZ=Math.max(maxZ, rz); }
+                    minX=Math.floor(minX)-1; maxX=Math.ceil(maxX)+1; minY=Math.floor(minY)-1; maxY=Math.ceil(maxY)+1; minZ=Math.floor(minZ)-1; maxZ=Math.ceil(maxZ)+1;
+                    const e=tempInvMat.elements, tCX=pCX+oX*s, tCY=pCY+oY*s, tCZ=pCZ+oZ*s;
+                    for (let x=minX; x<=maxX; x++) { const dx=x-tCX; for (let y=minY; y<=maxY; y++) { const dy=y-tCY; for (let z=minZ; z<=maxZ; z++) { const dz=z-tCZ, sx=Math.round(pCX+dx*e[0]+dy*e[4]+dz*e[8]), sy=Math.round(pCY+dx*e[1]+dy*e[5]+dz*e[9]), sz=Math.round(pCZ+dx*e[2]+dy*e[6]+dz*e[10]), ov=origMap.get((sx+32768)+(sy+32768)*65536+(sz+32768)*4294967296); if(ov) setVoxel(x,y,z,true,ov.color,ov.mat); } } }
                 }
-            }
-            baseSelectionCount = selectedVoxelsCount = 0;
-            hasSelection = selectionGroup.visible = pivotIndicator.visible = isSettingPivot = false;
-            selectionGroup.position.set(0, 0, 0);
-            leftMenuNeedsUpdate = true;
+            } else if (transformMode === 'move') for(let i=0; i<selectedVoxelsCount; i++) { const v=selectedVoxels[i]; setVoxel(v.x+oX, v.y+oY, v.z+oZ, true, v.color, v.mat); }
+            baseSelectionCount = selectedVoxelsCount = 0; hasSelection = selectionGroup.visible = pivotIndicator.visible = isSettingPivot = false; selectionGroup.position.set(0,0,0); leftMenuNeedsUpdate = true;
         }
 
-
-        function cancelSelection() { 
-            if (transformMode === 'move') {
-                for(let i = 0; i < baseSelectionCount; i++) { 
-                    const v = baseSelection[i]; 
-                    setVoxel(v.x, v.y, v.z, true, v.color, v.mat); 
-                } 
-            }
-            deleteSelection(); 
-        }
+        function cancelSelection() { if (transformMode === 'move') for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxel(v.x, v.y, v.z, true, v.color, v.mat); } deleteSelection(); }
         function deleteSelection() { baseSelectionCount = selectedVoxelsCount = 0; hasSelection = selectionGroup.visible = pivotIndicator.visible = isSettingPivot = false; selectionGroup.position.set(0,0,0); leftMenuNeedsUpdate = true; }
 
         function executeSculpt(pos, isP) {
