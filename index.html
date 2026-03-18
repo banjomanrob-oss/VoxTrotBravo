@@ -1283,21 +1283,8 @@ function updatePlanePreview(start, end, isPainting) {
             if (activeTool === 'select' && hasSelection) {
                 if (cy >= 60 && cy <= 90) {
                     let newM = transformMode; if (cx >= 50 && cx <= 130) { newM = 'move'; isSettingPivot = false; } else if (cx >= 135 && cx <= 215) { newM = 'copy'; isSettingPivot = false; } else if (cx >= 220 && cx <= 300) { newM = 'draw'; isSettingPivot = false; } else if (cx >= 305 && cx <= 385) { newM = 'paint'; isSettingPivot = false; } else if (cx >= 390 && cx <= 475) isSettingPivot = !isSettingPivot;
-                    if (newM !== transformMode) { 
-                        transformMode = newM; 
-                        // Use symmetry-aware setVoxel to ensure mirrors are hidden/restored correctly
-                        if (transformMode === 'copy' || transformMode === 'draw' || transformMode === 'paint') {
-                            for(let i=0; i<baseSelectionCount; i++) { 
-                                const v=baseSelection[i]; 
-                                setVoxel(v.x, v.y, v.z, true, v.color, v.mat); 
-                            } 
-                        } else {
-                            for(let i=0; i<baseSelectionCount; i++) { 
-                                const v=baseSelection[i]; 
-                                setVoxel(v.x, v.y, v.z, false, null); 
-                            } 
-                        }
-                    }                }
+                    if (newM !== transformMode) { transformMode = newM; if (transformMode === 'copy' || transformMode === 'draw' || transformMode === 'paint') for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat); } else for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxelCore(v.x, v.y, v.z, false, null); } }
+                }
                 if (transformMode === 'copy') { if (cy >= 260 && cy <= 290) { if (cx >= 50 && cx <= 130) numCopies = Math.max(1, numCopies - 1); if (cx >= 382 && cx <= 462) numCopies = Math.min(20, numCopies + 1); } if (cy >= 445 && cy <= 485) { if (cx >= 50 && cx <= 180) applySelection(); if (cx >= 190 && cx <= 320) cancelSelection(); if (cx >= 330 && cx <= 462) deleteSelection(); } }
                 else { if (cy >= 270 && cy <= 310) { if (cx >= 50 && cx <= 180) applySelection(); if (cx >= 190 && cx <= 320) cancelSelection(); if (cx >= 330 && cx <= 462) deleteSelection(); } }
             } else if (activeTool === 'select' && !hasSelection) { if (cy >= 70 && cy <= 110) { if (cx >= 50 && cx <= 250) selectMode = 'box'; if (cx >= 262 && cx <= 462) selectMode = 'connected'; } if (cy >= 120 && cy <= 160) { if (cx >= 50 && cx <= 180) selectFilter = 'all'; if (cx >= 190 && cx <= 320) selectFilter = 'color'; if (cx >= 330 && cx <= 462) selectFilter = 'material'; }
@@ -1724,29 +1711,10 @@ function updatePlanePreview(start, end, isPainting) {
         function finalizeSelection() {
             transformMode = 'move'; numCopies = 1; selectionRotX = selectionRotY = selectionRotZ = 0; selectionScale = 1.0;
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-            // FIX: Use setVoxel instead of setVoxelCore to remove all mirrored instances from the world
-            for(let i=0; i<baseSelectionCount; i++) { 
-                const v=baseSelection[i]; 
-                setVoxel(v.x, v.y, v.z, false, null); 
-                minX=Math.min(minX, v.x); maxX=Math.max(maxX, v.x); 
-                minY=Math.min(minY, v.y); maxY=Math.max(maxY, v.y); 
-                minZ=Math.min(minZ, v.z); maxZ=Math.max(maxZ, v.z); 
-            }
-            hasSelection = true; 
-            selectionGroup.position.set(0,0,0); 
-            selectionCenter.set((minX+maxX)/2, (minY+maxY)/2, (minZ+maxZ)/2);
-            pivotPoint.copy(selectionCenter); 
-            pivotIndicator.position.set(pivotPoint.x*VOXEL_SIZE, pivotPoint.y*VOXEL_SIZE, pivotPoint.z*VOXEL_SIZE); 
-            pivotIndicator.updateMatrix(); 
-            pivotIndicator.visible = true;
-            selectedVoxelsCount = baseSelectionCount; 
-            for(let i=0; i<baseSelectionCount; i++) { 
-                const s=selectedVoxels[i], b=baseSelection[i]; 
-                s.x=b.x; s.y=b.y; s.z=b.z; 
-                s.color.copy(b.color); s.mat=b.mat; 
-            } 
-            updateSelectionVisuals(); 
-            leftMenuNeedsUpdate = true;
+            for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxelCore(v.x, v.y, v.z, false, null); minX=Math.min(minX, v.x); maxX=Math.max(maxX, v.x); minY=Math.min(minY, v.y); maxY=Math.max(maxY, v.y); minZ=Math.min(minZ, v.z); maxZ=Math.max(maxZ, v.z); }
+            hasSelection = true; selectionGroup.position.set(0,0,0); selectionCenter.set((minX+maxX)/2, (minY+maxY)/2, (minZ+maxZ)/2);
+            pivotPoint.copy(selectionCenter); pivotIndicator.position.set(pivotPoint.x*VOXEL_SIZE, pivotPoint.y*VOXEL_SIZE, pivotPoint.z*VOXEL_SIZE); pivotIndicator.updateMatrix(); pivotIndicator.visible = true;
+            selectedVoxelsCount = baseSelectionCount; for(let i=0; i<baseSelectionCount; i++) { const s=selectedVoxels[i], b=baseSelection[i]; s.x=b.x; s.y=b.y; s.z=b.z; s.color.copy(b.color); s.mat=b.mat; } updateSelectionVisuals(); leftMenuNeedsUpdate = true;
         }
 
         function executeSelectBox(start, end) {
@@ -1800,17 +1768,7 @@ function updatePlanePreview(start, end, isPainting) {
             baseSelectionCount = selectedVoxelsCount = 0; hasSelection = selectionGroup.visible = pivotIndicator.visible = isSettingPivot = false; selectionGroup.position.set(0,0,0); leftMenuNeedsUpdate = true;
         }
 
-        function cancelSelection() { 
-            // FIX: Use setVoxel instead of setVoxelCore to restore all mirrored originals
-            if (transformMode === 'move') {
-                for(let i=0; i<baseSelectionCount; i++) { 
-                    const v=baseSelection[i]; 
-                    setVoxel(v.x, v.y, v.z, true, v.color, v.mat); 
-                } 
-            }
-            deleteSelection(); 
-        }
-
+        function cancelSelection() { if (transformMode === 'move') for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat); } deleteSelection(); }
         function deleteSelection() { baseSelectionCount = selectedVoxelsCount = 0; hasSelection = selectionGroup.visible = pivotIndicator.visible = isSettingPivot = false; selectionGroup.position.set(0,0,0); leftMenuNeedsUpdate = true; }
 
         function executeSculpt(pos, isP) {
