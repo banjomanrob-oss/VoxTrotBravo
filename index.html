@@ -1022,32 +1022,40 @@ function updatePlanePreview(start, end, isPainting) {
             cylinderPreviewMesh.material.color.setHex(isPainting ? 0x4facfe : 0xff0055);
         }
 
-        function updateTrianglePreview(start, end, isPainting) {
-            let s = start, e = end;
-            if (drawFromCenter) {
-                tempPos.copy(end).sub(start);
-                s = tempStart.copy(start).sub(tempPos);
-                e = end;
-            }
-            conePreviewMesh.visible = true;
-            conePreviewMesh.position.copy(s).add(e).multiplyScalar(0.5);
-            const dx = Math.abs(e.x - s.x) + VOXEL_SIZE;
-            const dy = Math.abs(e.y - s.y) + VOXEL_SIZE;
-            const dz = Math.abs(e.z - s.z) + VOXEL_SIZE;
+       function updateTrianglePreview(start, end, isPainting) {
+    let s = new THREE.Vector3().copy(start), e = new THREE.Vector3().copy(end);
+    if (drawFromCenter) {
+        tempPos.copy(e).sub(s);
+        s.sub(tempPos);
+    }
 
-            if (triangleAxis === 'X') {
-                conePreviewMesh.scale.set(dy, dx, dz);
-                conePreviewMesh.rotation.set(0, 0, Math.PI/2);
-            } else if (triangleAxis === 'Z') {
-                conePreviewMesh.scale.set(dx, dz, dy);
-                conePreviewMesh.rotation.set(Math.PI/2, 0, 0);
-            } else {
-                conePreviewMesh.scale.set(dx, dy, dz);
-                conePreviewMesh.rotation.set(0, 0, 0);
-            }
-            conePreviewMesh.updateMatrix();
-            conePreviewMesh.material.color.setHex(isPainting ? 0x4facfe : 0xff0055);
-        }
+    conePreviewMesh.visible = true;
+    conePreviewMesh.position.copy(s).add(e).multiplyScalar(0.5);
+    
+    const dx = Math.abs(e.x - s.x) + VOXEL_SIZE;
+    const dy = Math.abs(e.y - s.y) + VOXEL_SIZE;
+    const dz = Math.abs(e.z - s.z) + VOXEL_SIZE;
+
+    // Standard Three.js Cone points towards +Y.
+    // We rotate it to point the tip towards the 'end' position.
+    if (triangleAxis === 'X') {
+        conePreviewMesh.scale.set(dy, dx, dz);
+        // Point towards +X if end > start, else point -X
+        conePreviewMesh.rotation.set(0, 0, (e.x > s.x) ? -Math.PI / 2 : Math.PI / 2);
+    } else if (triangleAxis === 'Z') {
+        conePreviewMesh.scale.set(dx, dz, dy);
+        // Point towards +Z if end > start, else point -Z
+        conePreviewMesh.rotation.set((e.z > s.z) ? Math.PI / 2 : -Math.PI / 2, 0, 0);
+    } else {
+        // Axis is Y
+        conePreviewMesh.scale.set(dx, dy, dz);
+        // Point towards +Y if end > start, else point -Y
+        conePreviewMesh.rotation.set((e.y > s.y) ? 0 : Math.PI, 0, 0);
+    }
+
+    conePreviewMesh.updateMatrix();
+    conePreviewMesh.material.color.setHex(isPainting ? 0x4facfe : 0xff0055);
+}
 
         function updateIcosahedronPreview(start, end, isPainting) {
             let s = start, e = end;
