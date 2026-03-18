@@ -1717,90 +1717,39 @@ function updatePlanePreview(start, end, isPainting) {
             selectedVoxelsCount = baseSelectionCount; for(let i=0; i<baseSelectionCount; i++) { const s=selectedVoxels[i], b=baseSelection[i]; s.x=b.x; s.y=b.y; s.z=b.z; s.color.copy(b.color); s.mat=b.mat; } updateSelectionVisuals(); leftMenuNeedsUpdate = true;
         }
 
-                function executeSelectBox(start, end) {
-            const minX = Math.min(Math.round(start.x/VOXEL_SIZE), Math.round(end.x/VOXEL_SIZE));
-            const maxX = Math.max(Math.round(start.x/VOXEL_SIZE), Math.round(end.x/VOXEL_SIZE));
-            const minY = Math.min(Math.round(start.y/VOXEL_SIZE), Math.round(end.y/VOXEL_SIZE));
-            const maxY = Math.max(Math.round(start.y/VOXEL_SIZE), Math.round(end.y/VOXEL_SIZE));
-            const minZ = Math.min(Math.round(start.z/VOXEL_SIZE), Math.round(end.z/VOXEL_SIZE));
-            const maxZ = Math.max(Math.round(start.z/VOXEL_SIZE), Math.round(end.z/VOXEL_SIZE));
-
-            const localTargetColor = new THREE.Color();
-            const localVoxelColor = new THREE.Color();
-            const startMat = getVoxelMatAndColor(Math.round(start.x/VOXEL_SIZE), Math.round(start.y/VOXEL_SIZE), Math.round(start.z/VOXEL_SIZE), localTargetColor);
-            
-            baseSelectionCount = 0; 
-            for(let gx = minX; gx <= maxX; gx++) {
-                for(let gy = minY; gy <= maxY; gy++) {
-                    for(let gz = minZ; gz <= maxZ; gz++) {
-                        const m = getVoxelMatAndColor(gx, gy, gz, localVoxelColor);
-                        if (m !== -1) {
-                            // If we started on air but are filtering by color/material, pick the first voxel we find as the reference
-                            if (startMat === -1 && (selectFilter === 'color' || selectFilter === 'material')) {
-                                localTargetColor.copy(localVoxelColor);
-                            }
-                            const isMatch = (selectFilter === 'all') || 
-                                          (selectFilter === 'color' && Math.abs(localVoxelColor.r - localTargetColor.r) < 0.05 && Math.abs(localVoxelColor.g - localTargetColor.g) < 0.05 && Math.abs(localVoxelColor.b - localTargetColor.b) < 0.05) || 
-                                          (selectFilter === 'material' && m === startMat);
-                            
-                            if (isMatch && baseSelectionCount < SEL_LIMIT) { 
-                                const v = baseSelection[baseSelectionCount++]; 
-                                v.x = gx; v.y = gy; v.z = gz; 
-                                v.color.copy(localVoxelColor); 
-                                v.mat = m; 
-                            }
-                        }
-                    }
+        function executeSelectBox(start, end) {
+            const minX=Math.min(Math.round(start.x/VOXEL_SIZE), Math.round(end.x/VOXEL_SIZE)), maxX=Math.max(Math.round(start.x/VOXEL_SIZE), Math.round(end.x/VOXEL_SIZE)), minY=Math.min(Math.round(start.y/VOXEL_SIZE), Math.round(end.y/VOXEL_SIZE)), maxY=Math.max(Math.round(start.y/VOXEL_SIZE), Math.round(end.y/VOXEL_SIZE)), minZ=Math.min(Math.round(start.z/VOXEL_SIZE), Math.round(end.z/VOXEL_SIZE)), maxZ=Math.max(Math.round(start.z/VOXEL_SIZE), Math.round(end.z/VOXEL_SIZE));
+            const targetMat = getVoxelMatAndColor(Math.round(start.x/VOXEL_SIZE), Math.round(start.y/VOXEL_SIZE), Math.round(start.z/VOXEL_SIZE), targetQueryColor);
+            baseSelectionCount = 0; for(let gx=minX; gx<=maxX; gx++) for(let gy=minY; gy<=maxY; gy++) for(let gz=minZ; gz<=maxZ; gz++) {
+                const m = getVoxelMatAndColor(gx, gy, gz, tempColor);
+                if (m !== -1) {
+                    let add = (selectFilter === 'all') || (selectFilter === 'color' && Math.abs(tempColor.r-targetQueryColor.r)<0.05) || (selectFilter === 'material' && m === targetMat);
+                    if (add && baseSelectionCount < SEL_LIMIT) { const v=baseSelection[baseSelectionCount++]; v.x=gx; v.y=gy; v.z=gz; v.color.copy(tempColor); v.mat=m; }
                 }
             }
             if (baseSelectionCount > 0) finalizeSelection();
         }
 
         function executeSelectConnected(pos) {
-            const startX = Math.round(pos.x/VOXEL_SIZE);
-            const startY = Math.round(pos.y/VOXEL_SIZE);
-            const startZ = Math.round(pos.z/VOXEL_SIZE);
-            const localTargetColor = new THREE.Color();
-            const localVoxelColor = new THREE.Color();
-            
-            const targetMat = getVoxelMatAndColor(startX, startY, startZ, localTargetColor); 
-            if (targetMat === -1) return; 
-
-            selVisited.clear(); 
-            selQueue.length = 0; 
-            selQueue.push(startX, startY, startZ); 
-            selVisited.add((startX+32768)+(startY+32768)*65536+(startZ+32768)*4294967296);
-            
-            baseSelectionCount = 0; 
-            let qH = 0;
+            const startX=Math.round(pos.x/VOXEL_SIZE), startY=Math.round(pos.y/VOXEL_SIZE), startZ=Math.round(pos.z/VOXEL_SIZE), targetMat = getVoxelMatAndColor(startX, startY, startZ, targetQueryColor); if (targetMat===-1) return; 
+            selVisited.clear(); selQueue.length = 0; selQueue.push(startX, startY, startZ); selVisited.add((startX+32768)+(startY+32768)*65536+(startZ+32768)*4294967296);
+            baseSelectionCount = 0; let qH = 0;
             while(qH < selQueue.length && baseSelectionCount < SEL_LIMIT) {
-                const x = selQueue[qH++], y = selQueue[qH++], z = selQueue[qH++]; 
-                const m = getVoxelMatAndColor(x, y, z, localVoxelColor);
+                const x=selQueue[qH++], y=selQueue[qH++], z=selQueue[qH++]; 
+                const m=getVoxelMatAndColor(x,y,z,tempColor);
                 if (m !== -1) {
-                    const v = baseSelection[baseSelectionCount++]; 
-                    v.x = x; v.y = y; v.z = z; 
-                    v.color.copy(localVoxelColor); 
-                    v.mat = m;
-                    
-                    for(let i = 0; i < SEL_DIRS.length; i += 3) {
-                        const nx = x + SEL_DIRS[i], ny = y + SEL_DIRS[i+1], nz = z + SEL_DIRS[i+2];
-                        const k = (nx + 32768) + (ny + 32768) * 65536 + (nz + 32768) * 4294967296;
+                    const v = baseSelection[baseSelectionCount++]; v.x=x; v.y=y; v.z=z; v.color.copy(tempColor); v.mat=m;
+                    for(let i=0; i<SEL_DIRS.length; i+=3) {
+                        const nx=x+SEL_DIRS[i], ny=y+SEL_DIRS[i+1], nz=z+SEL_DIRS[i+2], k=(nx+32768)+(ny+32768)*65536+(nz+32768)*4294967296;
                         if (!selVisited.has(k)) {
-                            selVisited.add(k); 
-                            const nm = getVoxelMatAndColor(nx, ny, nz, tempColor); // temporary query color is fine for filtering
-                            if (nm !== -1) {
-                                const isMatch = (selectFilter === 'all') || 
-                                              (selectFilter === 'color' && Math.abs(tempColor.r - localTargetColor.r) < 0.05) || 
-                                              (selectFilter === 'material' && nm === targetMat);
-                                if (isMatch) selQueue.push(nx, ny, nz);
-                            }
+                            selVisited.add(k); const nm=getVoxelMatAndColor(nx,ny,nz,queryColor);
+                            if (nm!==-1 && (selectFilter==='all' || (selectFilter==='color'&&Math.abs(queryColor.r-targetQueryColor.r)<0.05) || (selectFilter==='material'&&nm===targetMat))) selQueue.push(nx,ny,nz);
                         }
                     }
                 }
             }
             if (baseSelectionCount > 0) finalizeSelection();
         }
-
 
         function applySelection() {
             const oX=Math.round(selectionGroup.position.x/VOXEL_SIZE), oY=Math.round(selectionGroup.position.y/VOXEL_SIZE), oZ=Math.round(selectionGroup.position.z/VOXEL_SIZE);
