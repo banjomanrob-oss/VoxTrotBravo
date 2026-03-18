@@ -1711,7 +1711,8 @@ function updatePlanePreview(start, end, isPainting) {
         function finalizeSelection() {
             transformMode = 'move'; numCopies = 1; selectionRotX = selectionRotY = selectionRotZ = 0; selectionScale = 1.0;
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-            for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxelCore(v.x, v.y, v.z, false, null); minX=Math.min(minX, v.x); maxX=Math.max(maxX, v.x); minY=Math.min(minY, v.y); maxY=Math.max(maxY, v.y); minZ=Math.min(minZ, v.z); maxZ=Math.max(maxZ, v.z); }
+            // FIX: Removed setVoxelCore(..., false, null) here to keep world voxels visible until transformed
+            for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; minX=Math.min(minX, v.x); maxX=Math.max(maxX, v.x); minY=Math.min(minY, v.y); maxY=Math.max(maxY, v.y); minZ=Math.min(minZ, v.z); maxZ=Math.max(maxZ, v.z); }
             hasSelection = true; selectionGroup.position.set(0,0,0); selectionCenter.set((minX+maxX)/2, (minY+maxY)/2, (minZ+maxZ)/2);
             pivotPoint.copy(selectionCenter); pivotIndicator.position.set(pivotPoint.x*VOXEL_SIZE, pivotPoint.y*VOXEL_SIZE, pivotPoint.z*VOXEL_SIZE); pivotIndicator.updateMatrix(); pivotIndicator.visible = true;
             selectedVoxelsCount = baseSelectionCount; for(let i=0; i<baseSelectionCount; i++) { const s=selectedVoxels[i], b=baseSelection[i]; s.x=b.x; s.y=b.y; s.z=b.z; s.color.copy(b.color); s.mat=b.mat; } updateSelectionVisuals(); leftMenuNeedsUpdate = true;
@@ -1819,7 +1820,15 @@ function updatePlanePreview(start, end, isPainting) {
             baseSelectionCount = selectedVoxelsCount = 0; hasSelection = selectionGroup.visible = pivotIndicator.visible = isSettingPivot = false; selectionGroup.position.set(0,0,0); leftMenuNeedsUpdate = true;
         }
 
-        function cancelSelection() { if (transformMode === 'move') for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat); } deleteSelection(); }
+        function cancelSelection() { 
+            // FIX: Only restore if the transformation actually caused them to be removed from the world
+            const hasBeenTransformed = selectionGroup.position.lengthSq() > 0.0001 || selectionRotX !== 0 || selectionRotY !== 0 || selectionRotZ !== 0 || selectionScale !== 1;
+            if (transformMode === 'move' && hasBeenTransformed) {
+                for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxelCore(v.x, v.y, v.z, true, v.color, v.mat); }
+            } 
+            deleteSelection(); 
+        }
+
         function deleteSelection() { baseSelectionCount = selectedVoxelsCount = 0; hasSelection = selectionGroup.visible = pivotIndicator.visible = isSettingPivot = false; selectionGroup.position.set(0,0,0); leftMenuNeedsUpdate = true; }
 
         function executeSculpt(pos, isP) {
@@ -2456,7 +2465,20 @@ function placeBrushVoxels(pos, isP) {
             lockCtx.active = true;
 
             if (this === xrRight) {
-                if (activeTool==='select') { if(hasSelection){ if(isSettingPivot){ pivotPoint.set(Math.round(rightTargetLocal.x/VOXEL_SIZE),Math.round(rightTargetLocal.y/VOXEL_SIZE),Math.round(rightTargetLocal.z/VOXEL_SIZE)); pivotIndicator.position.set(pivotPoint.x*VOXEL_SIZE,pivotPoint.y*VOXEL_SIZE,pivotPoint.z*VOXEL_SIZE); pivotIndicator.updateMatrix(); isSettingPivot=false; updateRotatedSelection(); updatePreviews(); leftMenuNeedsUpdate=true; } else { isDrawing=true; if(transformMode!=='draw'&&transformMode!=='paint'){ dragStartCtrlPos.copy(rightTargetLocal); dragStartOffset.copy(selectionGroup.position); } else lastPaintedPos.set(Infinity,Infinity,Infinity); } } else { if(selectMode==='box'){ isDrawing=true; drawStartPos.copy(rightTargetLocal); isPreviewingBox=true; } else if(selectMode==='connected') executeSelectConnected(rightTargetLocal); } }
+                if (activeTool==='select') {  if(hasSelection){ 
+                    if(isSettingPivot){ pivotPoint.set(Math.round(rightTargetLocal.x/VOXEL_SIZE),Math.round(rightTargetLocal.y/VOXEL_SIZE),Math.round(rightTargetLocal.z/VOXEL_SIZE)); pivotIndicator.position.set(pivotPoint.x*VOXEL_SIZE,pivotPoint.y*VOXEL_SIZE,pivotPoint.z*VOXEL_SIZE); pivotIndicator.updateMatrix(); isSettingPivot=false; updateRotatedSelection(); updatePreviews(); leftMenuNeedsUpdate=true; } 
+                    else { 
+                        isDrawing=true; 
+                        if(transformMode!=='draw'&&transformMode!=='paint'){ 
+                            // FIX: If starting a move transform for the first time, erase original voxels from world now
+                            if (transformMode === 'move' && selectionGroup.position.lengthSq() < 0.0001 && selectionRotX === 0 && selectionRotY === 0 && selectionRotZ === 0 && selectionScale === 1) {
+                                for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; setVoxelCore(v.x, v.y, v.z, false, null); }
+                            }
+                            dragStartCtrlPos.copy(rightTargetLocal); 
+                            dragStartOffset.copy(selectionGroup.position); 
+                        } else lastPaintedPos.set(Infinity,Infinity,Infinity); 
+                    } 
+                } else { if(selectMode==='box'){ isDrawing=true; drawStartPos.copy(rightTargetLocal); isPreviewingBox=true; } else if(selectMode==='connected') executeSelectConnected(rightTargetLocal); } }
                 else if (activeTool==='stroke'&&strokeMode==='line'){ if(isPreviewingLineLeft){ drawLineVoxels(lineStartLeft,rightTargetLocal,false); isPreviewingLineLeft=false; lineStartLeft.set(Infinity,Infinity,Infinity); } else if(!isPreviewingLineRight){ lineStartRight.copy(rightTargetLocal); isPreviewingLineRight=true; } else { drawLineVoxels(lineStartRight,rightTargetLocal,true); lineStartRight.copy(rightTargetLocal); } }
                 else { isDrawing=true; drawStartPos.copy(rightTargetLocal); if(activeTool==='paint'&&paintMode==='bucket'&&hoveredFillCoords.length>0){ let minU=Infinity,maxU=-Infinity,minV=Infinity,maxV=-Infinity; for(let i=0;i<hoveredFillCoords.length;i+=3){ const px=hoveredFillCoords[i],py=hoveredFillCoords[i+1]; minU=Math.min(minU,px); maxU=Math.max(maxU,px); minV=Math.min(minV,py); maxV=Math.max(maxV,py); } for(let i=0;i<hoveredFillCoords.length;i+=3)recolorVoxelSet(hoveredFillCoords[i],hoveredFillCoords[i+1],hoveredFillCoords[i+2],getDrawColor(hoveredFillCoords[i],hoveredFillCoords[i+1],hoveredFillCoords[i+2],minU,maxU,minV,maxV,0)); lastHoveredVoxel.set(Infinity,Infinity,Infinity); hoveredFillCoords.length=0; bucketPreviewMesh.visible=false; } if(activeTool==='box')isPreviewingBox=true; if(activeTool==='quadsphere')isPreviewingSphere=true; if(activeTool==='plane')isPreviewingPlane=true; if(activeTool==='cylinder')isPreviewingCylinder=true; if(activeTool==='triangle')isPreviewingTriangle=true; if(activeTool==='icosahedron'){ isDrawing=true; isPreviewingIcosahedron=true; drawStartPos.copy(rightTargetLocal); } }
             } else if (this === xrLeft) {
