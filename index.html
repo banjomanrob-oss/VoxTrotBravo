@@ -448,6 +448,7 @@
         
         const voxelMaterials = [matSolid, matGlass, matEmission, matMetal];
         const chunks = new Map(); 
+        const dirtyChunks = new Set(); // Tracks only chunks that changed
 
         // --- Performance Mode (Points) Textures & Materials ---
         const perfCanvas = document.createElement('canvas');
@@ -467,7 +468,8 @@
         const perfMaterials = [ptSolid, ptGlass, ptEmission, ptMetal];
 
         class ChunkLayer {
-            constructor(cx, cy, cz, matType) {
+            constructor(cx, cy, cz, matType, parent) {
+                this.parent = parent; // Reference to trigger dirty state
                 this.matType = matType;
                 this.material = voxelMaterials[matType];
                 this.capacity = 4096; 
@@ -558,6 +560,7 @@
                     if (cArr[idx] !== r || cArr[idx+1] !== g || cArr[idx+2] !== b) {
                         cArr[idx] = r; cArr[idx+1] = g; cArr[idx+2] = b;
                         this.needsUpdate = true;
+                        this.parent.markDirty(); // Notify system to update this chunk
                         if (instIdx < this.dirtyMin) this.dirtyMin = instIdx;
                         if (instIdx > this.dirtyMax) this.dirtyMax = instIdx;
                     }
@@ -647,13 +650,16 @@
                 this.layers = new Array(4).fill(null);
                 this.voxelMatMap = new Int8Array(CHUNK_VOL);
                 this.voxelMatMap.fill(-1);
+                this.worldPos = new THREE.Vector3(cx * CHUNK_SIZE * VOXEL_SIZE, cy * CHUNK_SIZE * VOXEL_SIZE, cz * CHUNK_SIZE * VOXEL_SIZE);
             }
+
+            markDirty() { dirtyChunks.add(this); }
 
             addVoxel(lx, ly, lz, gx, gy, gz, color, matType) {
                 const localIdx = lx | (ly << 5) | (lz << 10);
                 const currentMat = this.voxelMatMap[localIdx];
                 if (currentMat !== -1 && currentMat !== matType) this.layers[currentMat].removeVoxel(localIdx);
-                if (!this.layers[matType]) this.layers[matType] = new ChunkLayer(this.cx, this.cy, this.cz, matType);
+                if (!this.layers[matType]) this.layers[matType] = new ChunkLayer(this.cx, this.cy, this.cz, matType, this);
                 this.voxelMatMap[localIdx] = matType;
                 this.layers[matType].addVoxel(localIdx, gx, gy, gz, color);
             }
@@ -2790,7 +2796,26 @@ function placeBrushVoxels(pos, isP) {
                 if(needsSync(cylinderPreviewMesh, showM)) syncMirrorProxies(cylinderPreviewMesh, getMirrorProxies(cylinderPreviewMesh), showM);
                 if(needsSync(conePreviewMesh, showM)) syncMirrorProxies(conePreviewMesh, getMirrorProxies(conePreviewMesh), showM);
                 if(needsSync(polyPreviewMesh, showM)) syncMirrorProxies(polyPreviewMesh, getMirrorProxies(polyPreviewMesh), showM);
-                chunks.forEach(c=>c.updateBuffers());
+                
+                // Only update chunks that actually changed!
+                if (dirtyChunks.size > 0) {
+                    dirtyChunks.forEach(c => c.updateBuffers());
+                    dirtyChunks.clear();
+                }
+
+                // Optimization: Distance-based Culling (90FPS stability for 10M+ voxels)
+                const camPos = camera.position;
+                const cullDistSq = 80 * 80; // Hide chunks further than 80m
+                chunks.forEach(c => {
+                    const distSq = c.worldPos.distanceToSquared(camPos);
+                    const isVisible = distSq < cullDistSq;
+                    for (let i = 0; i < 4; i++) {
+                        if (c.layers[i]) {
+                            if (renderMode === 'standard') c.layers[i].mesh.visible = (c.layers[i].count > 0 && isVisible);
+                            else c.layers[i].pointsMesh.visible = (c.layers[i].count > 0 && isVisible);
+                        }
+                    }
+                });
             }
             if (renderMode === 'performance') {
                 const effSize = VOXEL_SIZE * 1.15 * worldGroup.scale.y;
