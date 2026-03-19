@@ -1573,8 +1573,10 @@ function updatePlanePreview(start, end, isPainting) {
 
         let leftMenuNeedsUpdate = true, rightMenuNeedsUpdate = true, colorMenuNeedsUpdate = true, globalMenuNeedsUpdate = true, lastMenuUpdateTime = 0, lastColorJoystickUpdateTime = 0; 
 
-        function exportToOBJ() {
-            const isMesh = exportMode === 'mesh', vertBlobParts = ["# VoxTrotBravo Vertices\n"], faceBlobParts = ["\n# VoxTrotBravo Faces\nmtllib voxel_materials.mtl\n"], hs = 0.5;
+        async function exportToOBJ() {
+            const isMesh = exportMode === 'mesh';
+            const blobParts = ["# VoxTrotBravo Export\nmtllib voxel_materials.mtl\no VoxModel\n"];
+            const hs = 0.5;
             const faceVerts = {
                 px: [new THREE.Vector3( hs,-hs, hs), new THREE.Vector3( hs,-hs,-hs), new THREE.Vector3( hs, hs,-hs), new THREE.Vector3( hs, hs, hs)],
                 nx: [new THREE.Vector3(-hs,-hs,-hs), new THREE.Vector3(-hs,-hs, hs), new THREE.Vector3(-hs, hs, hs), new THREE.Vector3(-hs, hs,-hs)],
@@ -1584,39 +1586,102 @@ function updatePlanePreview(start, end, isPainting) {
                 nz: [new THREE.Vector3( hs,-hs,-hs), new THREE.Vector3(-hs,-hs,-hs), new THREE.Vector3( hs, hs,-hs), new THREE.Vector3( hs, hs,-hs)]
             };
             const dirs = [{d:[1,0,0],v:faceVerts.px}, {d:[-1,0,0],v:faceVerts.nx}, {d:[0,1,0],v:faceVerts.py}, {d:[0,-1,0],v:faceVerts.ny}, {d:[0,0,1],v:faceVerts.pz}, {d:[0,0,-1],v:faceVerts.nz}];
-            function hasV(gx, gy, gz) { const cx = gx >> 5, cy = gy >> 5, cz = gz >> 5, k = (cx+65536)+(cy+65536)*131072+(cz+65536)*17179869184, c = chunks.get(k); return c ? c.voxelMatMap[(gx&31)|((gy&31)<<5)|((gz&31)<<10)]!==-1 : false; }
-            let vertAcc = [], faceAcc = [], vertexOffset = 1; const vertMap = new Map();
+            
+            function hasV(gx, gy, gz) { 
+                const cx = gx >> 5, cy = gy >> 5, cz = gz >> 5;
+                const k = (cx+65536)+(cy+65536)*131072+(cz+65536)*17179869184;
+                const c = chunks.get(k); 
+                return c ? c.voxelMatMap[(gx&31)|((gy&31)<<5)|((gz&31)<<10)] !== -1 : false; 
+            }
+
+            let vertexOffset = 1;
+            // Only use vertMap for 'mesh' mode to deduplicate. For 'boxes', we skip it to save memory.
+            const vertMap = isMesh ? new Map() : null; 
             const matNames = ["Voxel_Solid", "Voxel_Glass", "Voxel_Emission", "Voxel_Metal"];
             
+            // UI Feedback
+            const exportBtn = document.getElementById('export-button-overlay');
+            const originalText = exportBtn ? exportBtn.innerText : "Export .OBJ";
+            if (exportBtn) exportBtn.innerText = "Processing Export...";
+
+            let voxelCounter = 0;
+
             for (let m = 0; m < 4; m++) {
-                faceAcc.push(`\ng ${matNames[m]}\nusemtl ${matNames[m]}\n`);
-                chunks.forEach(chunk => {
-                    const layer = chunk.layers[m]; if (!layer || layer.count === 0) return;
+                blobParts.push(`\ng ${matNames[m]}\nusemtl ${matNames[m]}\n`);
+                
+                for (let [key, chunk] of chunks) {
+                    const layer = chunk.layers[m]; 
+                    if (!layer || layer.count === 0) continue;
+
+                    let chunkString = "";
                     for (let i = 0; i < layer.count; i++) {
-                        const localIdx = layer.indexToLocal[i]; if (localIdx === 65535) continue;
-                        const lx = localIdx&31, ly=(localIdx>>5)&31, lz=localIdx>>10, gx=(chunk.cx*32)+lx, gy=(chunk.cy*32)+ly, gz=(chunk.cz*32)+lz;
-                        tempMatrix.makeTranslation(gx, gy, gz); layer.mesh.getColorAt(i, tempColor);
-                        // Normalize byte values before formatting for OBJ output
+                        const localIdx = layer.indexToLocal[i];
+                        if (localIdx === 65535) continue;
+
+                        const gx = (chunk.cx * 32) + (localIdx & 31);
+                        const gy = (chunk.cy * 32) + ((localIdx >> 5) & 31);
+                        const gz = (chunk.cz * 32) + (localIdx >> 10);
+
+                        layer.mesh.getColorAt(i, tempColor);
                         if (tempColor.r > 1.0) { tempColor.r /= 255; tempColor.g /= 255; tempColor.b /= 255; }
                         const rS = tempColor.r.toFixed(3), gS = tempColor.g.toFixed(3), bS = tempColor.b.toFixed(3);
+
                         for (let d = 0; d < 6; d++) {
-                            const dir = dirs[d]; if (!hasV(gx + dir.d[0], gy + dir.d[1], gz + dir.d[2])) {
-                                const fIdx = []; for (let v = 0; v < 4; v++) {
+                            const dir = dirs[d];
+                            if (!hasV(gx + dir.d[0], gy + dir.d[1], gz + dir.d[2])) {
+                                const fIdx = [];
+                                for (let v = 0; v < 4; v++) {
                                     tempPos.copy(dir.v[v]).add({x:gx, y:gy, z:gz}).multiplyScalar(VOXEL_SIZE);
-                                    const fx=tempPos.x.toFixed(4), fy=tempPos.y.toFixed(4), fz=tempPos.z.toFixed(4), h=`${fx}_${fy}_${fz}_${rS}_${gS}_${bS}`;
-                                    let idx = vertMap.get(h); if (idx === undefined) { idx = vertexOffset++; vertMap.set(h, idx); vertAcc.push(`v ${fx} ${fy} ${fz} ${rS} ${gS} ${bS}\n`); }
+                                    const fx = tempPos.x.toFixed(4), fy = tempPos.y.toFixed(4), fz = tempPos.z.toFixed(4);
+                                    
+                                    let idx;
+                                    if (isMesh) {
+                                        const h = `${fx}_${fy}_${fz}_${rS}_${gS}_${bS}`;
+                                        idx = vertMap.get(h);
+                                        if (idx === undefined) {
+                                            idx = vertexOffset++;
+                                            vertMap.set(h, idx);
+                                            chunkString += `v ${fx} ${fy} ${fz} ${rS} ${gS} ${bS}\n`;
+                                        }
+                                    } else {
+                                        // No deduplication Map for 'boxes' mode to save massive amounts of RAM
+                                        idx = vertexOffset++;
+                                        chunkString += `v ${fx} ${fy} ${fz} ${rS} ${gS} ${bS}\n`;
+                                    }
                                     fIdx.push(idx);
                                 }
-                                if (isMesh) faceAcc.push(`f ${fIdx[0]} ${fIdx[1]} ${fIdx[2]}\nf ${fIdx[0]} ${fIdx[2]} ${fIdx[3]}\n`); else faceAcc.push(`f ${fIdx[0]} ${fIdx[1]} ${fIdx[2]} ${fIdx[3]}\n`);
+                                if (isMesh) {
+                                    chunkString += `f ${fIdx[0]} ${fIdx[1]} ${fIdx[2]}\nf ${fIdx[0]} ${fIdx[2]} ${fIdx[3]}\n`;
+                                } else {
+                                    chunkString += `f ${fIdx[0]} ${fIdx[1]} ${fIdx[2]} ${fIdx[3]}\n`;
+                                }
                             }
                         }
+
+                        // Batch processing: every 500 voxels, append to blob and yield to main thread
+                        voxelCounter++;
+                        if (voxelCounter % 500 === 0) {
+                            blobParts.push(chunkString);
+                            chunkString = "";
+                            if (exportBtn) exportBtn.innerText = `Exporting... ${Math.round((voxelCounter / totalActiveVoxels) * 100)}%`;
+                            await new Promise(resolve => setTimeout(resolve, 0));
+                        }
                     }
-                });
+                    blobParts.push(chunkString);
+                }
             }
-            vertBlobParts.push(vertAcc.join("")); faceBlobParts.push(faceAcc.join(""));
-            const blob = new Blob([...vertBlobParts, ...faceBlobParts], { type: 'text/plain' }), url = URL.createObjectURL(blob), a = document.createElement('a');
-            a.href = url; a.download = isMesh ? 'vox_mesh.obj' : 'vox_boxes.obj'; a.click();
+
+            if (exportBtn) exportBtn.innerText = "Generating File...";
+            const blob = new Blob(blobParts, { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = isMesh ? 'vox_mesh.obj' : 'vox_boxes.obj';
+            a.click();
+            URL.revokeObjectURL(url);
+            if (exportBtn) exportBtn.innerText = originalText;
         }
+
 
         function getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, slotIndex) {
             const mode = colorModes[slotIndex], cA = slotColors[slotIndex][0], cB = slotColors[slotIndex][1];
