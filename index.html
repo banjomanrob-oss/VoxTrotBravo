@@ -1574,8 +1574,37 @@ function updatePlanePreview(start, end, isPainting) {
         let leftMenuNeedsUpdate = true, rightMenuNeedsUpdate = true, colorMenuNeedsUpdate = true, globalMenuNeedsUpdate = true, lastMenuUpdateTime = 0, lastColorJoystickUpdateTime = 0; 
 
         async function exportToOBJ() {
+            if (!window.showSaveFilePicker) {
+                const msg = "Streaming Export not supported. Use Chrome/Edge on Desktop.";
+                console.error(msg);
+                const box = document.createElement('div');
+                box.style = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#222;color:#ff4444;padding:20px;border:2px solid red;z-index:9999;border-radius:10px;text-align:center;font-family:sans-serif;";
+                box.innerHTML = `<h3>Export Error</h3><p>${msg}</p><button onclick="this.parentElement.remove()">Close</button>`;
+                document.body.appendChild(box);
+                return;
+            }
+
             const isMesh = exportMode === 'mesh';
-            const blobParts = ["# VoxTrotBravo Export\nmtllib voxel_materials.mtl\no VoxModel\n"];
+            const fileName = isMesh ? 'vox_mesh.obj' : 'vox_boxes.obj';
+            
+            let fileHandle;
+            try {
+                fileHandle = await window.showSaveFilePicker({
+                    suggestedName: fileName,
+                    types: [{ description: 'OBJ Model', accept: { 'text/plain': ['.obj'] } }],
+                });
+            } catch (e) { return; }
+
+            const writable = await fileHandle.createWritable();
+            const encoder = new TextEncoder();
+            const writer = writable.getWriter();
+
+            // Pre-allocated objects to avoid millions of allocations
+            const vOffset = new THREE.Vector3(); 
+            const calcPos = new THREE.Vector3();
+
+            await writer.write(encoder.encode("# VoxTrotBravo High-Efficiency Export\nmtllib voxel_materials.mtl\no VoxModel\n"));
+
             const hs = 0.5;
             const faceVerts = {
                 px: [new THREE.Vector3( hs,-hs, hs), new THREE.Vector3( hs,-hs,-hs), new THREE.Vector3( hs, hs,-hs), new THREE.Vector3( hs, hs, hs)],
@@ -1595,25 +1624,21 @@ function updatePlanePreview(start, end, isPainting) {
             }
 
             let vertexOffset = 1;
-            // Only use vertMap for 'mesh' mode to deduplicate. For 'boxes', we skip it to save memory.
             const vertMap = isMesh ? new Map() : null; 
             const matNames = ["Voxel_Solid", "Voxel_Glass", "Voxel_Emission", "Voxel_Metal"];
-            
-            // UI Feedback
             const exportBtn = document.getElementById('export-button-overlay');
             const originalText = exportBtn ? exportBtn.innerText : "Export .OBJ";
-            if (exportBtn) exportBtn.innerText = "Processing Export...";
-
+            
             let voxelCounter = 0;
+            let currentChunkString = "";
 
             for (let m = 0; m < 4; m++) {
-                blobParts.push(`\ng ${matNames[m]}\nusemtl ${matNames[m]}\n`);
+                await writer.write(encoder.encode(`\ng ${matNames[m]}\nusemtl ${matNames[m]}\n`));
                 
                 for (let [key, chunk] of chunks) {
                     const layer = chunk.layers[m]; 
                     if (!layer || layer.count === 0) continue;
 
-                    let chunkString = "";
                     for (let i = 0; i < layer.count; i++) {
                         const localIdx = layer.indexToLocal[i];
                         if (localIdx === 65535) continue;
@@ -1621,66 +1646,63 @@ function updatePlanePreview(start, end, isPainting) {
                         const gx = (chunk.cx * 32) + (localIdx & 31);
                         const gy = (chunk.cy * 32) + ((localIdx >> 5) & 31);
                         const gz = (chunk.cz * 32) + (localIdx >> 10);
+                        vOffset.set(gx, gy, gz);
 
                         layer.mesh.getColorAt(i, tempColor);
                         if (tempColor.r > 1.0) { tempColor.r /= 255; tempColor.g /= 255; tempColor.b /= 255; }
-                        const rS = tempColor.r.toFixed(3), gS = tempColor.g.toFixed(3), bS = tempColor.b.toFixed(3);
+                        // Pre-calculate color strings once per voxel, not 24 times
+                        const colorPart = `${tempColor.r.toFixed(3)} ${tempColor.g.toFixed(3)} ${tempColor.b.toFixed(3)}`;
 
                         for (let d = 0; d < 6; d++) {
                             const dir = dirs[d];
                             if (!hasV(gx + dir.d[0], gy + dir.d[1], gz + dir.d[2])) {
                                 const fIdx = [];
                                 for (let v = 0; v < 4; v++) {
-                                    tempPos.copy(dir.v[v]).add({x:gx, y:gy, z:gz}).multiplyScalar(VOXEL_SIZE);
-                                    const fx = tempPos.x.toFixed(4), fy = tempPos.y.toFixed(4), fz = tempPos.z.toFixed(4);
+                                    calcPos.copy(dir.v[v]).add(vOffset).multiplyScalar(VOXEL_SIZE);
+                                    const fx = calcPos.x.toFixed(4), fy = calcPos.y.toFixed(4), fz = calcPos.z.toFixed(4);
                                     
                                     let idx;
                                     if (isMesh) {
-                                        const h = `${fx}_${fy}_${fz}_${rS}_${gS}_${bS}`;
+                                        const h = `${fx}_${fy}_${fz}_${colorPart}`;
                                         idx = vertMap.get(h);
                                         if (idx === undefined) {
                                             idx = vertexOffset++;
                                             vertMap.set(h, idx);
-                                            chunkString += `v ${fx} ${fy} ${fz} ${rS} ${gS} ${bS}\n`;
+                                            currentChunkString += `v ${fx} ${fy} ${fz} ${colorPart}\n`;
                                         }
                                     } else {
-                                        // No deduplication Map for 'boxes' mode to save massive amounts of RAM
                                         idx = vertexOffset++;
-                                        chunkString += `v ${fx} ${fy} ${fz} ${rS} ${gS} ${bS}\n`;
+                                        currentChunkString += `v ${fx} ${fy} ${fz} ${colorPart}\n`;
                                     }
                                     fIdx.push(idx);
                                 }
                                 if (isMesh) {
-                                    chunkString += `f ${fIdx[0]} ${fIdx[1]} ${fIdx[2]}\nf ${fIdx[0]} ${fIdx[2]} ${fIdx[3]}\n`;
+                                    currentChunkString += `f ${fIdx[0]} ${fIdx[1]} ${fIdx[2]}\nf ${fIdx[0]} ${fIdx[2]} ${fIdx[3]}\n`;
                                 } else {
-                                    chunkString += `f ${fIdx[0]} ${fIdx[1]} ${fIdx[2]} ${fIdx[3]}\n`;
+                                    currentChunkString += `f ${fIdx[0]} ${fIdx[1]} ${fIdx[2]} ${fIdx[3]}\n`;
                                 }
                             }
                         }
 
-                        // Batch processing: every 500 voxels, append to blob and yield to main thread
                         voxelCounter++;
+                        // Flush more frequently for massive models to keep RAM footprint minimal
                         if (voxelCounter % 500 === 0) {
-                            blobParts.push(chunkString);
-                            chunkString = "";
-                            if (exportBtn) exportBtn.innerText = `Exporting... ${Math.round((voxelCounter / totalActiveVoxels) * 100)}%`;
+                            await writer.write(encoder.encode(currentChunkString));
+                            currentChunkString = "";
+                            if (exportBtn) exportBtn.innerText = `Streaming: ${Math.round((voxelCounter / totalActiveVoxels) * 100)}%`;
                             await new Promise(resolve => setTimeout(resolve, 0));
                         }
                     }
-                    blobParts.push(chunkString);
                 }
             }
 
-            if (exportBtn) exportBtn.innerText = "Generating File...";
-            const blob = new Blob(blobParts, { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = isMesh ? 'vox_mesh.obj' : 'vox_boxes.obj';
-            a.click();
-            URL.revokeObjectURL(url);
+            if (currentChunkString.length > 0) await writer.write(encoder.encode(currentChunkString));
+            writer.releaseLock();
+            await writable.close();
             if (exportBtn) exportBtn.innerText = originalText;
+            console.log("Export Complete");
         }
+
 
 
         function getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, slotIndex) {
