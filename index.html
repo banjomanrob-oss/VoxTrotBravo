@@ -732,17 +732,21 @@
         linePreviewMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); linePreviewMesh.matrixAutoUpdate = false; linePreviewMesh.visible = false;
         for(let i=0; i<30000; i++) { linePreviewMesh.instanceMatrix.array[i*16]=1; linePreviewMesh.instanceMatrix.array[i*16+5]=1; linePreviewMesh.instanceMatrix.array[i*16+10]=1; linePreviewMesh.instanceMatrix.array[i*16+15]=1; }
         worldGroup.add(linePreviewMesh);        
-	    function updateLinePreviewFromPoints(points, isPainting) {
+function updateLinePreviewFromPoints(points, isPainting) {
             let instCount = 0;
-            const r = brushSize - 1, rSq = (r + 0.4) * (r + 0.4);
-            const isInside = (dx, dy, dz) => brushShape === 'sphere' ? (dx*dx + dy*dy + dz*dz <= rSq) : (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
+            const r = brushSize - 1, rSq = (r + 0.1) * (r + 0.1);
+            const isInside = (dx, dy, dz) => brushShape === 'sphere' ?
+            (dx*dx + dy*dy + dz*dz <= rSq) : (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
             fillVisited.clear();
             
+            // NEW: Track the last voxel evaluated to prevent millions of redundant calculations
+            let lastGx = Infinity, lastGy = Infinity, lastGz = Infinity;
+
             for (let i = 0; i < points.length - 1; i++) {
                 const segmentStart = points[i];
                 const segmentEnd = points[i+1];
                 const dist = segmentStart.distanceTo(segmentEnd);
-                const steps = Math.max(1, Math.ceil(dist / (VOXEL_SIZE * 0.5)));
+                const steps = Math.max(1, Math.ceil(dist / (VOXEL_SIZE * 0.25)));
                 
                 for (let j = 0; j <= steps; j++) {
                     tempPos.lerpVectors(segmentStart, segmentEnd, j / steps);
@@ -750,35 +754,45 @@
                     const cy = Math.round(tempPos.y / VOXEL_SIZE);
                     const cz = Math.round(tempPos.z / VOXEL_SIZE);
                     
-                    for (let dx = -r; dx <= r; dx++) {
-                        for (let dy = -r; dy <= r; dy++) {
-                            for (let dz = -r; dz <= r; dz++) {
-                                if (!isInside(dx, dy, dz)) continue;
+                    // NEW: Only run the heavy 3D brush loop if we actually moved to a new voxel
+                    if (cx !== lastGx || cy !== lastGy || cz !== lastGz) {
+                        for (let dx = -r; dx <= r; dx++) {
+                            for (let dy = -r; dy <= r; dy++) {
+                                for (let dz = -r; dz <= r; dz++) {
+                                    if (!isInside(dx, dy, dz)) continue;
+                                    
+                                    if (brushVolume === 'shell' && r > 0) {
+                                        const isSurface = !isInside(dx + 1, dy, dz) || !isInside(dx - 1, dy, dz) ||
+                                                          !isInside(dx, dy + 1, dz) || !isInside(dx, dy - 1, dz) ||
+                                                          !isInside(dx, dy, dz + 1) || !isInside(dx, dy, dz - 1);
+                                        if (!isSurface) continue;
+                                    }
 
-                                // Shell Logic: Check if it's on the surface
-                                if (brushVolume === 'shell' && r > 0) {
-                                    const isSurface = !isInside(dx + 1, dy, dz) || !isInside(dx - 1, dy, dz) ||
-                                                      !isInside(dx, dy + 1, dz) || !isInside(dx, dy - 1, dz) ||
-                                                      !isInside(dx, dy, dz + 1) || !isInside(dx, dy, dz - 1);
-                                    if (!isSurface) continue;
-                                }
-
-                                const hash = (cx+dx + 32768) + (cy+dy + 32768) * 65536 + (cz+dz + 32768) * 4294967296;
-                                if (!fillVisited.has(hash)) {
-                                    fillVisited.add(hash);
-                                    if (instCount < 30000) {
-                                        const mArr = linePreviewMesh.instanceMatrix.array;
-                                        mArr[instCount*16+12] = cx+dx;
-                                        mArr[instCount*16+13] = cy+dy;
-                                        mArr[instCount*16+14] = cz+dz;
-                                        instCount++;
+                                    const hash = (cx+dx + 32768) + (cy+dy + 32768) * 65536 + (cz+dz + 32768) * 4294967296;
+                                    if (!fillVisited.has(hash)) {
+                                        fillVisited.add(hash);
+                                        if (instCount < 30000) {
+                                            const mArr = linePreviewMesh.instanceMatrix.array;
+                                            mArr[instCount*16+12] = cx+dx;
+                                            mArr[instCount*16+13] = cy+dy;
+                                            mArr[instCount*16+14] = cz+dz;
+                                            instCount++;
+                                        }
                                     }
                                 }
                             }
                         }
+                        lastGx = cx;
+                        lastGy = cy;
+                        lastGz = cz;
                     }
                 }
             }
+            linePreviewMesh.count = instCount;
+            linePreviewMesh.instanceMatrix.needsUpdate = true;
+            if (isPainting) linePreviewMesh.material.color.copy(slotColors[activeMatSlot][activeColorSubSlot]); 
+            else linePreviewMesh.material.color.setHex(0xff0055);
+        }
             linePreviewMesh.count = instCount;
             linePreviewMesh.instanceMatrix.needsUpdate = true;
             if (isPainting) linePreviewMesh.material.color.copy(slotColors[activeMatSlot][activeColorSubSlot]); 
@@ -3002,7 +3016,22 @@ function onSelectEnd() {
                 }
                 if(xrLeft&&isErasing&&!isColorPicking){ 
                     hideAllPreviews();
-                    if(activeTool==='brush'){ if(!leftTargetLocal.equals(lastErasedPos)){ placeBrushVoxels(leftTargetLocal,false); lastErasedPos.copy(leftTargetLocal); } } else if(activeTool==='sculpt') executeSculpt(leftTargetLocal,false); else if(activeTool==='stroke'&&strokeMode==='continuous'){ if(lastErasedPos.x===Infinity){ placeBrushVoxels(leftTargetLocal,false); lastErasedPos.copy(leftTargetLocal); } else if(!leftTargetLocal.equals(lastErasedPos)){ drawLineVoxels(lastErasedPos,leftTargetLocal,false); lastErasedPos.copy(leftTargetLocal); } } else if(activeTool==='sheet'&&xrRight){ if(lastSheetLeftPos.x===Infinity){ lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,lastSheetLeftPos,lastSheetRightPos,false,brushSize); } else { drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,leftTargetLocal,rightTargetLocal,false,brushSize); lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); } } 
+		    if (activeTool === 'line') {
+                        let pStart = (lineMode === 'two-hand' && xrRight) ? rightTargetLocal : drawStartPos;
+                        let pEnd = leftTargetLocal;
+                        if (isErasing || (lineMode === 'two-hand' && !isDrawing)) {
+                            if (lineType === 'arc' && xrLeft && xrRight) {
+                                const arcPoints = [];
+                                // Note: Controllers are swapped here to anchor off the right hand
+                                calculateArcPoints(pStart, pEnd, xrRight, xrLeft, arcPoints); 
+                                updateLinePreviewFromPoints(arcPoints, false);
+                            } else {
+                                updateLinePreviewMesh(pStart, pEnd, false);
+                            }
+                            linePreviewMesh.visible = true;
+                        }
+                    }
+                    else if(activeTool==='brush'){ if(!leftTargetLocal.equals(lastErasedPos)){ placeBrushVoxels(leftTargetLocal,false); lastErasedPos.copy(leftTargetLocal); } } else if(activeTool==='sculpt') executeSculpt(leftTargetLocal,false); else if(activeTool==='stroke'&&strokeMode==='continuous'){ if(lastErasedPos.x===Infinity){ placeBrushVoxels(leftTargetLocal,false); lastErasedPos.copy(leftTargetLocal); } else if(!leftTargetLocal.equals(lastErasedPos)){ drawLineVoxels(lastErasedPos,leftTargetLocal,false); lastErasedPos.copy(leftTargetLocal); } } else if(activeTool==='sheet'&&xrRight){ if(lastSheetLeftPos.x===Infinity){ lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,lastSheetLeftPos,lastSheetRightPos,false,brushSize); } else { drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,leftTargetLocal,rightTargetLocal,false,brushSize); lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); } } 
                     else if(activeTool==='box'&&isPreviewingBox) updateBoxPreview(drawStartPos,leftTargetLocal,false); 
                     else if(activeTool==='quadsphere'&&isPreviewingSphere) updateSpherePreview(drawStartPos,leftTargetLocal,false); 
                     else if(activeTool==='cylinder'&&isPreviewingCylinder) updateCylinderPreview(drawStartPos,leftTargetLocal,false); 
