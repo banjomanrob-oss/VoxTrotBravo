@@ -117,11 +117,6 @@
         let totalActiveVoxels = 0;
         
         let activeTool = 'brush'; 
-
-	let lineToolMode = '1-handed'; // '1-handed' or '2-handed'
-        let lineToolType = 'straight'; // 'straight' or 'arc'
-        let arcBulgeFactor = 1.0;
-
         let strokeMode = 'continuous'; 
         let sheetMode = 'surface';
         let brushShape = 'cube'; 
@@ -138,23 +133,6 @@
         let boxDivY = 1;
         let boxDivZ = 1;
         let boxDivThick = 1;
-
-
-// --- Line Tool Configuration ---
-let lineToolMode = 'single'; // 'single' or 'two-handed'
-let lineShape = 'straight';   // 'straight' or 'arc'
-let isPreviewingLine = false;
-const arcPreviewMesh = new THREE.InstancedMesh(voxelGeometry, new THREE.MeshBasicMaterial({ 
-    color: 0x4facfe, 
-    transparent: true, 
-    opacity: 0.4, 
-    depthTest: false, 
-    depthWrite: false 
-}), 30000);
-arcPreviewMesh.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
-arcPreviewMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-arcPreviewMesh.visible = false;
-worldGroup.add(arcPreviewMesh);
 
         let sphereMode = 'shell';
 
@@ -193,6 +171,15 @@ worldGroup.add(arcPreviewMesh);
         let planeDivV = 2;
         let planeThick = 1;
         
+
+
+        // New Line Tool State
+        let lineMode = 'two-hand'; // 'one-hand' or 'two-hand'
+        let lineType = 'straight';  // 'straight' or 'arc'
+        let arcBulge = 1.0;        // Multiplier for the arc curve depth
+
+
+
         let selectMode = 'box'; 
         let selectFilter = 'all';
         let transformMode = 'move'; 
@@ -744,7 +731,60 @@ worldGroup.add(arcPreviewMesh);
         linePreviewMesh.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
         linePreviewMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); linePreviewMesh.matrixAutoUpdate = false; linePreviewMesh.visible = false;
         for(let i=0; i<30000; i++) { linePreviewMesh.instanceMatrix.array[i*16]=1; linePreviewMesh.instanceMatrix.array[i*16+5]=1; linePreviewMesh.instanceMatrix.array[i*16+10]=1; linePreviewMesh.instanceMatrix.array[i*16+15]=1; }
-        worldGroup.add(linePreviewMesh);
+        worldGroup.add(linePreviewMesh);        
+	    function updateLinePreviewFromPoints(points, isPainting) {
+            let instCount = 0;
+            const r = brushSize - 1, rSq = (r + 0.4) * (r + 0.4);
+            const isInside = (dx, dy, dz) => brushShape === 'sphere' ? (dx*dx + dy*dy + dz*dz <= rSq) : (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
+            fillVisited.clear();
+            
+            for (let i = 0; i < points.length - 1; i++) {
+                const segmentStart = points[i];
+                const segmentEnd = points[i+1];
+                const dist = segmentStart.distanceTo(segmentEnd);
+                const steps = Math.max(1, Math.ceil(dist / (VOXEL_SIZE * 0.5)));
+                
+                for (let j = 0; j <= steps; j++) {
+                    tempPos.lerpVectors(segmentStart, segmentEnd, j / steps);
+                    const cx = Math.round(tempPos.x / VOXEL_SIZE);
+                    const cy = Math.round(tempPos.y / VOXEL_SIZE);
+                    const cz = Math.round(tempPos.z / VOXEL_SIZE);
+                    
+                    for (let dx = -r; dx <= r; dx++) {
+                        for (let dy = -r; dy <= r; dy++) {
+                            for (let dz = -r; dz <= r; dz++) {
+                                if (!isInside(dx, dy, dz)) continue;
+
+                                // Shell Logic: Check if it's on the surface
+                                if (brushVolume === 'shell' && r > 0) {
+                                    const isSurface = !isInside(dx + 1, dy, dz) || !isInside(dx - 1, dy, dz) ||
+                                                      !isInside(dx, dy + 1, dz) || !isInside(dx, dy - 1, dz) ||
+                                                      !isInside(dx, dy, dz + 1) || !isInside(dx, dy, dz - 1);
+                                    if (!isSurface) continue;
+                                }
+
+                                const hash = (cx+dx + 32768) + (cy+dy + 32768) * 65536 + (cz+dz + 32768) * 4294967296;
+                                if (!fillVisited.has(hash)) {
+                                    fillVisited.add(hash);
+                                    if (instCount < 30000) {
+                                        const mArr = linePreviewMesh.instanceMatrix.array;
+                                        mArr[instCount*16+12] = cx+dx;
+                                        mArr[instCount*16+13] = cy+dy;
+                                        mArr[instCount*16+14] = cz+dz;
+                                        instCount++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            linePreviewMesh.count = instCount;
+            linePreviewMesh.instanceMatrix.needsUpdate = true;
+            if (isPainting) linePreviewMesh.material.color.copy(slotColors[activeMatSlot][activeColorSubSlot]); 
+            else linePreviewMesh.material.color.setHex(0xff0055);
+        }
+
         
         const selectionGroup = new THREE.Group();
         selectionGroup.visible = false; worldGroup.add(selectionGroup);
@@ -1178,50 +1218,6 @@ function updatePlanePreview(start, end, isPainting) {
             if (isPainting) linePreviewMesh.material.color.copy(slotColors[activeMatSlot][activeColorSubSlot]); else linePreviewMesh.material.color.setHex(0xff0055);
         }
 
-
-// Optimally previews the Arc curve without creating new meshes every frame
-        function updateArcPreviewMesh(p1, dir1, up1, p2, dir2, up2, isPainting) {
-            const curve = getArcCurve(p1, dir1, up1, p2, dir2, up2);
-            const steps = Math.min(200, Math.max(1, Math.ceil(curve.getLength() / (VOXEL_SIZE * 0.5))));
-            
-            let instCount = 0; 
-            const r = brushSize - 1; 
-            const rSq = (r + 0.1) * (r + 0.1);
-            const isInside = (dx, dy, dz) => brushShape === 'sphere' ? (dx*dx + dy*dy + dz*dz <= rSq) : (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
-            
-            fillVisited.clear();
-            let lastGx = Infinity, lastGy = Infinity, lastGz = Infinity;
-            
-            for (let i = 0; i <= steps; i++) {
-                tempPos = curve.getPoint(i / steps);
-                const cx = Math.round(tempPos.x / VOXEL_SIZE), cy = Math.round(tempPos.y / VOXEL_SIZE), cz = Math.round(tempPos.z / VOXEL_SIZE);
-                
-                if (cx !== lastGx || cy !== lastGy || cz !== lastGz) {
-                    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
-                        if (!isInside(dx, dy, dz)) continue;
-                        if (brushVolume === 'shell' && r > 0) { const sur = !isInside(dx+1,dy,dz)||!isInside(dx-1,dy,dz)||!isInside(dx,dy+1,dz)||!isInside(dx,dy-1,dz)||!isInside(dx,dy,dz+1)||!isInside(dx,dy-1,dz); if (!sur) continue; }
-                        
-                        const hash = (cx+dx + 32768) + (cy+dy + 32768) * 65536 + (cz+dz + 32768) * 4294967296;
-                        if (!fillVisited.has(hash)) { 
-                            fillVisited.add(hash); 
-                            if (instCount < 30000) { 
-                                const mArr = linePreviewMesh.instanceMatrix.array; 
-                                mArr[instCount*16+12] = cx+dx; mArr[instCount*16+13] = cy+dy; mArr[instCount*16+14] = cz+dz; 
-                                instCount++; 
-                            } 
-                        }
-                    }
-                    lastGx = cx; lastGy = cy; lastGz = cz;
-                }
-            }
-            linePreviewMesh.count = instCount;
-            linePreviewMesh.instanceMatrix.needsUpdate = true;
-            if (isPainting) linePreviewMesh.material.color.copy(slotColors[activeMatSlot][activeColorSubSlot]); else linePreviewMesh.material.color.setHex(0xff0055);
-        }
-
-
-
-
         let xrRight = null; let xrLeft = null;
         let gripRight = null; let gripLeft = null;
 
@@ -1267,25 +1263,28 @@ function updatePlanePreview(start, end, isPainting) {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'Shape: CUBE', brushShape === 'cube'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'Shape: SPHERE', brushShape === 'sphere');
                 drawButton(leftMenuCtx, 50, 140, 200, 50, 'SOLID', brushVolume === 'solid'); drawButton(leftMenuCtx, 262, 140, 200, 50, 'SHELL', brushVolume === 'shell');
                 drawButton(leftMenuCtx, 50, 210, 80, 50, '[-]', false); drawButton(leftMenuCtx, 140, 210, 232, 50, `Radius: ${brushSize}`, false); drawButton(leftMenuCtx, 382, 210, 80, 50, '[+]', false);
-            }
+
+
+            } else if (activeTool === 'line') {
+                drawButton(leftMenuCtx, 50, 70, 200, 50, 'ONE-HAND', lineMode === 'one-hand'); 
+                drawButton(leftMenuCtx, 262, 70, 200, 50, 'TWO-HAND', lineMode === 'two-hand');
+                
+                drawButton(leftMenuCtx, 50, 140, 200, 50, 'STRAIGHT', lineType === 'straight'); 
+                drawButton(leftMenuCtx, 262, 140, 200, 50, 'ARC', lineType === 'arc');
+                
+                drawButton(leftMenuCtx, 50, 210, 80, 50, '[-]', false); 
+                drawButton(leftMenuCtx, 140, 210, 232, 50, `Bulge: ${arcBulge.toFixed(1)}`, false); 
+                drawButton(leftMenuCtx, 382, 210, 80, 50, '[+]', false);
+
+                drawButton(leftMenuCtx, 50, 280, 80, 50, '[-]', false); 
+                drawButton(leftMenuCtx, 140, 280, 232, 50, `Radius: ${brushSize}`, false); 
+                drawButton(leftMenuCtx, 382, 280, 80, 50, '[+]', false);
 
 
 
-else if (activeTool === 'line_tool') {
-    drawButton(leftMenuCtx, 50, 70, 200, 50, '1-HANDED', lineToolMode === 'single'); 
-    drawButton(leftMenuCtx, 262, 70, 200, 50, '2-HANDED', lineToolMode === 'two-handed');
-    drawButton(leftMenuCtx, 50, 140, 200, 50, 'STRAIGHT', lineShape === 'straight'); 
-    drawButton(leftMenuCtx, 262, 140, 200, 50, 'ARC (2H)', lineShape === 'arc');
-    drawButton(leftMenuCtx, 50, 210, 80, 50, '[-]', false); 
-    drawButton(leftMenuCtx, 140, 210, 232, 50, `Radius: ${brushSize}`, false); 
-    drawButton(leftMenuCtx, 382, 210, 80, 50, '[+]', false);
-}
 
 
-
-
-
- else if (activeTool === 'sheet') {
+            } else if (activeTool === 'sheet') {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'SURFACE', sheetMode === 'surface'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'LINES', sheetMode === 'lines');
                 drawButton(leftMenuCtx, 50, 140, 200, 50, 'Shape: CUBE', brushShape === 'cube'); drawButton(leftMenuCtx, 262, 140, 200, 50, 'Shape: SPHERE', brushShape === 'sphere');
                 drawButton(leftMenuCtx, 50, 210, 200, 50, 'SOLID', brushVolume === 'solid'); drawButton(leftMenuCtx, 262, 210, 200, 50, 'SHELL', brushVolume === 'shell');
@@ -1295,26 +1294,6 @@ else if (activeTool === 'line_tool') {
                 drawButton(leftMenuCtx, 50, 140, 200, 50, 'Shape: CUBE', brushShape === 'cube'); drawButton(leftMenuCtx, 262, 140, 200, 50, 'Shape: SPHERE', brushShape === 'sphere');
                 drawButton(leftMenuCtx, 50, 210, 200, 50, 'SOLID', brushVolume === 'solid'); drawButton(leftMenuCtx, 262, 210, 200, 50, 'SHELL', brushVolume === 'shell');
                 drawButton(leftMenuCtx, 50, 280, 80, 50, '[-]', false); drawButton(leftMenuCtx, 140, 280, 232, 50, `Radius: ${brushSize}`, false); drawButton(leftMenuCtx, 382, 280, 80, 50, '[+]', false);
-
-
-
-	    } else if (activeTool === 'line') {
-                drawButton(leftMenuCtx, 50, 70, 200, 50, '1-HANDED', lineToolMode === '1-handed');
-                drawButton(leftMenuCtx, 262, 70, 200, 50, '2-HANDED', lineToolMode === '2-handed');
-                drawButton(leftMenuCtx, 50, 140, 200, 50, 'STRAIGHT', lineToolType === 'straight');
-                drawButton(leftMenuCtx, 262, 140, 200, 50, 'ARC', lineToolType === 'arc');
-                drawButton(leftMenuCtx, 50, 210, 80, 50, '[-]', false);
-                drawButton(leftMenuCtx, 140, 210, 232, 50, `Radius: ${brushSize}`, false); drawButton(leftMenuCtx, 382, 210, 80, 50, '[+]', false);
-                
-                if (lineToolType === 'arc') {
-                    drawButton(leftMenuCtx, 50, 280, 80, 50, '[-]', false);
-                    drawButton(leftMenuCtx, 140, 280, 232, 50, `Arc Bulge: ${arcBulgeFactor.toFixed(1)}x`, false); 
-                    drawButton(leftMenuCtx, 382, 280, 80, 50, '[+]', false);
-                }
-
-
-
-
             } else if (activeTool === 'paint') {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'BRUSH', paintMode === 'brush'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'BUCKET', paintMode === 'bucket');
                 if (paintMode === 'brush') {
@@ -1470,27 +1449,6 @@ else if (activeTool === 'line_tool') {
                 if (activeTool === 'brush') { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; } 
                 else if (activeTool === 'sheet') { if (cx >= 50 && cx <= 250) sheetMode = 'surface'; if (cx >= 262 && cx <= 462) sheetMode = 'lines'; }
                 else if (activeTool === 'stroke') { if (cx >= 50 && cx <= 250) strokeMode = 'continuous'; if (cx >= 262 && cx <= 462) { strokeMode = 'line'; isPreviewingLineLeft = isPreviewingLineRight = false; lineStartLeft.set(Infinity, Infinity, Infinity); lineStartRight.set(Infinity, Infinity, Infinity); } } 
-
-
-else if (activeTool === 'line') {
-                    if (cy >= 70 && cy <= 120) {
-                        if (cx >= 50 && cx <= 250) lineToolMode = '1-handed';
-                        if (cx >= 262 && cx <= 462) lineToolMode = '2-handed';
-                    } else if (cy >= 140 && cy <= 190) {
-                        if (cx >= 50 && cx <= 250) lineToolType = 'straight';
-                        if (cx >= 262 && cx <= 462) lineToolType = 'arc';
-                    } else if (cy >= 210 && cy <= 260) {
-                        if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1);
-                        if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1);
-                    } else if (lineToolType === 'arc' && cy >= 280 && cy <= 330) {
-                        if (cx >= 50 && cx <= 130) arcBulgeFactor = Math.max(0.1, arcBulgeFactor - 0.2);
-                        if (cx >= 382 && cx <= 462) arcBulgeFactor = Math.min(5.0, arcBulgeFactor + 0.2);
-                    }
-                }
-
-
-
-
                 else if (activeTool === 'paint') { if (cx >= 50 && cx <= 250) paintMode = 'brush'; if (cx >= 262 && cx <= 462) paintMode = 'bucket'; } 
                 else if (activeTool === 'box') { if (cx >= 20 && cx <= 160) boxMode = 'solid'; if (cx >= 170 && cx <= 320) boxMode = 'shell'; if (cx >= 330 && cx <= 490) boxMode = 'wireframe'; } 
                 else if (activeTool === 'quadsphere') { if (cx >= 50 && cx <= 250) sphereMode = 'solid'; if (cx >= 262 && cx <= 462) sphereMode = 'shell'; } 
@@ -1627,7 +1585,7 @@ else if (activeTool === 'line') {
         function updateRightMenuTexture() {
             rightMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; rightMenuCtx.fillRect(0, 0, 512, 512);
             rightMenuCtx.fillStyle = '#4facfe'; rightMenuCtx.font = 'bold 28px sans-serif'; rightMenuCtx.textAlign = 'center'; rightMenuCtx.fillText(`Tool Selection`, 256, 28);
-	    const tools = [ { id: 'brush', label: 'Brush (Standard)' }, { id: 'stroke', label: 'Stroke (Continuous)' }, { id: 'line', label: 'Line & Arc Tool' }, { id: 'sheet', label: 'Sheet (Two-Handed)' }, { id: 'paint', label: 'Paint (Recolor)' }, { id: 'sculpt', label: 'Soft Sculpt' }, { id: 'plane', label: 'Plane (2D Grid/Shape)' }, { id: 'box', label: 'Box / Volumes' }, { id: 'quadsphere', label: 'Quad Sphere (Shell)' }, { id: 'cylinder', label: 'Cylinder / Prism' }, { id: 'triangle', label: 'Cone / Pyramid' }, { id: 'icosahedron', label: 'Poly / Platonic' }, { id: 'select', label: 'Select & Transform' } ];
+            const tools = [ { id: 'brush', label: 'Brush (Standard)' }, { id: 'line', label: 'Line & Arc Tool' }, { id: 'stroke', label: 'Stroke (Continuous)' }, { id: 'sheet', label: 'Sheet (Two-Handed)' }, { id: 'paint', label: 'Paint (Recolor)' }, { id: 'sculpt', label: 'Soft Sculpt' }, { id: 'plane', label: 'Plane (2D Grid/Shape)' }, { id: 'box', label: 'Box / Volumes' }, { id: 'quadsphere', label: 'Quad Sphere (Shell)' }, { id: 'cylinder', label: 'Cylinder / Prism' }, { id: 'triangle', label: 'Cone / Pyramid' }, { id: 'icosahedron', label: 'Poly / Platonic' }, { id: 'select', label: 'Select & Transform' } ];
             for (let i = 0; i < tools.length; i++) drawButton(rightMenuCtx, 50, 36 + i * 39, 412, 33, tools[i].label, activeTool === tools[i].id);
             rightMenuTexture.needsUpdate = true;
         }
@@ -1838,6 +1796,38 @@ else if (activeTool === 'line') {
             if (mode === 'shift') return tempColorForDraw[slotIndex].copy(cA).lerp(cB, shiftProgress);
             return cA;
         }
+
+
+        function calculateArcPoints(p1, p2, ctrlL, ctrlR, outPoints) {
+            const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+            const diff = new THREE.Vector3().subVectors(p2, p1);
+            const dist = diff.length();
+            
+            // 1. Get average 'Up' vector from controllers to define bulge direction
+            const upL = new THREE.Vector3(0, 1, 0).applyQuaternion(ctrlL.quaternion);
+            const upR = new THREE.Vector3(0, 1, 0).applyQuaternion(ctrlR.quaternion);
+            const avgUp = new THREE.Vector3().addVectors(upL, upR).normalize();
+            
+            // 2. Use Roll (rotation around local Z) to twist the bulge
+            // Use Tilt (rotation around local X) to deepen the bulge
+            const controlPoint = mid.clone().addScaledVector(avgUp, dist * 0.5 * arcBulge);
+            
+            // 3. Generate points along Quadratic Bezier curve
+            const steps = Math.min(100, Math.max(10, Math.ceil(dist / (VOXEL_SIZE * 2))));
+            outPoints.length = 0;
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps;
+                const p = new THREE.Vector3();
+                // B(t) = (1-t)^2*P0 + 2(1-t)t*P1 + t^2*P2
+                p.x = Math.pow(1 - t, 2) * p1.x + 2 * (1 - t) * t * controlPoint.x + Math.pow(t, 2) * p2.x;
+                p.y = Math.pow(1 - t, 2) * p1.y + 2 * (1 - t) * t * controlPoint.y + Math.pow(t, 2) * p2.y;
+                p.z = Math.pow(1 - t, 2) * p1.z + 2 * (1 - t) * t * controlPoint.z + Math.pow(t, 2) * p2.z;
+                outPoints.push(p);
+            }
+        }
+
+
+
 
         function getVoxelMatAndColor(gx, gy, gz, outColor) {
             const cx = gx >> 5, cy = gy >> 5, cz = gz >> 5, k = (cx+65536)+(cy+65536)*131072+(cz+65536)*17179869184, c = chunks.get(k); if (!c) return -1;
@@ -2229,46 +2219,6 @@ function placeBrushVoxels(pos, isP) {
             for (let i=0; i<=steps; i++) { tempPos.lerpVectors(start, end, i/steps); const gx=Math.round(tempPos.x/VOXEL_SIZE), gy=Math.round(tempPos.y/VOXEL_SIZE), gz=Math.round(tempPos.z/VOXEL_SIZE); if(gx!==lastG.x||gy!==lastG.y||gz!==lastG.z){ placeBrushVoxels(tempPos, isP); lastG={x:gx,y:gy,z:gz}; } }
         }
 
-
-// --- NEW ARC LOGIC ---
-        // Generates the Cubic Bezier Control Points based on controller orientation
-        function getArcCurve(p1, dir1, up1, p2, dir2, up2) {
-            const dist = p1.distanceTo(p2);
-            // Bulge size scales with distance between hands + UI multiplier
-            const scale = dist * arcBulgeFactor * 0.5; 
-            
-            // Forward vectors dictate tangent direction. Up vectors dictate roll/twist bulge.
-            const cp1 = new THREE.Vector3().copy(p1).addScaledVector(dir1, scale).addScaledVector(up1, scale * 0.5);
-            // Reverse dir2 so the arc curves back naturally into the target controller
-            const cp2 = new THREE.Vector3().copy(p2).addScaledVector(dir2, -scale).addScaledVector(up2, scale * 0.5);
-            
-            return new THREE.CubicBezierCurve3(p1, cp1, cp2, p2);
-        }
-
-        // Main execution block to voxelize the arc
-        function drawArcVoxels(p1, dir1, up1, p2, dir2, up2, isP) {
-            const curve = getArcCurve(p1, dir1, up1, p2, dir2, up2);
-            const steps = Math.min(800, Math.max(10, Math.ceil(curve.getLength() / (VOXEL_SIZE * 0.25))));
-            
-            let lastGx = Infinity, lastGy = Infinity, lastGz = Infinity;
-            for (let i = 0; i <= steps; i++) {
-                tempPos = curve.getPoint(i / steps);
-                const gx = Math.round(tempPos.x / VOXEL_SIZE);
-                const gy = Math.round(tempPos.y / VOXEL_SIZE);
-                const gz = Math.round(tempPos.z / VOXEL_SIZE);
-                
-                // Only drop a brush stamp if we've crossed into a new voxel grid unit
-                if (gx !== lastGx || gy !== lastGy || gz !== lastGz) {
-                    placeBrushVoxels(tempPos, isP);
-                    lastGx = gx; lastGy = gy; lastGz = gz;
-                }
-            }
-        }
-
-
-
-
-
         function drawPaintLineVoxels(start, end) {
             const dist=start.distanceTo(end), steps=Math.min(600, Math.max(1, Math.ceil(dist/(VOXEL_SIZE*0.25)))); let lastG = {x:Infinity,y:Infinity,z:Infinity};
             for (let i=0; i<=steps; i++) { tempPos.lerpVectors(start, end, i/steps); const gx=Math.round(tempPos.x/VOXEL_SIZE), gy=Math.round(tempPos.y/VOXEL_SIZE), gz=Math.round(tempPos.z/VOXEL_SIZE); if(gx!==lastG.x||gy!==lastG.y||gz!==lastG.z){ placePaintVoxels(tempPos); lastG={x:gx,y:gy,z:gz}; } }
@@ -2292,56 +2242,7 @@ function placeBrushVoxels(pos, isP) {
             }
             leftMenuNeedsUpdate = true;
         }
-	function drawArcVoxels(p1, p2, quat1, quat2, isP) {
-    const dist = p1.distanceTo(p2);
-    const steps = Math.min(1000, Math.max(10, Math.ceil(dist / (VOXEL_SIZE * 0.2))));
-    
-    // Calculate Bulge Direction from average controller orientation
-    const up1 = new THREE.Vector3(0, 1, 0).applyQuaternion(quat1);
-    const up2 = new THREE.Vector3(0, 1, 0).applyQuaternion(quat2);
-    const avgUp = new THREE.Vector3().addVectors(up1, up2).normalize();
-    
-    // Control Point is the midpoint shifted by the controllers' "up" direction
-    const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-    const controlPoint = new THREE.Vector3().copy(mid).addScaledVector(avgUp, dist * 0.5);
 
-    let instCount = 0;
-    const curve = new THREE.QuadraticBezierCurve3(p1, p2, controlPoint);
-    const points = curve.getPoints(steps);
-    
-    fillVisited.clear();
-    for (let i = 0; i < points.length; i++) {
-        const pt = points[i];
-        const gx = Math.round(pt.x / VOXEL_SIZE);
-        const gy = Math.round(pt.y / VOXEL_SIZE);
-        const gz = Math.round(pt.z / VOXEL_SIZE);
-        
-        // Prevent duplicate voxel processing in the same step
-        const hash = (gx + 32768) + (gy + 32768) * 65536 + (gz + 32768) * 4294967296;
-        if (!fillVisited.has(hash)) {
-            fillVisited.add(hash);
-            if (isP) {
-                // Determine bounds for color gradients if needed
-                placeBrushVoxels(pt, true);
-            } else {
-                // Update preview mesh
-                if (instCount < 30000) {
-                    const mArr = arcPreviewMesh.instanceMatrix.array;
-                    mArr[instCount * 16 + 12] = gx;
-                    mArr[instCount * 16 + 13] = gy;
-                    mArr[instCount * 16 + 14] = gz;
-                    instCount++;
-                }
-            }
-        }
-    }
-    
-    if (!isP) {
-        arcPreviewMesh.count = instCount;
-        arcPreviewMesh.instanceMatrix.needsUpdate = true;
-        arcPreviewMesh.visible = true;
-    }
-	}
         function calculateFloodFill(sX, sY, sZ) {
             hoveredFillCoords.length = 0; const targetMat = getVoxelMatAndColor(sX, sY, sZ, targetQueryColor); if(targetMat===-1) return;
             fillVisited.clear(); fillQueue.length = 0; fillQueue.push(sX, sY, sZ); fillVisited.add((sX+32768)+(sY+32768)*65536+(sZ+32768)*4294967296);
@@ -2934,27 +2835,6 @@ function executeQuadSphereTool(startPos, endPos, isPainting) {
                 }
 		else { if(selectMode==='box'){ isDrawing=true; drawStartPos.copy(rightTargetLocal); isPreviewingBox=true; } else if(selectMode==='connected') executeSelectConnected(rightTargetLocal); } }
                 else if (activeTool==='stroke'&&strokeMode==='line'){ if(isPreviewingLineLeft){ drawLineVoxels(lineStartLeft,rightTargetLocal,false); isPreviewingLineLeft=false; lineStartLeft.set(Infinity,Infinity,Infinity); } else if(!isPreviewingLineRight){ lineStartRight.copy(rightTargetLocal); isPreviewingLineRight=true; } else { drawLineVoxels(lineStartRight,rightTargetLocal,true); lineStartRight.copy(rightTargetLocal); } }
-
-	      else if (activeTool === 'line') {
-                    isDrawing = true;
-                    if (lineToolMode === '1-handed') {
-                        drawStartPos.copy(rightTargetLocal);
-                        linePreviewMesh.visible = true;
-                    } else if (lineToolMode === '2-handed') {
-                        // 2-Handed mode draws instantly on Right Trigger pull
-                        const lDir = new THREE.Vector3(0, 0, -1).transformDirection(xrLeft.matrixWorld);
-                        const rDir = new THREE.Vector3(0, 0, -1).transformDirection(xrRight.matrixWorld);
-                        const lUp = new THREE.Vector3(0, 1, 0).transformDirection(xrLeft.matrixWorld);
-                        const rUp = new THREE.Vector3(0, 1, 0).transformDirection(xrRight.matrixWorld);
-                        
-                        if (lineToolType === 'straight') drawLineVoxels(leftTargetLocal, rightTargetLocal, true);
-                        else drawArcVoxels(leftTargetLocal, lDir, lUp, rightTargetLocal, rDir, rUp, true);
-                        
-                        isDrawing = false; // Ends immediately as it's a 1-shot stamp
-                    }
-                }
-
-
                 else { isDrawing=true; drawStartPos.copy(rightTargetLocal); if(activeTool==='paint'&&paintMode==='bucket'&&hoveredFillCoords.length>0){ let minU=Infinity,maxU=-Infinity,minV=Infinity,maxV=-Infinity; for(let i=0;i<hoveredFillCoords.length;i+=3){ const px=hoveredFillCoords[i],py=hoveredFillCoords[i+1]; minU=Math.min(minU,px); maxU=Math.max(maxU,px); minV=Math.min(minV,py); maxV=Math.max(maxV,py); } for(let i=0;i<hoveredFillCoords.length;i+=3)recolorVoxelSet(hoveredFillCoords[i],hoveredFillCoords[i+1],hoveredFillCoords[i+2],getDrawColor(hoveredFillCoords[i],hoveredFillCoords[i+1],hoveredFillCoords[i+2],minU,maxU,minV,maxV,0)); lastHoveredVoxel.set(Infinity,Infinity,Infinity); hoveredFillCoords.length=0; bucketPreviewMesh.visible=false; } if(activeTool==='box')isPreviewingBox=true; if(activeTool==='quadsphere')isPreviewingSphere=true; if(activeTool==='plane')isPreviewingPlane=true; if(activeTool==='cylinder')isPreviewingCylinder=true; if(activeTool==='triangle')isPreviewingTriangle=true; if(activeTool==='icosahedron'){ isDrawing=true; isPreviewingIcosahedron=true; drawStartPos.copy(rightTargetLocal); } }
             } else if (this === xrLeft) {
                 if(activeTool==='select'&&hasSelection) applySelection(); else if(activeTool==='stroke'&&strokeMode==='line'){ if(isPreviewingLineRight){ drawLineVoxels(lineStartRight,leftTargetLocal,true); isPreviewingLineRight=false; lineStartRight.set(Infinity,Infinity,Infinity); } else if(!isPreviewingLineLeft){ lineStartLeft.copy(leftTargetLocal); isPreviewingLineLeft=true; } else { drawLineVoxels(lineStartLeft,leftTargetLocal,false); lineStartLeft.copy(leftTargetLocal); } } else { isErasing=true; drawStartPos.copy(leftTargetLocal); if(activeTool==='box')isPreviewingBox=true; if(activeTool==='quadsphere')isPreviewingSphere=true; if(activeTool==='plane')isPreviewingPlane=true; if(activeTool==='cylinder')isPreviewingCylinder=true; if(activeTool==='triangle')isPreviewingTriangle=true; if(activeTool==='icosahedron'){ isErasing=true; isPreviewingIcosahedron=true; drawStartPos.copy(leftTargetLocal); } }
@@ -2962,16 +2842,7 @@ function executeQuadSphereTool(startPos, endPos, isPainting) {
         }
 
         function onSelectEnd() {
-            if (this === xrRight) { if(activeSliderDrag) activeSliderDrag=null; else if(isColorPicking) { isColorPicking=isPaletteMagnified=false; updateColorMenuTexture(); } else { isDrawing=false; // Render the 1-Handed line on trigger release
-            if (activeTool === 'line' && lineToolMode === '1-handed') {
-                const rDir = new THREE.Vector3(0, 0, -1).transformDirection(xrRight.matrixWorld);
-                const rUp = new THREE.Vector3(0, 1, 0).transformDirection(xrRight.matrixWorld);
-                // For 1-handed arcs, we use the right controller's forward orientation for both start and end curves 
-                // to maintain consistent bulging based on wrist angle.
-                if (lineToolType === 'straight') drawLineVoxels(drawStartPos, rightTargetLocal, true);
-                else drawArcVoxels(drawStartPos, rDir, rUp, rightTargetLocal, rDir, rUp, true);
-                linePreviewMesh.visible = false;
-            }if(activeTool==='select'&&selectMode==='box'&&isPreviewingBox){ executeSelectBox(drawStartPos,rightTargetLocal); isPreviewingBox=false; boxPreviewMesh.visible=false; } if(activeTool==='box'&&isPreviewingBox){ executeBoxTool(drawStartPos,rightTargetLocal,true); isPreviewingBox=false; boxPreviewMesh.visible=false; } if(activeTool==='quadsphere'&&isPreviewingSphere){ executeQuadSphereTool(drawStartPos,rightTargetLocal,true); isPreviewingSphere=false; spherePreviewMesh.visible=false; } if(activeTool==='cylinder'&&isPreviewingCylinder){ executeCylinderTool(drawStartPos,rightTargetLocal,true); isPreviewingCylinder=false; cylinderPreviewMesh.visible=false; } if(activeTool==='plane'&&isPreviewingPlane){ executePlaneTool(drawStartPos,rightTargetLocal,true); isPreviewingPlane=false; boxPreviewMesh.visible=false; } if(activeTool==='triangle'&&isPreviewingTriangle){ executeTriangleTool(drawStartPos,rightTargetLocal,true); isPreviewingTriangle=false; conePreviewMesh.visible=false; } if(activeTool==='icosahedron'&&isPreviewingIcosahedron){ executeIcosahedronTool(drawStartPos,rightTargetLocal,true); isPreviewingIcosahedron=false; polyPreviewMesh.visible=false; } lastPaintedPos.set(Infinity,Infinity,Infinity); if(activeTool==='sheet')lastSheetLeftPos.set(Infinity,Infinity,Infinity); } }
+            if (this === xrRight) { if(activeSliderDrag) activeSliderDrag=null; else if(isColorPicking) { isColorPicking=isPaletteMagnified=false; updateColorMenuTexture(); } else { isDrawing=false; if(activeTool==='select'&&selectMode==='box'&&isPreviewingBox){ executeSelectBox(drawStartPos,rightTargetLocal); isPreviewingBox=false; boxPreviewMesh.visible=false; } if(activeTool==='box'&&isPreviewingBox){ executeBoxTool(drawStartPos,rightTargetLocal,true); isPreviewingBox=false; boxPreviewMesh.visible=false; } if(activeTool==='quadsphere'&&isPreviewingSphere){ executeQuadSphereTool(drawStartPos,rightTargetLocal,true); isPreviewingSphere=false; spherePreviewMesh.visible=false; } if(activeTool==='cylinder'&&isPreviewingCylinder){ executeCylinderTool(drawStartPos,rightTargetLocal,true); isPreviewingCylinder=false; cylinderPreviewMesh.visible=false; } if(activeTool==='plane'&&isPreviewingPlane){ executePlaneTool(drawStartPos,rightTargetLocal,true); isPreviewingPlane=false; boxPreviewMesh.visible=false; } if(activeTool==='triangle'&&isPreviewingTriangle){ executeTriangleTool(drawStartPos,rightTargetLocal,true); isPreviewingTriangle=false; conePreviewMesh.visible=false; } if(activeTool==='icosahedron'&&isPreviewingIcosahedron){ executeIcosahedronTool(drawStartPos,rightTargetLocal,true); isPreviewingIcosahedron=false; polyPreviewMesh.visible=false; } lastPaintedPos.set(Infinity,Infinity,Infinity); if(activeTool==='sheet')lastSheetLeftPos.set(Infinity,Infinity,Infinity); } }
             else if (this === xrLeft) { isErasing=false; if(activeTool==='box'&&isPreviewingBox){ executeBoxTool(drawStartPos,leftTargetLocal,false); isPreviewingBox=false; boxPreviewMesh.visible=false; } if(activeTool==='quadsphere'&&isPreviewingSphere){ executeQuadSphereTool(drawStartPos,leftTargetLocal,false); isPreviewingSphere=false; spherePreviewMesh.visible=false; } if(activeTool==='cylinder'&&isPreviewingCylinder){ executeCylinderTool(drawStartPos,leftTargetLocal,false); isPreviewingCylinder=false; cylinderPreviewMesh.visible=false; } if(activeTool==='plane'&&isPreviewingPlane){ executePlaneTool(drawStartPos,leftTargetLocal,false); isPreviewingPlane=false; boxPreviewMesh.visible=false; } if(activeTool==='triangle'&&isPreviewingTriangle){ executeTriangleTool(drawStartPos,leftTargetLocal,false); isPreviewingTriangle=false; conePreviewMesh.visible=false; } if(activeTool==='icosahedron'&&isPreviewingIcosahedron){ executeIcosahedronTool(drawStartPos,leftTargetLocal,false); isPreviewingIcosahedron=false; polyPreviewMesh.visible=false; } lastErasedPos.set(Infinity,Infinity,Infinity); if(activeTool==='sheet')lastSheetLeftPos.set(Infinity,Infinity,Infinity); }
             hideAllPreviews();
             lockCtx.active = false;
@@ -3066,64 +2937,32 @@ function executeQuadSphereTool(startPos, endPos, isPainting) {
                 } else cursorRight.visible=false;
                 
                 if(xrRight&&isDrawing){ 
+                    hideAllPreviews();                if (activeTool === 'line') {
                     hideAllPreviews();
-if (activeTool === 'line_tool') {
-    arcPreviewMesh.visible = false;
-    const q1 = new THREE.Quaternion().setFromRotationMatrix(xrRight.matrixWorld);
-    const q2 = xrLeft ? new THREE.Quaternion().setFromRotationMatrix(xrLeft.matrixWorld) : q1;
+                    let pStart = (lineMode === 'two-hand' && xrLeft) ? leftTargetLocal : drawStartPos;
+                    let pEnd = rightTargetLocal;
 
-    if (lineToolMode === 'two-handed' && xrLeft) {
-        if (lineShape === 'arc') {
-            drawArcVoxels(rightTargetLocal, leftTargetLocal, q1, q2, false);
-        } else {
-            updateLinePreviewMesh(rightTargetLocal, leftTargetLocal, true);
-            linePreviewMesh.visible = true;
-        }
-    } else {
-        updateLinePreviewMesh(drawStartPos, rightTargetLocal, true);
-        linePreviewMesh.visible = true;
-    }
-}
-                    else if(activeTool==='select'&&hasSelection&&!isSettingPivot){ 
+                    if (isDrawing || (lineMode === 'two-hand' && !isErasing)) {
+                        if (lineType === 'arc' && xrLeft && xrRight) {
+                            const arcPoints = [];
+                            calculateArcPoints(pStart, pEnd, xrLeft, xrRight, arcPoints);
+                            updateLinePreviewFromPoints(arcPoints, true);
+                        } else {
+                            updateLinePreviewMesh(pStart, pEnd, true);
+                        }
+                        linePreviewMesh.visible = true;
+                    }
+                }
+                    if(activeTool==='select'&&hasSelection&&!isSettingPivot){ 
                         if(transformMode==='draw'){ if(!rightTargetLocal.equals(lastPaintedPos)){ stampSelection(Math.round(rightTargetLocal.x/VOXEL_SIZE)-Math.round(selectionCenter.x),Math.round(rightTargetLocal.y/VOXEL_SIZE)-Math.round(selectionCenter.y),Math.round(rightTargetLocal.z/VOXEL_SIZE)-Math.round(selectionCenter.z)); lastPaintedPos.copy(rightTargetLocal); } } else if(transformMode==='paint'){ if(!rightTargetLocal.equals(lastPaintedPos)){ paintSelection(Math.round(rightTargetLocal.x/VOXEL_SIZE)-Math.round(selectionCenter.x),Math.round(rightTargetLocal.y/VOXEL_SIZE)-Math.round(selectionCenter.y),Math.round(rightTargetLocal.z/VOXEL_SIZE)-Math.round(selectionCenter.z)); lastPaintedPos.copy(rightTargetLocal); } } 
                     } else if(activeTool==='select'&&selectMode==='box'&&isPreviewingBox) updateBoxPreview(drawStartPos,rightTargetLocal,true); else if(activeTool==='box'&&isPreviewingBox) updateBoxPreview(drawStartPos,rightTargetLocal,true); else if(activeTool==='brush'){ if(!rightTargetLocal.equals(lastPaintedPos)){ placeBrushVoxels(rightTargetLocal,true); lastPaintedPos.copy(rightTargetLocal); } } else if(activeTool==='sculpt') executeSculpt(rightTargetLocal,true); else if(activeTool==='stroke'&&strokeMode==='continuous'){ if(lastPaintedPos.x===Infinity){ placeBrushVoxels(rightTargetLocal,true); lastPaintedPos.copy(rightTargetLocal); } else if(!rightTargetLocal.equals(lastPaintedPos)){ drawLineVoxels(lastPaintedPos,rightTargetLocal,true); lastPaintedPos.copy(rightTargetLocal); } } else if(activeTool==='sheet'&&xrLeft){ if(lastSheetLeftPos.x===Infinity){ lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,lastSheetLeftPos,lastSheetRightPos,true,brushSize); } else { drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,leftTargetLocal,rightTargetLocal,true,brushSize); lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); } } else if(activeTool==='paint'&&paintMode==='brush'){ if(lastPaintedPos.x===Infinity){ placePaintVoxels(rightTargetLocal); lastPaintedPos.copy(rightTargetLocal); } else if(!rightTargetLocal.equals(lastPaintedPos)){ drawPaintLineVoxels(lastPaintedPos,rightTargetLocal); lastPaintedPos.copy(rightTargetLocal); } } 
                     else if(isPreviewingSphere) updateSpherePreview(drawStartPos,rightTargetLocal,true); 
                     else if(isPreviewingPlane) updatePlanePreview(drawStartPos,rightTargetLocal,true); 
-else if(isPreviewingCylinder) updateCylinderPreview(drawStartPos,rightTargetLocal,true); 
+                    else if(isPreviewingCylinder) updateCylinderPreview(drawStartPos,rightTargetLocal,true); 
                     else if(isPreviewingTriangle) updateTrianglePreview(drawStartPos,rightTargetLocal,true); 
-                    else if(isPreviewingIcosahedron) updateIcosahedronPreview(drawStartPos,rightTargetLocal,true);
-                    else if(activeTool === 'line') {
-                        // 1-Handed Preview (Starts from trigger press origin)
-                        if (lineToolMode === '1-handed' && isDrawing) {
-                            linePreviewMesh.visible = true;
-                            if (lineToolType === 'straight') {
-                                updateLinePreviewMesh(drawStartPos, rightTargetLocal, true);
-                            } else {
-                                const rDir = new THREE.Vector3(0, 0, -1).transformDirection(xrRight.matrixWorld);
-                                const rUp = new THREE.Vector3(0, 1, 0).transformDirection(xrRight.matrixWorld);
-                                updateArcPreviewMesh(drawStartPos, rDir, rUp, rightTargetLocal, rDir, rUp, true);
-                            }
-                        }
-                    }
+                    else if(isPreviewingIcosahedron) updateIcosahedronPreview(drawStartPos,rightTargetLocal,true); 
                 }
-                
-                // 2-Handed Preview (Always visible while hovering the tools)
-                if (activeTool === 'line' && lineToolMode === '2-handed') {
-                    linePreviewMesh.visible = true;
-                    if (lineToolType === 'straight') {
-                        updateLinePreviewMesh(leftTargetLocal, rightTargetLocal, true);
-                    } else {
-                        const lDir = new THREE.Vector3(0, 0, -1).transformDirection(xrLeft.matrixWorld);
-                        const rDir = new THREE.Vector3(0, 0, -1).transformDirection(xrRight.matrixWorld);
-                        const lUp = new THREE.Vector3(0, 1, 0).transformDirection(xrLeft.matrixWorld);
-                        const rUp = new THREE.Vector3(0, 1, 0).transformDirection(xrRight.matrixWorld);
-                        updateArcPreviewMesh(leftTargetLocal, lDir, lUp, rightTargetLocal, rDir, rUp, true);
-                    }
-                } else if (activeTool === 'line' && lineToolMode === '1-handed' && !isDrawing) {
-                    linePreviewMesh.visible = false;
-                }
-
-                if(xrLeft&&isErasing&&!isColorPicking){
+                if(xrLeft&&isErasing&&!isColorPicking){ 
                     hideAllPreviews();
                     if(activeTool==='brush'){ if(!leftTargetLocal.equals(lastErasedPos)){ placeBrushVoxels(leftTargetLocal,false); lastErasedPos.copy(leftTargetLocal); } } else if(activeTool==='sculpt') executeSculpt(leftTargetLocal,false); else if(activeTool==='stroke'&&strokeMode==='continuous'){ if(lastErasedPos.x===Infinity){ placeBrushVoxels(leftTargetLocal,false); lastErasedPos.copy(leftTargetLocal); } else if(!leftTargetLocal.equals(lastErasedPos)){ drawLineVoxels(lastErasedPos,leftTargetLocal,false); lastErasedPos.copy(leftTargetLocal); } } else if(activeTool==='sheet'&&xrRight){ if(lastSheetLeftPos.x===Infinity){ lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,lastSheetLeftPos,lastSheetRightPos,false,brushSize); } else { drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,leftTargetLocal,rightTargetLocal,false,brushSize); lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); } } 
                     else if(activeTool==='box'&&isPreviewingBox) updateBoxPreview(drawStartPos,leftTargetLocal,false); 
