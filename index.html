@@ -771,7 +771,10 @@ function updateLinePreviewFromPoints(points, isPainting) {
                                 for (let dz = -r; dz <= r; dz++) {
                                     if (!isInside(dx, dy, dz)) continue;
                                     
-                                    if (brushVolume === 'shell' && r > 0) {
+                                    const forceHollowPreview = (activeTool === 'stroke' && brushSize > 2) || 
+                                                              (activeTool === 'line' && typeof lineDrawMode !== 'undefined' && lineDrawMode === 'stroke' && brushSize > 2);
+                                    
+                                    if ((brushVolume === 'shell' || forceHollowPreview) && r > 0) {
                                         const isSurface = !isInside(dx + 1, dy, dz) || !isInside(dx - 1, dy, dz) ||
                                                           !isInside(dx, dy + 1, dz) || !isInside(dx, dy - 1, dz) ||
                                                           !isInside(dx, dy, dz + 1) || !isInside(dx, dy, dz - 1);
@@ -1227,7 +1230,10 @@ function updatePlanePreview(start, end, isPainting) {
                 if (cx !== lastGx || cy !== lastGy || cz !== lastGz) {
                     for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
                         if (!isInside(dx, dy, dz)) continue;
-                        if (brushVolume === 'shell' && r > 0) { const sur = !isInside(dx+1,dy,dz)||!isInside(dx-1,dy,dz)||!isInside(dx,dy+1,dz)||!isInside(dx,dy-1,dz)||!isInside(dx,dy,dz+1)||!isInside(dx,dy-1,dz); if (!sur) continue; }
+                        const forceHollowPreview = (activeTool === 'stroke' && brushSize > 2) || 
+                                                  (activeTool === 'line' && typeof lineDrawMode !== 'undefined' && lineDrawMode === 'stroke' && brushSize > 2);
+                        if ((brushVolume === 'shell' || forceHollowPreview) && r > 0) { const sur = !isInside(dx+1,dy,dz)||!isInside(dx-1,dy,dz)||!isInside(dx,dy+1,dz)||!isInside(dx,dy-1,dz)||!isInside(dx,dy,dz+1)||!isInside(dx,dy-1,dz); if (!sur) continue; }
+
                         const hash = (cx+dx + 32768) + (cy+dy + 32768) * 65536 + (cz+dz + 32768) * 4294967296;
                         if (!fillVisited.has(hash)) { fillVisited.add(hash); if (instCount < 30000) { const mArr = linePreviewMesh.instanceMatrix.array; mArr[instCount*16+12] = cx+dx; mArr[instCount*16+13] = cy+dy; mArr[instCount*16+14] = cz+dz; instCount++; } }
                     }
@@ -2217,32 +2223,29 @@ function placeBrushVoxels(pos, isP) {
                     // NEW: Force shell mode if using Line tool in Stroke mode with radius > 2
                     const forceShell = (activeTool === 'line' && lineDrawMode === 'stroke' && brushSize > 2);
                     
-                    if ((brushVolume === 'shell' || forceShell) && r > 0) {
-                        // A voxel is on the surface if ANY neighbor is outside the shape.
-                        // We check the 6 immediate faces.
-                        const isSurface = !isInside(dx + 1, dy, dz) || 
-                                          !isInside(dx - 1, dy, dz) || 
-                                          !isInside(dx, dy + 1, dz) || 
-                                          !isInside(dx, dy - 1, dz) || 
-                                          !isInside(dx, dy, dz + 1) || 
-                                          !isInside(dx, dy, dz - 1);
+                if (isP) {
+                    // DRAWING LOGIC
+                    // Force hollow if Line (Stroke mode) or Stroke tool has radius > 2
+                    const forceHollow = (activeTool === 'stroke' && brushSize > 2) || 
+                                       (activeTool === 'line' && typeof lineDrawMode !== 'undefined' && lineDrawMode === 'stroke' && brushSize > 2);
+
+                    if ((brushVolume === 'shell' || forceHollow) && r > 0) {
+                        const isSurface = !isInside(dx + 1, dy, dz) || !isInside(dx - 1, dy, dz) || 
+                                          !isInside(dx, dy + 1, dz) || !isInside(dx, dy - 1, dz) || 
+                                          !isInside(dx, dy, dz + 1) || !isInside(dx, dy, dz - 1);
                         
                         if (isSurface) {
-                            // Place the shell voxel
                             const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
                             setVoxel(gx, gy, gz, true, color, matTypes[0]);
                         } else {
-                            // AGGRESSIVE CLEARING: 
-                            // When moving in a continuous stroke, the interior of the current 
-                            // sphere MUST erase any voxels placed by previous steps to keep 
-                            // the tube hollow.
+                            // Erase interior to ensure the tube stays hollow during continuous movement
                             setVoxel(gx, gy, gz, false, null);
                         }
                     } else {
-                        // SOLID MODE: Standard behavior
                         const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
                         setVoxel(gx, gy, gz, true, color, matTypes[0]);
                     }
+                }
                 } else {
                     // ERASING LOGIC: Always remove the voxel
                     setVoxel(gx, gy, gz, false, null);
