@@ -1590,15 +1590,23 @@ function updatePlanePreview(start, end, isPainting) {
             rightMenuTexture.needsUpdate = true;
         }
 
-        function handleRightMenuClick(cx, cy) {
-            if (cx >= 50 && cx <= 462 && cy >= 36 && cy <= 36 + 12 * 39) {
+function handleRightMenuClick(cx, cy) {
+            // Changed 12 * 39 to 13 * 39 to increase the click boundary for the new tool
+            if (cx >= 50 && cx <= 462 && cy >= 36 && cy <= 36 + 13 * 39) {
                 const idx = Math.floor((cy - 36) / 39);
-                if (idx >= 0 && idx < 12) {
+                
+                // Changed idx < 12 to idx < 13
+                if (idx >= 0 && idx < 13) {
                     if (hasSelection) applySelection();
                     isPreviewingBox = isPreviewingSphere = isPreviewingPlane = isPreviewingTriangle = isPreviewingCylinder = isPreviewingIcosahedron = false;
                     boxPreviewMesh.visible = spherePreviewMesh.visible = bucketPreviewMesh.visible = linePreviewMesh.visible = false;
-                    const tools = ['brush', 'stroke', 'sheet', 'paint', 'sculpt', 'plane', 'box', 'quadsphere', 'cylinder', 'triangle', 'icosahedron', 'select'];
-                    activeTool = tools[idx]; updateCursors(); rightMenuNeedsUpdate = leftMenuNeedsUpdate = true;
+                    
+                    // Added 'line' at index 1 to match your visual menu order
+                    const tools = ['brush', 'line', 'stroke', 'sheet', 'paint', 'sculpt', 'plane', 'box', 'quadsphere', 'cylinder', 'triangle', 'icosahedron', 'select'];
+                    
+                    activeTool = tools[idx]; 
+                    updateCursors(); 
+                    rightMenuNeedsUpdate = leftMenuNeedsUpdate = true;
                 }
             }
         }
