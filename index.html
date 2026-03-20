@@ -1235,7 +1235,27 @@ function updatePlanePreview(start, end, isPainting) {
         const grip0 = renderer.xr.getControllerGrip(0); const grip1 = renderer.xr.getControllerGrip(1);
         scene.add(controller0, controller1, grip0, grip1);
 
-        xrRight = controller0; xrLeft = controller1; gripRight = grip0; gripLeft = grip1;
+        xrRight = controller0; xrLeft = controller1; gripRight = grip0; gripLeft = grip1;// --- Hardware Event Listeners ---
+        function onSqueezeStart() {
+            if (this === gripRight) isRightGripping = true;
+            if (this === gripLeft) isLeftGripping = true;
+        }
+        function onSqueezeEnd() {
+            if (this === gripRight) isRightGripping = false;
+            if (this === gripLeft) isLeftGripping = false;
+        }
+
+        // Attach Triggers
+        controller0.addEventListener('selectstart', onSelectStart);
+        controller0.addEventListener('selectend', onSelectEnd);
+        controller1.addEventListener('selectstart', onSelectStart);
+        controller1.addEventListener('selectend', onSelectEnd);
+
+        // Attach Grips
+        grip0.addEventListener('squeezestart', onSqueezeStart);
+        grip0.addEventListener('squeezeend', onSqueezeEnd);
+        grip1.addEventListener('squeezestart', onSqueezeStart);
+        grip1.addEventListener('squeezeend', onSqueezeEnd);
         const raycaster = new THREE.Raycaster();
         
         const leftLaserLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }));
