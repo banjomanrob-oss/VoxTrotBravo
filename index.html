@@ -721,17 +721,25 @@
             conePreviewMesh.visible = polyPreviewMesh.visible = false;
         }
 
-        const bucketPreviewMesh = new THREE.InstancedMesh(voxelGeometry, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, depthTest: false }), 30000);
+const bucketPreviewMesh = new THREE.InstancedMesh(voxelGeometry, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, depthTest: false }), 30000);
         bucketPreviewMesh.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
-        bucketPreviewMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); bucketPreviewMesh.matrixAutoUpdate = false; bucketPreviewMesh.visible = false;
-        for(let i=0; i<30000; i++) { bucketPreviewMesh.instanceMatrix.array[i*16]=1; bucketPreviewMesh.instanceMatrix.array[i*16+5]=1; bucketPreviewMesh.instanceMatrix.array[i*16+10]=1; bucketPreviewMesh.instanceMatrix.array[i*16+15]=1; }
+        bucketPreviewMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); 
+        bucketPreviewMesh.matrixAutoUpdate = false; 
+        bucketPreviewMesh.updateMatrix(); // <--- FIX: Locks in the Voxel Scale
+        bucketPreviewMesh.visible = false;
+        for(let i=0; i<30000; i++) { bucketPreviewMesh.instanceMatrix.array[i*16]=1; bucketPreviewMesh.instanceMatrix.array[i*16+5]=1; bucketPreviewMesh.instanceMatrix.array[i*16+10]=1; bucketPreviewMesh.instanceMatrix.array[i*16+15]=1;
+        }
         worldGroup.add(bucketPreviewMesh);
 
         const linePreviewMesh = new THREE.InstancedMesh(voxelGeometry, new THREE.MeshBasicMaterial({ color: 0x4facfe, transparent: true, opacity: 0.4, depthTest: false, depthWrite: false }), 30000);
         linePreviewMesh.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
-        linePreviewMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); linePreviewMesh.matrixAutoUpdate = false; linePreviewMesh.visible = false;
-        for(let i=0; i<30000; i++) { linePreviewMesh.instanceMatrix.array[i*16]=1; linePreviewMesh.instanceMatrix.array[i*16+5]=1; linePreviewMesh.instanceMatrix.array[i*16+10]=1; linePreviewMesh.instanceMatrix.array[i*16+15]=1; }
-        worldGroup.add(linePreviewMesh);        
+        linePreviewMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); 
+        linePreviewMesh.matrixAutoUpdate = false; 
+        linePreviewMesh.updateMatrix(); // <--- FIX: Locks in the Voxel Scale
+        linePreviewMesh.visible = false;
+        for(let i=0; i<30000; i++) { linePreviewMesh.instanceMatrix.array[i*16]=1; linePreviewMesh.instanceMatrix.array[i*16+5]=1; linePreviewMesh.instanceMatrix.array[i*16+10]=1; linePreviewMesh.instanceMatrix.array[i*16+15]=1;
+        }
+        worldGroup.add(linePreviewMesh);       
 function updateLinePreviewFromPoints(points, isPainting) {
             let instCount = 0;
             const r = brushSize - 1, rSq = (r + 0.1) * (r + 0.1);
