@@ -118,6 +118,7 @@
         
         let activeTool = 'brush'; 
         let extrudeAxis = 'free'; // New State for Extrude Tool
+        let extrudeAdjoining = false; // New: Toggle for face extrusion
         let strokeMode = 'continuous'; 
         let sheetMode = 'surface';
         let brushShape = 'cube'; 
@@ -1291,10 +1292,9 @@ function updatePlanePreview(start, end, isPainting) {
                 drawButton(leftMenuCtx, 140, 60, 110, 45, 'LOCK X', extrudeAxis === 'X');
                 drawButton(leftMenuCtx, 260, 60, 110, 45, 'LOCK Y', extrudeAxis === 'Y');
                 drawButton(leftMenuCtx, 380, 60, 112, 45, 'LOCK Z', extrudeAxis === 'Z');
-                drawButton(leftMenuCtx, 20, 120, 225, 45, 'Shape: CUBE', brushShape === 'cube'); drawButton(leftMenuCtx, 265, 120, 225, 45, 'Shape: SPHERE', brushShape === 'sphere');
-                drawButton(leftMenuCtx, 20, 180, 225, 45, 'SOLID', brushVolume === 'solid'); drawButton(leftMenuCtx, 265, 180, 225, 45, 'SHELL', brushVolume === 'shell');
-                drawButton(leftMenuCtx, 20, 240, 80, 45, '[-]', false); drawButton(leftMenuCtx, 110, 240, 312, 45, `Radius: ${brushSize}`, false); drawButton(leftMenuCtx, 432, 240, 60, 45, '[+]', false);
+                drawButton(leftMenuCtx, 20, 120, 472, 45, `Extrude Adjoining: ${extrudeAdjoining ? 'ON' : 'OFF'}`, extrudeAdjoining);
             } else if (activeTool === 'line') {
+
                 drawButton(leftMenuCtx, 50, 60, 200, 45, 'ONE-HAND', lineMode === 'one-hand'); 
                 drawButton(leftMenuCtx, 262, 60, 200, 45, 'TWO-HAND', lineMode === 'two-hand');
                 
@@ -1504,14 +1504,7 @@ function updatePlanePreview(start, end, isPainting) {
                     if (cx >= 260 && cx <= 370) extrudeAxis = 'Y';
                     if (cx >= 380 && cx <= 492) extrudeAxis = 'Z';
                 } else if (cy >= 120 && cy <= 165) {
-                    if (cx >= 20 && cx <= 245) brushShape = 'cube';
-                    if (cx >= 265 && cx <= 490) brushShape = 'sphere';
-                } else if (cy >= 180 && cy <= 225) {
-                    if (cx >= 20 && cx <= 245) brushVolume = 'solid';
-                    if (cx >= 265 && cx <= 490) brushVolume = 'shell';
-                } else if (cy >= 240 && cy <= 285) {
-                    if (cx >= 20 && cx <= 100) brushSize = Math.max(1, brushSize - 1);
-                    if (cx >= 432 && cx <= 492) brushSize = Math.min(10, brushSize + 1);
+                    if (cx >= 20 && cx <= 492) extrudeAdjoining = !extrudeAdjoining;
                 }
             } else if (activeTool === 'stroke') {
                 if (cy >= 70 && cy <= 120) { 
@@ -2339,48 +2332,50 @@ function executeLineTool(startPos, endPos, isPainting) {
         }
 
         function executeExtrudeTool(start, end, isP) {
-            const r = brushSize - 1;
-            const rSqOuter = (r + 0.4) * (r + 0.4);
             const cSx = Math.round(start.x / VOXEL_SIZE), cSy = Math.round(start.y / VOXEL_SIZE), cSz = Math.round(start.z / VOXEL_SIZE);
             let cEx = Math.round(end.x / VOXEL_SIZE), cEy = Math.round(end.y / VOXEL_SIZE), cEz = Math.round(end.z / VOXEL_SIZE);
 
-            // Constraint logic: Snap the end point to an axis if requested
             if (extrudeAxis === 'X') { cEy = cSy; cEz = cSz; }
             else if (extrudeAxis === 'Y') { cEx = cSx; cEz = cSz; }
             else if (extrudeAxis === 'Z') { cEx = cSx; cEy = cSy; }
 
-            const isInside = (dx, dy, dz) => brushShape === 'sphere' ? (dx * dx + dy * dy + dz * dz <= rSqOuter) : (Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r);
-
             const dx = cEx - cSx, dy = cEy - cSy, dz = cEz - cSz;
-            const absX = Math.abs(dx), absY = Math.abs(dy), absZ = Math.abs(dz);
-            const max = Math.max(absX, absY, absZ);
-
-            for (let step = 0; step <= max; step++) {
-                const t = max === 0 ? 0 : step / max;
-                const projX = cSx + Math.round(dx * t), projY = cSy + Math.round(dy * t), projZ = cSz + Math.round(dz * t);
-
-                for (let ox = -r; ox <= r; ox++) {
-                    for (let oy = -r; oy <= r; oy++) {
-                        for (let oz = -r; oz <= r; oz++) {
-                            if (!isInside(ox, oy, oz)) continue;
-                            const gx = projX + ox, gy = projY + oy, gz = projZ + oz;
-                            
-                            if (isP) {
-                                if (brushVolume === 'shell' && r > 0) {
-                                    const isSurf = !isInside(ox + 1, oy, oz) || !isInside(ox - 1, oy, oz) || !isInside(ox, oy + 1, oz) || !isInside(ox, oy - 1, oz) || !isInside(ox, oy, oz + 1) || !isInside(ox, oy, oz - 1);
-                                    if (isSurf || step === 0 || step === max) {
-                                        setVoxel(gx, gy, gz, true, getDrawColor(gx, gy, gz, cSx - r, cSx + r, cSy - r, cSy + r, 0), matTypes[0]);
-                                    } else if (clearInterior) {
-                                        setVoxel(gx, gy, gz, false, null);
-                                    }
-                                } else {
-                                    setVoxel(gx, gy, gz, true, getDrawColor(gx, gy, gz, cSx - r, cSx + r, cSy - r, cSy + r, 0), matTypes[0]);
-                                }
-                            } else {
-                                setVoxel(gx, gy, gz, false, null);
+            const max = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz));
+            
+            // Gather voxels to extrude
+            const extrusionList = [];
+            if (extrudeAdjoining) {
+                const targetMat = getVoxelMatAndColor(cSx, cSy, cSz, targetQueryColor);
+                if (targetMat !== -1) {
+                    fillVisited.clear(); fillQueue.length = 0;
+                    fillQueue.push(cSx, cSy, cSz);
+                    fillVisited.add((cSx+32768)+(cSy+32768)*65536+(cSz+32768)*4294967296);
+                    let qH = 0;
+                    while(qH < fillQueue.length && extrusionList.length < 5000) {
+                        const x = fillQueue[qH++], y = fillQueue[qH++], z = fillQueue[qH++];
+                        extrusionList.push({x, y, z});
+                        const neighbors = (extrudeAxis === 'X') ? [0,1,0, 0,-1,0, 0,0,1, 0,0,-1] : 
+                                          (extrudeAxis === 'Y') ? [1,0,0, -1,0,0, 0,0,1, 0,0,-1] : 
+                                          [1,0,0, -1,0,0, 0,1,0, 0,-1,0];
+                        for (let i=0; i<neighbors.length; i+=3) {
+                            const nx=x+neighbors[i], ny=y+neighbors[i+1], nz=z+neighbors[i+2], k=(nx+32768)+(ny+32768)*65536+(nz+32768)*4294967296;
+                            if (!fillVisited.has(k) && getVoxelMatAndColor(nx,ny,nz,queryColor) === targetMat) {
+                                fillVisited.add(k); fillQueue.push(nx,ny,nz);
                             }
                         }
                     }
+                }
+            } else {
+                extrusionList.push({x: cSx, y: cSy, z: cSz});
+            }
+
+            for (let step = 1; step <= max; step++) {
+                const t = step / max;
+                const ox = Math.round(dx * t), oy = Math.round(dy * t), oz = Math.round(dz * t);
+                for (const v of extrusionList) {
+                    const gx = v.x + ox, gy = v.y + oy, gz = v.z + oz;
+                    const col = isP ? getDrawColor(gx, gy, gz, cSx-2, cSx+2, cSy-2, cSy+2, 0) : null;
+                    setVoxel(gx, gy, gz, isP, col, matTypes[0]);
                 }
             }
             leftMenuNeedsUpdate = true;
