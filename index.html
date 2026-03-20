@@ -977,45 +977,45 @@
             else boxPreviewMat.color.setHex(0xff0055);
         }
 
-function updatePlanePreview(start, end, isPainting) {
-    let s = new THREE.Vector3().copy(start), e = new THREE.Vector3().copy(end);
-    if (drawFromCenter) {
-        tempPos.copy(e).sub(s);
-        s.sub(tempPos);
-    }
+		function updatePlanePreview(start, end, isPainting) {
+			let s = new THREE.Vector3().copy(start), e = new THREE.Vector3().copy(end);
+			if (drawFromCenter) {
+				tempPos.copy(e).sub(s);
+				s.sub(tempPos);
+			}
 
-    const gSX = Math.round(s.x / VOXEL_SIZE), gSY = Math.round(s.y / VOXEL_SIZE), gSZ = Math.round(s.z / VOXEL_SIZE);
-    const gEX = Math.round(e.x / VOXEL_SIZE), gEY = Math.round(e.y / VOXEL_SIZE), gEZ = Math.round(e.z / VOXEL_SIZE);
-    
-    let minX = Math.min(gSX, gEX), maxX = Math.max(gSX, gEX);
-    let minY = Math.min(gSY, gEY), maxY = Math.max(gSY, gEY);
-    let minZ = Math.min(gSZ, gEZ), maxZ = Math.max(gSZ, gEZ);
-    
-    const dx = maxX - minX, dy = maxY - minY, dz = maxZ - minZ;
-    let flat = 'y';
-    if (dx <= dy && dx <= dz) flat = 'x';
-    else if (dz <= dx && dz <= dy) flat = 'z';
+			const gSX = Math.round(s.x / VOXEL_SIZE), gSY = Math.round(s.y / VOXEL_SIZE), gSZ = Math.round(s.z / VOXEL_SIZE);
+			const gEX = Math.round(e.x / VOXEL_SIZE), gEY = Math.round(e.y / VOXEL_SIZE), gEZ = Math.round(e.z / VOXEL_SIZE);
+			
+			let minX = Math.min(gSX, gEX), maxX = Math.max(gSX, gEX);
+			let minY = Math.min(gSY, gEY), maxY = Math.max(gSY, gEY);
+			let minZ = Math.min(gSZ, gEZ), maxZ = Math.max(gSZ, gEZ);
+			
+			const dx = maxX - minX, dy = maxY - minY, dz = maxZ - minZ;
+			let flat = 'y';
+			if (dx <= dy && dx <= dz) flat = 'x';
+			else if (dz <= dx && dz <= dy) flat = 'z';
 
-    const depth = planeThick - 1;
-    if (flat === 'x') maxX = minX + depth;
-    else if (flat === 'y') maxY = minY + depth;
-    else if (flat === 'z') maxZ = minZ + depth;
+			const depth = planeThick - 1;
+			if (flat === 'x') maxX = minX + depth;
+			else if (flat === 'y') maxY = minY + depth;
+			else if (flat === 'z') maxZ = minZ + depth;
 
-    boxPreviewMesh.visible = true;
-    boxPreviewMesh.position.set(
-        (minX + maxX) * 0.5 * VOXEL_SIZE,
-        (minY + maxY) * 0.5 * VOXEL_SIZE,
-        (minZ + maxZ) * 0.5 * VOXEL_SIZE
-    );
-    boxPreviewMesh.scale.set(
-        (maxX - minX + 1) * VOXEL_SIZE,
-        (maxY - minY + 1) * VOXEL_SIZE,
-        (maxZ - minZ + 1) * VOXEL_SIZE
-    );
-    boxPreviewMesh.updateMatrix();
-    boxPreviewMat.wireframe = false;
-    boxPreviewMat.color.setHex(isPainting ? 0x4facfe : 0xff0055);
-}
+			boxPreviewMesh.visible = true;
+			boxPreviewMesh.position.set(
+				(minX + maxX) * 0.5 * VOXEL_SIZE,
+				(minY + maxY) * 0.5 * VOXEL_SIZE,
+				(minZ + maxZ) * 0.5 * VOXEL_SIZE
+			);
+			boxPreviewMesh.scale.set(
+				(maxX - minX + 1) * VOXEL_SIZE,
+				(maxY - minY + 1) * VOXEL_SIZE,
+				(maxZ - minZ + 1) * VOXEL_SIZE
+			);
+			boxPreviewMesh.updateMatrix();
+			boxPreviewMat.wireframe = false;
+			boxPreviewMat.color.setHex(isPainting ? 0x4facfe : 0xff0055);
+		}
 
         
         function updateSpherePreview(start, end, isPainting) {
@@ -2239,6 +2239,63 @@ function placeBrushVoxels(pos, isP) {
                 } else {
                     if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
                     else setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                }
+            }
+        }
+    }
+    leftMenuNeedsUpdate = true;
+}
+
+function executeQuadSphereTool(startPos, endPos, isPainting) {
+    let s = startPos, e = endPos;
+    if (drawFromCenter) {
+        tempPos.copy(endPos).sub(startPos);
+        s = tempStart.copy(startPos).sub(tempPos);
+        e = endPos;
+    }
+
+    const minX = Math.min(Math.round(s.x / VOXEL_SIZE), Math.round(e.x / VOXEL_SIZE));
+    const maxX = Math.max(Math.round(s.x / VOXEL_SIZE), Math.round(e.x / VOXEL_SIZE));
+    const minY = Math.min(Math.round(s.y / VOXEL_SIZE), Math.round(e.y / VOXEL_SIZE));
+    const maxY = Math.max(Math.round(s.y / VOXEL_SIZE), Math.round(e.y / VOXEL_SIZE));
+    const minZ = Math.min(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
+    const maxZ = Math.max(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
+
+    if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
+
+    const cX = (minX + maxX) / 2, cY = (minY + maxY) / 2, cZ = (minZ + maxZ) / 2;
+    const rX = (maxX - minX) / 2, rY = (maxY - minY) / 2, rZ = (maxZ - minZ) / 2;
+
+    const invRxSq = rX > 0 ? 1 / (rX * rX) : 0;
+    const invRySq = rY > 0 ? 1 / (rY * rY) : 0;
+    const invRzSq = rZ > 0 ? 1 / (rZ * rZ) : 0;
+
+    const isInside = (gx, gy, gz) => {
+        if (gx < minX || gx > maxX || gy < minY || gy > maxY || gz < minZ || gz > maxZ) return false;
+        const dx = gx - cX, dy = gy - cY, dz = gz - cZ;
+        // Basic ellipsoid check: (x/rx)^2 + (y/ry)^2 + (z/rz)^2 <= 1
+        return (dx * dx * invRxSq + dy * dy * invRySq + dz * dz * invRzSq) <= 1.05;
+    };
+
+    for (let gx = minX; gx <= maxX; gx++) {
+        for (let gy = minY; gy <= maxY; gy++) {
+            for (let gz = minZ; gz <= maxZ; gz++) {
+                if (isInside(gx, gy, gz)) {
+                    const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
+                    const isSurface = !isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) ||
+                                      !isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1, gz) ||
+                                      !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1);
+
+                    if (sphereMode === 'solid') {
+                        setVoxel(gx, gy, gz, isPainting, color, matTypes[0]);
+                    } else if (sphereMode === 'shell') {
+                        if (isSurface) {
+                            setVoxel(gx, gy, gz, isPainting, color, matTypes[0]);
+                        } else if (clearInterior && isPainting) {
+                            // If user wants clear interior while drawing shell, ensure air inside
+                            setVoxel(gx, gy, gz, false, null);
+                        }
+                    }
                 }
             }
         }
