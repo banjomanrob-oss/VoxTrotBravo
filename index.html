@@ -301,6 +301,7 @@
         updatePolarArrays();
 
         let isPreviewingBox = false;
+        let isPreviewingExtrude = false;
         let isPreviewingSphere = false;
         let isPreviewingCylinder = false;
         let isPreviewingPlane = false;
@@ -2939,9 +2940,9 @@ function executeQuadSphereTool(startPos, endPos, isPainting) {
                 }
 		else { if(selectMode==='box'){ isDrawing=true; drawStartPos.copy(rightTargetLocal); isPreviewingBox=true; } else if(selectMode==='connected') executeSelectConnected(rightTargetLocal); } }
                 else if (activeTool==='stroke'&&strokeMode==='line'){ if(isPreviewingLineLeft){ drawLineVoxels(lineStartLeft,rightTargetLocal,false); isPreviewingLineLeft=false; lineStartLeft.set(Infinity,Infinity,Infinity); } else if(!isPreviewingLineRight){ lineStartRight.copy(rightTargetLocal); isPreviewingLineRight=true; } else { drawLineVoxels(lineStartRight,rightTargetLocal,true); lineStartRight.copy(rightTargetLocal); } }
-                else { isDrawing=true; drawStartPos.copy(rightTargetLocal); if(activeTool==='paint'&&paintMode==='bucket'&&hoveredFillCoords.length>0){ let minU=Infinity,maxU=-Infinity,minV=Infinity,maxV=-Infinity; for(let i=0;i<hoveredFillCoords.length;i+=3){ const px=hoveredFillCoords[i],py=hoveredFillCoords[i+1]; minU=Math.min(minU,px); maxU=Math.max(maxU,px); minV=Math.min(minV,py); maxV=Math.max(maxV,py); } for(let i=0;i<hoveredFillCoords.length;i+=3)recolorVoxelSet(hoveredFillCoords[i],hoveredFillCoords[i+1],hoveredFillCoords[i+2],getDrawColor(hoveredFillCoords[i],hoveredFillCoords[i+1],hoveredFillCoords[i+2],minU,maxU,minV,maxV,0)); lastHoveredVoxel.set(Infinity,Infinity,Infinity); hoveredFillCoords.length=0; bucketPreviewMesh.visible=false; } if(activeTool==='box')isPreviewingBox=true; if(activeTool==='quadsphere')isPreviewingSphere=true; if(activeTool==='plane')isPreviewingPlane=true; if(activeTool==='cylinder')isPreviewingCylinder=true; if(activeTool==='triangle')isPreviewingTriangle=true; if(activeTool==='icosahedron'){ isDrawing=true; isPreviewingIcosahedron=true; drawStartPos.copy(rightTargetLocal); } }
+                else { isDrawing=true; drawStartPos.copy(rightTargetLocal); if(activeTool==='box')isPreviewingBox=true; if(activeTool==='extrude')isPreviewingExtrude=true; if(activeTool==='quadsphere')isPreviewingSphere=true; if(activeTool==='plane')isPreviewingPlane=true; if(activeTool==='cylinder')isPreviewingCylinder=true; if(activeTool==='triangle')isPreviewingTriangle=true; if(activeTool==='icosahedron'){ isDrawing=true; isPreviewingIcosahedron=true; drawStartPos.copy(rightTargetLocal); } }
             } else if (this === xrLeft) {
-                if(activeTool==='select'&&hasSelection) applySelection(); else if(activeTool==='stroke'&&strokeMode==='line'){ if(isPreviewingLineRight){ drawLineVoxels(lineStartRight,leftTargetLocal,true); isPreviewingLineRight=false; lineStartRight.set(Infinity,Infinity,Infinity); } else if(!isPreviewingLineLeft){ lineStartLeft.copy(leftTargetLocal); isPreviewingLineLeft=true; } else { drawLineVoxels(lineStartLeft,leftTargetLocal,false); lineStartLeft.copy(leftTargetLocal); } } else { isErasing=true; drawStartPos.copy(leftTargetLocal); if(activeTool==='box')isPreviewingBox=true; if(activeTool==='quadsphere')isPreviewingSphere=true; if(activeTool==='plane')isPreviewingPlane=true; if(activeTool==='cylinder')isPreviewingCylinder=true; if(activeTool==='triangle')isPreviewingTriangle=true; if(activeTool==='icosahedron'){ isErasing=true; isPreviewingIcosahedron=true; drawStartPos.copy(leftTargetLocal); } }
+                if(activeTool==='select'&&hasSelection) applySelection(); else if(activeTool==='stroke'&&strokeMode==='line'){ if(isPreviewingLineRight){ drawLineVoxels(lineStartRight,leftTargetLocal,true); isPreviewingLineRight=false; lineStartRight.set(Infinity,Infinity,Infinity); } else if(!isPreviewingLineLeft){ lineStartLeft.copy(leftTargetLocal); isPreviewingLineLeft=true; } else { drawLineVoxels(lineStartLeft,leftTargetLocal,false); lineStartLeft.copy(leftTargetLocal); } } else { isErasing=true; drawStartPos.copy(leftTargetLocal); if(activeTool==='box')isPreviewingBox=true; if(activeTool==='extrude')isPreviewingExtrude=true; if(activeTool==='quadsphere')isPreviewingSphere=true; if(activeTool==='plane')isPreviewingPlane=true; if(activeTool==='cylinder')isPreviewingCylinder=true; if(activeTool==='triangle')isPreviewingTriangle=true; if(activeTool==='icosahedron'){ isErasing=true; isPreviewingIcosahedron=true; drawStartPos.copy(leftTargetLocal); } }
             }
         }
 
@@ -2963,6 +2964,8 @@ function executeQuadSphereTool(startPos, endPos, isPainting) {
                     }
 
                     if(activeTool==='box'&&isPreviewingBox){ executeBoxTool(drawStartPos,rightTargetLocal,true); isPreviewingBox=false; boxPreviewMesh.visible=false; } 
+                    if(activeTool==='extrude'&&isPreviewingExtrude){ executeExtrudeTool(drawStartPos,rightTargetLocal,true); isPreviewingExtrude=false; boxPreviewMesh.visible=false; }
+
                     if(activeTool==='quadsphere'&&isPreviewingSphere){ executeQuadSphereTool(drawStartPos,rightTargetLocal,true); isPreviewingSphere=false; spherePreviewMesh.visible=false; } 
                     if(activeTool==='cylinder'&&isPreviewingCylinder){ executeCylinderTool(drawStartPos,rightTargetLocal,true); isPreviewingCylinder=false; cylinderPreviewMesh.visible=false; } 
                     if(activeTool==='plane'&&isPreviewingPlane){ executePlaneTool(drawStartPos,rightTargetLocal,true); isPreviewingPlane=false; boxPreviewMesh.visible=false; } 
@@ -2986,6 +2989,8 @@ function executeQuadSphereTool(startPos, endPos, isPainting) {
 
 
                 if(activeTool==='box'&&isPreviewingBox){ executeBoxTool(drawStartPos,leftTargetLocal,false); isPreviewingBox=false; boxPreviewMesh.visible=false; } 
+                if(activeTool==='extrude'&&isPreviewingExtrude){ executeExtrudeTool(drawStartPos,leftTargetLocal,false); isPreviewingExtrude=false; boxPreviewMesh.visible=false; }
+
                 if(activeTool==='quadsphere'&&isPreviewingSphere){ executeQuadSphereTool(drawStartPos,leftTargetLocal,false); isPreviewingSphere=false; spherePreviewMesh.visible=false; } 
                 if(activeTool==='cylinder'&&isPreviewingCylinder){ executeCylinderTool(drawStartPos,leftTargetLocal,false); isPreviewingCylinder=false; cylinderPreviewMesh.visible=false; } 
                 if(activeTool==='plane'&&isPreviewingPlane){ executePlaneTool(drawStartPos,leftTargetLocal,false); isPreviewingPlane=false; boxPreviewMesh.visible=false; } 
@@ -3138,7 +3143,8 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                         if(transformMode==='draw'){ if(!rightTargetLocal.equals(lastPaintedPos)){ stampSelection(Math.round(rightTargetLocal.x/VOXEL_SIZE)-Math.round(selectionCenter.x),Math.round(rightTargetLocal.y/VOXEL_SIZE)-Math.round(selectionCenter.y),Math.round(rightTargetLocal.z/VOXEL_SIZE)-Math.round(selectionCenter.z)); lastPaintedPos.copy(rightTargetLocal); } } else if(transformMode==='paint'){ if(!rightTargetLocal.equals(lastPaintedPos)){ paintSelection(Math.round(rightTargetLocal.x/VOXEL_SIZE)-Math.round(selectionCenter.x),Math.round(rightTargetLocal.y/VOXEL_SIZE)-Math.round(selectionCenter.y),Math.round(rightTargetLocal.z/VOXEL_SIZE)-Math.round(selectionCenter.z)); lastPaintedPos.copy(rightTargetLocal); } } 
                     } else if(activeTool==='select'&&selectMode==='box'&&isPreviewingBox) updateBoxPreview(drawStartPos,rightTargetLocal,true); 
                     else if(activeTool==='box'&&isPreviewingBox) updateBoxPreview(drawStartPos,rightTargetLocal,true); 
-                    else if(activeTool==='extrude') updateBoxPreview(drawStartPos,rightTargetLocal,true);
+                    else if(activeTool==='extrude'&&isPreviewingExtrude) updateBoxPreview(drawStartPos,rightTargetLocal,true);
+
                     else if(activeTool==='brush'){ if(!rightTargetLocal.equals(lastPaintedPos)){ placeBrushVoxels(rightTargetLocal,true); lastPaintedPos.copy(rightTargetLocal); } } else if(activeTool==='sculpt') executeSculpt(rightTargetLocal,true); else if(activeTool==='stroke'&&strokeMode==='continuous'){ if(lastPaintedPos.x===Infinity){ placeBrushVoxels(rightTargetLocal,true); lastPaintedPos.copy(rightTargetLocal); } else if(!rightTargetLocal.equals(lastPaintedPos)){ drawLineVoxels(lastPaintedPos,rightTargetLocal,true); lastPaintedPos.copy(rightTargetLocal); } } else if(activeTool==='sheet'&&xrLeft){ if(lastSheetLeftPos.x===Infinity){ lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,lastSheetLeftPos,lastSheetRightPos,true,brushSize); } else { drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,leftTargetLocal,rightTargetLocal,true,brushSize); lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); } } else if(activeTool==='paint'&&paintMode==='brush'){ if(lastPaintedPos.x===Infinity){ placePaintVoxels(rightTargetLocal); lastPaintedPos.copy(rightTargetLocal); } else if(!rightTargetLocal.equals(lastPaintedPos)){ drawPaintLineVoxels(lastPaintedPos,rightTargetLocal); lastPaintedPos.copy(rightTargetLocal); } } 
 
                     else if(isPreviewingSphere) updateSpherePreview(drawStartPos,rightTargetLocal,true); 
@@ -3178,7 +3184,9 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
 
                     else if(activeTool==='brush'){ if(!leftTargetLocal.equals(lastErasedPos)){ placeBrushVoxels(leftTargetLocal,false); lastErasedPos.copy(leftTargetLocal); } } else if(activeTool==='sculpt') executeSculpt(leftTargetLocal,false); else if(activeTool==='stroke'&&strokeMode==='continuous'){ if(lastErasedPos.x===Infinity){ placeBrushVoxels(leftTargetLocal,false); lastErasedPos.copy(leftTargetLocal); } else if(!leftTargetLocal.equals(lastErasedPos)){ drawLineVoxels(lastErasedPos,leftTargetLocal,false); lastErasedPos.copy(leftTargetLocal); } } else if(activeTool==='sheet'&&xrRight){ if(lastSheetLeftPos.x===Infinity){ lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,lastSheetLeftPos,lastSheetRightPos,false,brushSize); } else { drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,leftTargetLocal,rightTargetLocal,false,brushSize); lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); } } 
                     else if(activeTool==='box'&&isPreviewingBox) updateBoxPreview(drawStartPos,leftTargetLocal,false); 
+                    else if(activeTool==='extrude'&&isPreviewingExtrude) updateBoxPreview(drawStartPos,leftTargetLocal,false);
                     else if(activeTool==='quadsphere'&&isPreviewingSphere) updateSpherePreview(drawStartPos,leftTargetLocal,false); 
+ 
                     else if(activeTool==='cylinder'&&isPreviewingCylinder) updateCylinderPreview(drawStartPos,leftTargetLocal,false); 
                     else if(activeTool==='plane'&&isPreviewingPlane) updatePlanePreview(drawStartPos,leftTargetLocal,false); 
                     else if(activeTool==='triangle'&&isPreviewingTriangle) updateTrianglePreview(drawStartPos,leftTargetLocal,false); 
