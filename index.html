@@ -774,6 +774,9 @@ function updateLinePreviewFromPoints(points, isPainting) {
                                     const forceHollowPreview = (activeTool === 'stroke' && brushSize > 2) || 
                                                               (activeTool === 'line' && typeof lineDrawMode !== 'undefined' && lineDrawMode === 'stroke' && brushSize > 2);
                                     
+                                    const isStrokeTool = (activeTool === 'stroke' || (activeTool === 'line' && lineDrawMode === 'stroke'));
+                                    const forceHollowPreview = isStrokeTool && brushSize > 2;
+                                    
                                     if ((brushVolume === 'shell' || forceHollowPreview) && r > 0) {
                                         const isSurface = !isInside(dx + 1, dy, dz) || !isInside(dx - 1, dy, dz) ||
                                                           !isInside(dx, dy + 1, dz) || !isInside(dx, dy - 1, dz) ||
@@ -1232,7 +1235,10 @@ function updatePlanePreview(start, end, isPainting) {
                         if (!isInside(dx, dy, dz)) continue;
                         const forceHollowPreview = (activeTool === 'stroke' && brushSize > 2) || 
                                                   (activeTool === 'line' && typeof lineDrawMode !== 'undefined' && lineDrawMode === 'stroke' && brushSize > 2);
+                        const isStrokeTool = (activeTool === 'stroke' || (activeTool === 'line' && lineDrawMode === 'stroke'));
+                        const forceHollowPreview = isStrokeTool && brushSize > 2;
                         if ((brushVolume === 'shell' || forceHollowPreview) && r > 0) { const sur = !isInside(dx+1,dy,dz)||!isInside(dx-1,dy,dz)||!isInside(dx,dy+1,dz)||!isInside(dx,dy-1,dz)||!isInside(dx,dy,dz+1)||!isInside(dx,dy-1,dz); if (!sur) continue; }
+
 
                         const hash = (cx+dx + 32768) + (cy+dy + 32768) * 65536 + (cz+dz + 32768) * 4294967296;
                         if (!fillVisited.has(hash)) { fillVisited.add(hash); if (instCount < 30000) { const mArr = linePreviewMesh.instanceMatrix.array; mArr[instCount*16+12] = cx+dx; mArr[instCount*16+13] = cy+dy; mArr[instCount*16+14] = cz+dz; instCount++; } }
@@ -2226,8 +2232,9 @@ function placeBrushVoxels(pos, isP) {
                 if (isP) {
                     // DRAWING LOGIC
                     // Force hollow if Line (Stroke mode) or Stroke tool has radius > 2
-                    const forceHollow = (activeTool === 'stroke' && brushSize > 2) || 
-                                       (activeTool === 'line' && typeof lineDrawMode !== 'undefined' && lineDrawMode === 'stroke' && brushSize > 2);
+                    // Also respects the manual 'shell' volume setting for all tools
+                    const isStrokeTool = (activeTool === 'stroke' || (activeTool === 'line' && lineDrawMode === 'stroke'));
+                    const forceHollow = isStrokeTool && brushSize > 2;
 
                     if ((brushVolume === 'shell' || forceHollow) && r > 0) {
                         const isSurface = !isInside(dx + 1, dy, dz) || !isInside(dx - 1, dy, dz) || 
@@ -2238,7 +2245,9 @@ function placeBrushVoxels(pos, isP) {
                             const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
                             setVoxel(gx, gy, gz, true, color, matTypes[0]);
                         } else {
-                            // Erase interior to ensure the tube stays hollow during continuous movement
+                            // AGGRESSIVE CLEARING: 
+                            // This erases the interior of the current sphere, which 
+                            // effectively carves out the 'overlap' from previous steps.
                             setVoxel(gx, gy, gz, false, null);
                         }
                     } else {
