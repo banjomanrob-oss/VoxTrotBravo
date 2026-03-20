@@ -1513,8 +1513,16 @@ function updatePlanePreview(start, end, isPainting) {
                     if (cx >= 20 && cx <= 100) brushSize = Math.max(1, brushSize - 1);
                     if (cx >= 432 && cx <= 492) brushSize = Math.min(10, brushSize + 1);
                 }
-            } else if (cy >= 70 && cy <= 120) {
-                else if (activeTool === 'stroke') { if (cx >= 50 && cx <= 250) strokeMode = 'continuous'; if (cx >= 262 && cx <= 462) { strokeMode = 'line'; isPreviewingLineLeft = isPreviewingLineRight = false; lineStartLeft.set(Infinity, Infinity, Infinity); lineStartRight.set(Infinity, Infinity, Infinity); } } 
+            } else if (activeTool === 'stroke') {
+                if (cy >= 70 && cy <= 120) { 
+                    if (cx >= 50 && cx <= 250) strokeMode = 'continuous'; 
+                    if (cx >= 262 && cx <= 462) { 
+                        strokeMode = 'line'; 
+                        isPreviewingLineLeft = isPreviewingLineRight = false; 
+                        lineStartLeft.set(Infinity, Infinity, Infinity); 
+                        lineStartRight.set(Infinity, Infinity, Infinity); 
+                    } 
+                }
                 else if (activeTool === 'paint') { if (cx >= 50 && cx <= 250) paintMode = 'brush'; if (cx >= 262 && cx <= 462) paintMode = 'bucket'; } 
                 else if (activeTool === 'box') { if (cx >= 20 && cx <= 160) boxMode = 'solid'; if (cx >= 170 && cx <= 320) boxMode = 'shell'; if (cx >= 330 && cx <= 490) boxMode = 'wireframe'; } 
                 else if (activeTool === 'quadsphere') { if (cx >= 50 && cx <= 250) sphereMode = 'solid'; if (cx >= 262 && cx <= 462) sphereMode = 'shell'; } 
@@ -3172,7 +3180,8 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                         if (extrudeAxis === 'X') { e.y = s.y; e.z = s.z; }
                         else if (extrudeAxis === 'Y') { e.x = s.x; e.z = s.z; }
                         else if (extrudeAxis === 'Z') { e.x = s.x; e.y = s.y; }
-                        updateBoxPreview(s, e, true);
+                        updateLinePreviewMesh(s, e, true);
+                        linePreviewMesh.visible = true;
                     }
 
                     else if(activeTool==='brush'){ if(!rightTargetLocal.equals(lastPaintedPos)){ placeBrushVoxels(rightTargetLocal,true); lastPaintedPos.copy(rightTargetLocal); } } else if(activeTool==='sculpt') executeSculpt(rightTargetLocal,true); else if(activeTool==='stroke'&&strokeMode==='continuous'){ if(lastPaintedPos.x===Infinity){ placeBrushVoxels(rightTargetLocal,true); lastPaintedPos.copy(rightTargetLocal); } else if(!rightTargetLocal.equals(lastPaintedPos)){ drawLineVoxels(lastPaintedPos,rightTargetLocal,true); lastPaintedPos.copy(rightTargetLocal); } } else if(activeTool==='sheet'&&xrLeft){ if(lastSheetLeftPos.x===Infinity){ lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,lastSheetLeftPos,lastSheetRightPos,true,brushSize); } else { drawSheetQuad(lastSheetLeftPos,lastSheetRightPos,leftTargetLocal,rightTargetLocal,true,brushSize); lastSheetLeftPos.copy(leftTargetLocal); lastSheetRightPos.copy(rightTargetLocal); } } else if(activeTool==='paint'&&paintMode==='brush'){ if(lastPaintedPos.x===Infinity){ placePaintVoxels(rightTargetLocal); lastPaintedPos.copy(rightTargetLocal); } else if(!rightTargetLocal.equals(lastPaintedPos)){ drawPaintLineVoxels(lastPaintedPos,rightTargetLocal); lastPaintedPos.copy(rightTargetLocal); } } 
