@@ -2239,6 +2239,65 @@ function placeBrushVoxels(pos, isP) {
     }
     leftMenuNeedsUpdate = true;
 }
+
+
+function executeQuadSphereTool(startPos, endPos, isPainting) {
+    let s = startPos, e = endPos;
+    if (drawFromCenter) {
+        tempPos.copy(endPos).sub(startPos);
+        s = tempStart.copy(startPos).sub(tempPos);
+        e = endPos;
+    }
+
+    const minX = Math.min(Math.round(s.x / VOXEL_SIZE), Math.round(e.x / VOXEL_SIZE));
+    const maxX = Math.max(Math.round(s.x / VOXEL_SIZE), Math.round(e.x / VOXEL_SIZE));
+    const minY = Math.min(Math.round(s.y / VOXEL_SIZE), Math.round(e.y / VOXEL_SIZE));
+    const maxY = Math.max(Math.round(s.y / VOXEL_SIZE), Math.round(e.y / VOXEL_SIZE));
+    const minZ = Math.min(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
+    const maxZ = Math.max(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
+
+    if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
+
+    const cX = (minX + maxX) / 2, cY = (minY + maxY) / 2, cZ = (minZ + maxZ) / 2;
+    const rX = (maxX - minX) / 2, rY = (maxY - minY) / 2, rZ = (maxZ - minZ) / 2;
+
+    const invRxSq = rX > 0 ? 1 / (rX * rX) : 0;
+    const invRySq = rY > 0 ? 1 / (rY * rY) : 0;
+    const invRzSq = rZ > 0 ? 1 / (rZ * rZ) : 0;
+
+    const isInside = (gx, gy, gz) => {
+        if (gx < minX || gx > maxX || gy < minY || gy > maxY || gz < minZ || gz > maxZ) return false;
+        const dx = gx - cX, dy = gy - cY, dz = gz - cZ;
+        // Basic ellipsoid check: (x/rx)^2 + (y/ry)^2 + (z/rz)^2 <= 1
+        return (dx * dx * invRxSq + dy * dy * invRySq + dz * dz * invRzSq) <= 1.05;
+    };
+
+    for (let gx = minX; gx <= maxX; gx++) {
+        for (let gy = minY; gy <= maxY; gy++) {
+            for (let gz = minZ; gz <= maxZ; gz++) {
+                if (isInside(gx, gy, gz)) {
+                    const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
+                    const isSurface = !isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) ||
+                                      !isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1, gz) ||
+                                      !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1);
+
+                    if (sphereMode === 'solid') {
+                        setVoxel(gx, gy, gz, isPainting, color, matTypes[0]);
+                    } else if (sphereMode === 'shell') {
+                        if (isSurface) {
+                            setVoxel(gx, gy, gz, isPainting, color, matTypes[0]);
+                        } else if (clearInterior && isPainting) {
+                            // If user wants clear interior while drawing shell, ensure air inside
+                            setVoxel(gx, gy, gz, false, null);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    leftMenuNeedsUpdate = true;
+}
+
         
         function executeIcosahedronTool(start, end, isP) {
             let s = start, e = end;
