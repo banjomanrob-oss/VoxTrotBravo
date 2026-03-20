@@ -448,7 +448,6 @@
         
         const voxelMaterials = [matSolid, matGlass, matEmission, matMetal];
         const chunks = new Map(); 
-        const dirtyChunks = new Set(); // Tracks only chunks that changed
 
         // --- Performance Mode (Points) Textures & Materials ---
         const perfCanvas = document.createElement('canvas');
@@ -468,8 +467,7 @@
         const perfMaterials = [ptSolid, ptGlass, ptEmission, ptMetal];
 
         class ChunkLayer {
-            constructor(cx, cy, cz, matType, parent) {
-                this.parent = parent; // Reference to trigger dirty state
+            constructor(cx, cy, cz, matType) {
                 this.matType = matType;
                 this.material = voxelMaterials[matType];
                 this.capacity = 4096; 
@@ -560,7 +558,6 @@
                     if (cArr[idx] !== r || cArr[idx+1] !== g || cArr[idx+2] !== b) {
                         cArr[idx] = r; cArr[idx+1] = g; cArr[idx+2] = b;
                         this.needsUpdate = true;
-                        this.parent.markDirty(); // Notify system to update this chunk
                         if (instIdx < this.dirtyMin) this.dirtyMin = instIdx;
                         if (instIdx > this.dirtyMax) this.dirtyMax = instIdx;
                     }
@@ -650,16 +647,13 @@
                 this.layers = new Array(4).fill(null);
                 this.voxelMatMap = new Int8Array(CHUNK_VOL);
                 this.voxelMatMap.fill(-1);
-                this.worldPos = new THREE.Vector3(cx * CHUNK_SIZE * VOXEL_SIZE, cy * CHUNK_SIZE * VOXEL_SIZE, cz * CHUNK_SIZE * VOXEL_SIZE);
             }
-
-            markDirty() { dirtyChunks.add(this); }
 
             addVoxel(lx, ly, lz, gx, gy, gz, color, matType) {
                 const localIdx = lx | (ly << 5) | (lz << 10);
                 const currentMat = this.voxelMatMap[localIdx];
                 if (currentMat !== -1 && currentMat !== matType) this.layers[currentMat].removeVoxel(localIdx);
-                if (!this.layers[matType]) this.layers[matType] = new ChunkLayer(this.cx, this.cy, this.cz, matType, this);
+                if (!this.layers[matType]) this.layers[matType] = new ChunkLayer(this.cx, this.cy, this.cz, matType);
                 this.voxelMatMap[localIdx] = matType;
                 this.layers[matType].addVoxel(localIdx, gx, gy, gz, color);
             }
@@ -977,45 +971,45 @@
             else boxPreviewMat.color.setHex(0xff0055);
         }
 
-		function updatePlanePreview(start, end, isPainting) {
-			let s = new THREE.Vector3().copy(start), e = new THREE.Vector3().copy(end);
-			if (drawFromCenter) {
-				tempPos.copy(e).sub(s);
-				s.sub(tempPos);
-			}
+function updatePlanePreview(start, end, isPainting) {
+    let s = new THREE.Vector3().copy(start), e = new THREE.Vector3().copy(end);
+    if (drawFromCenter) {
+        tempPos.copy(e).sub(s);
+        s.sub(tempPos);
+    }
 
-			const gSX = Math.round(s.x / VOXEL_SIZE), gSY = Math.round(s.y / VOXEL_SIZE), gSZ = Math.round(s.z / VOXEL_SIZE);
-			const gEX = Math.round(e.x / VOXEL_SIZE), gEY = Math.round(e.y / VOXEL_SIZE), gEZ = Math.round(e.z / VOXEL_SIZE);
-			
-			let minX = Math.min(gSX, gEX), maxX = Math.max(gSX, gEX);
-			let minY = Math.min(gSY, gEY), maxY = Math.max(gSY, gEY);
-			let minZ = Math.min(gSZ, gEZ), maxZ = Math.max(gSZ, gEZ);
-			
-			const dx = maxX - minX, dy = maxY - minY, dz = maxZ - minZ;
-			let flat = 'y';
-			if (dx <= dy && dx <= dz) flat = 'x';
-			else if (dz <= dx && dz <= dy) flat = 'z';
+    const gSX = Math.round(s.x / VOXEL_SIZE), gSY = Math.round(s.y / VOXEL_SIZE), gSZ = Math.round(s.z / VOXEL_SIZE);
+    const gEX = Math.round(e.x / VOXEL_SIZE), gEY = Math.round(e.y / VOXEL_SIZE), gEZ = Math.round(e.z / VOXEL_SIZE);
+    
+    let minX = Math.min(gSX, gEX), maxX = Math.max(gSX, gEX);
+    let minY = Math.min(gSY, gEY), maxY = Math.max(gSY, gEY);
+    let minZ = Math.min(gSZ, gEZ), maxZ = Math.max(gSZ, gEZ);
+    
+    const dx = maxX - minX, dy = maxY - minY, dz = maxZ - minZ;
+    let flat = 'y';
+    if (dx <= dy && dx <= dz) flat = 'x';
+    else if (dz <= dx && dz <= dy) flat = 'z';
 
-			const depth = planeThick - 1;
-			if (flat === 'x') maxX = minX + depth;
-			else if (flat === 'y') maxY = minY + depth;
-			else if (flat === 'z') maxZ = minZ + depth;
+    const depth = planeThick - 1;
+    if (flat === 'x') maxX = minX + depth;
+    else if (flat === 'y') maxY = minY + depth;
+    else if (flat === 'z') maxZ = minZ + depth;
 
-			boxPreviewMesh.visible = true;
-			boxPreviewMesh.position.set(
-				(minX + maxX) * 0.5 * VOXEL_SIZE,
-				(minY + maxY) * 0.5 * VOXEL_SIZE,
-				(minZ + maxZ) * 0.5 * VOXEL_SIZE
-			);
-			boxPreviewMesh.scale.set(
-				(maxX - minX + 1) * VOXEL_SIZE,
-				(maxY - minY + 1) * VOXEL_SIZE,
-				(maxZ - minZ + 1) * VOXEL_SIZE
-			);
-			boxPreviewMesh.updateMatrix();
-			boxPreviewMat.wireframe = false;
-			boxPreviewMat.color.setHex(isPainting ? 0x4facfe : 0xff0055);
-		}
+    boxPreviewMesh.visible = true;
+    boxPreviewMesh.position.set(
+        (minX + maxX) * 0.5 * VOXEL_SIZE,
+        (minY + maxY) * 0.5 * VOXEL_SIZE,
+        (minZ + maxZ) * 0.5 * VOXEL_SIZE
+    );
+    boxPreviewMesh.scale.set(
+        (maxX - minX + 1) * VOXEL_SIZE,
+        (maxY - minY + 1) * VOXEL_SIZE,
+        (maxZ - minZ + 1) * VOXEL_SIZE
+    );
+    boxPreviewMesh.updateMatrix();
+    boxPreviewMat.wireframe = false;
+    boxPreviewMat.color.setHex(isPainting ? 0x4facfe : 0xff0055);
+}
 
         
         function updateSpherePreview(start, end, isPainting) {
@@ -2245,63 +2239,6 @@ function placeBrushVoxels(pos, isP) {
     }
     leftMenuNeedsUpdate = true;
 }
-
-function executeQuadSphereTool(startPos, endPos, isPainting) {
-    let s = startPos, e = endPos;
-    if (drawFromCenter) {
-        tempPos.copy(endPos).sub(startPos);
-        s = tempStart.copy(startPos).sub(tempPos);
-        e = endPos;
-    }
-
-    const minX = Math.min(Math.round(s.x / VOXEL_SIZE), Math.round(e.x / VOXEL_SIZE));
-    const maxX = Math.max(Math.round(s.x / VOXEL_SIZE), Math.round(e.x / VOXEL_SIZE));
-    const minY = Math.min(Math.round(s.y / VOXEL_SIZE), Math.round(e.y / VOXEL_SIZE));
-    const maxY = Math.max(Math.round(s.y / VOXEL_SIZE), Math.round(e.y / VOXEL_SIZE));
-    const minZ = Math.min(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
-    const maxZ = Math.max(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
-
-    if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
-
-    const cX = (minX + maxX) / 2, cY = (minY + maxY) / 2, cZ = (minZ + maxZ) / 2;
-    const rX = (maxX - minX) / 2, rY = (maxY - minY) / 2, rZ = (maxZ - minZ) / 2;
-
-    const invRxSq = rX > 0 ? 1 / (rX * rX) : 0;
-    const invRySq = rY > 0 ? 1 / (rY * rY) : 0;
-    const invRzSq = rZ > 0 ? 1 / (rZ * rZ) : 0;
-
-    const isInside = (gx, gy, gz) => {
-        if (gx < minX || gx > maxX || gy < minY || gy > maxY || gz < minZ || gz > maxZ) return false;
-        const dx = gx - cX, dy = gy - cY, dz = gz - cZ;
-        // Basic ellipsoid check: (x/rx)^2 + (y/ry)^2 + (z/rz)^2 <= 1
-        return (dx * dx * invRxSq + dy * dy * invRySq + dz * dz * invRzSq) <= 1.05;
-    };
-
-    for (let gx = minX; gx <= maxX; gx++) {
-        for (let gy = minY; gy <= maxY; gy++) {
-            for (let gz = minZ; gz <= maxZ; gz++) {
-                if (isInside(gx, gy, gz)) {
-                    const color = getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0);
-                    const isSurface = !isInside(gx + 1, gy, gz) || !isInside(gx - 1, gy, gz) ||
-                                      !isInside(gx, gy + 1, gz) || !isInside(gx, gy - 1, gz) ||
-                                      !isInside(gx, gy, gz + 1) || !isInside(gx, gy, gz - 1);
-
-                    if (sphereMode === 'solid') {
-                        setVoxel(gx, gy, gz, isPainting, color, matTypes[0]);
-                    } else if (sphereMode === 'shell') {
-                        if (isSurface) {
-                            setVoxel(gx, gy, gz, isPainting, color, matTypes[0]);
-                        } else if (clearInterior && isPainting) {
-                            // If user wants clear interior while drawing shell, ensure air inside
-                            setVoxel(gx, gy, gz, false, null);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    leftMenuNeedsUpdate = true;
-}
         
         function executeIcosahedronTool(start, end, isP) {
             let s = start, e = end;
@@ -2853,26 +2790,7 @@ function executeQuadSphereTool(startPos, endPos, isPainting) {
                 if(needsSync(cylinderPreviewMesh, showM)) syncMirrorProxies(cylinderPreviewMesh, getMirrorProxies(cylinderPreviewMesh), showM);
                 if(needsSync(conePreviewMesh, showM)) syncMirrorProxies(conePreviewMesh, getMirrorProxies(conePreviewMesh), showM);
                 if(needsSync(polyPreviewMesh, showM)) syncMirrorProxies(polyPreviewMesh, getMirrorProxies(polyPreviewMesh), showM);
-                
-                // Only update chunks that actually changed!
-                if (dirtyChunks.size > 0) {
-                    dirtyChunks.forEach(c => c.updateBuffers());
-                    dirtyChunks.clear();
-                }
-
-                // Optimization: Distance-based Culling (90FPS stability for 10M+ voxels)
-                const camPos = camera.position;
-                const cullDistSq = 80 * 80; // Hide chunks further than 80m
-                chunks.forEach(c => {
-                    const distSq = c.worldPos.distanceToSquared(camPos);
-                    const isVisible = distSq < cullDistSq;
-                    for (let i = 0; i < 4; i++) {
-                        if (c.layers[i]) {
-                            if (renderMode === 'standard') c.layers[i].mesh.visible = (c.layers[i].count > 0 && isVisible);
-                            else c.layers[i].pointsMesh.visible = (c.layers[i].count > 0 && isVisible);
-                        }
-                    }
-                });
+                chunks.forEach(c=>c.updateBuffers());
             }
             if (renderMode === 'performance') {
                 const effSize = VOXEL_SIZE * 1.15 * worldGroup.scale.y;
