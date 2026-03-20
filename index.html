@@ -3119,10 +3119,13 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
 
                 if(hasSelection) updatePreviews(); else if(previewGroups.length>0&&previewGroups[0].visible) for(let g of previewGroups) g.visible=false;
                 const showM=activeTool!=='select', showRM=showM&&!isColorPicking;
+
+
                 if(needsSync(cursorLeft,showM)) syncMirrorProxies(cursorLeft,getMirrorProxies(cursorLeft),showM); if(needsSync(cursorRight,showRM)) syncMirrorProxies(cursorRight,getMirrorProxies(cursorRight),showRM); if(needsSync(boxPreviewMesh,showM)) syncMirrorProxies(boxPreviewMesh,getMirrorProxies(boxPreviewMesh),showM); if(needsSync(spherePreviewMesh,showM)) syncMirrorProxies(spherePreviewMesh,getMirrorProxies(spherePreviewMesh),showM);
                 if(needsSync(cylinderPreviewMesh, showM)) syncMirrorProxies(cylinderPreviewMesh, getMirrorProxies(cylinderPreviewMesh), showM);
                 if(needsSync(conePreviewMesh, showM)) syncMirrorProxies(conePreviewMesh, getMirrorProxies(conePreviewMesh), showM);
                 if(needsSync(polyPreviewMesh, showM)) syncMirrorProxies(polyPreviewMesh, getMirrorProxies(polyPreviewMesh), showM);
+                if(needsSync(linePreviewMesh, showM)) syncMirrorProxies(linePreviewMesh, getMirrorProxies(linePreviewMesh), showM);
                 chunks.forEach(c=>c.updateBuffers());
             }
             if (renderMode === 'performance') {
