@@ -2214,7 +2214,10 @@ function placeBrushVoxels(pos, isP) {
 
                 if (isP) {
                     // DRAWING LOGIC
-                    if (brushVolume === 'shell' && r > 0) {
+                    // NEW: Force shell mode if using Line tool in Stroke mode with radius > 2
+                    const forceShell = (activeTool === 'line' && lineDrawMode === 'stroke' && brushSize > 2);
+                    
+                    if ((brushVolume === 'shell' || forceShell) && r > 0) {
                         // A voxel is on the surface if ANY neighbor is outside the shape.
                         // We check the 6 immediate faces.
                         const isSurface = !isInside(dx + 1, dy, dz) || 
