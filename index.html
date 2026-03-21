@@ -101,10 +101,7 @@
         <p style="color: #00ffcc;"><b>Joysticks:</b> Shift Colors — Assignable in the Color Menu (B-Button)</p>
     </div>
 
-<div id="spectator-ui" style="position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; pointer-events: none;">
-    <p style="color: #4facfe; margin: 0 0 5px 0; font-weight: bold; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px;">Spectator View</p>
-    <canvas id="spectator-canvas" width="320" height="180" style="border: 2px solid #4facfe; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5);"></canvas>
-</div>
+
 <button id="export-button-overlay">Export .OBJ (Current Mode)</button>
 
     <script type="module">
@@ -168,11 +165,9 @@
     let exportMode = 'boxes'; 
     let renderMode = 'standard'; 
     let isDropperActive = false;
-    let viewportActive = false;
 
-    // Inside DOMContentLoaded or similar init block:
-    const specUI = document.getElementById('spectator-ui');
-    if (specUI) specUI.style.display = 'none';
+
+
         
         let planeOutline = true;
         let planeOutlineThick = 1;
@@ -383,10 +378,7 @@
     const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.25, 1000);
     camera.position.set(0, 1.6, 3);
     
-    // Spectator Camera
-    const spectatorCamera = new THREE.PerspectiveCamera(50, 320 / 180, 0.1, 1000);
-    spectatorCamera.position.set(2, 2, 2);
-    spectatorCamera.lookAt(0, 0, 0);
+
 
         const renderer = new THREE.WebGLRenderer({ 
             canvas: canvas, 
@@ -1712,7 +1704,7 @@ function handleRightMenuClick(cx, cy) {
             
             drawButton(globalMenuCtx, 40, 270, 432, 45, `Draw From Center: ${drawFromCenter ? 'ON' : 'OFF'}`, drawFromCenter);
         drawButton(globalMenuCtx, 40, 330, 200, 45, `Render: ${renderMode === 'performance' ? 'PERF' : 'STD'}`, renderMode === 'performance');
-        drawButton(globalMenuCtx, 272, 330, 200, 45, `Viewport: ${viewportActive ? 'ON' : 'OFF'}`, viewportActive);
+
             drawButton(globalMenuCtx, 40, 390, 200, 45, 'Export: BOXES', exportMode === 'boxes'); 
             drawButton(globalMenuCtx, 272, 390, 200, 45, 'Export: MESH', exportMode === 'mesh');
             drawButton(globalMenuCtx, 40, 450, 432, 50, 'EXPORT TO .OBJ', false);
@@ -1738,11 +1730,7 @@ function handleRightMenuClick(cx, cy) {
                         }
                     }
                 });
-            } else if (cx >= 272 && cx <= 472) {
-                viewportActive = !viewportActive;
-                const specUI = document.getElementById('spectator-ui');
-                if (specUI) specUI.style.display = viewportActive ? 'flex' : 'none';
-            }
+
             if (hasSelection) updatePreviews();
         }
             if (cy >= 390 && cy <= 435) { if (cx >= 40 && cx <= 240) exportMode = 'boxes'; if (cx >= 272 && cx <= 472) exportMode = 'mesh'; }
@@ -3298,34 +3286,7 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
             }
         renderer.render(scene, camera);
 
-        // Optional: Secondary render for spectator viewport
-        // Fixed Spectator Viewport Logic
-        if (viewportActive) {
-            const spectatorCanvas = document.getElementById('spectator-canvas');
-            const specCtx = spectatorCanvas.getContext('2d');
-            
-            // Track the head position using the camera's world matrix
-            tempPos.setFromMatrixPosition(camera.matrixWorld);
-            spectatorCamera.position.lerp(tempPos.add(new THREE.Vector3(1.5, 0.8, 1.5)), 0.05);
-            spectatorCamera.lookAt(worldGroup.position);
-            
-            // Temporarily disable XR to force a render pass to the DOM canvas
-            const wasXREnabled = renderer.xr.enabled;
-            renderer.xr.enabled = false;
-            
-            renderer.setViewport(0, 0, 320, 180);
-            renderer.setScissor(0, 0, 320, 180);
-            renderer.setScissorTest(true);
-            renderer.render(scene, spectatorCamera);
-            
-            // Capture the pixels from the WebGL canvas before the next clear
-            specCtx.drawImage(renderer.domElement, 0, renderer.domElement.height - 180, 320, 180, 0, 0, 320, 180);
-            
-            // Restore state
-            renderer.setScissorTest(false);
-            renderer.xr.enabled = wasXREnabled;
-            renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
-        }
+
     });
         window.addEventListener('resize',()=>{ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); });
         
