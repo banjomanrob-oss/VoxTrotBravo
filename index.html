@@ -101,7 +101,11 @@
         <p style="color: #00ffcc;"><b>Joysticks:</b> Shift Colors — Assignable in the Color Menu (B-Button)</p>
     </div>
 
-    <button id="export-button-overlay">Export .OBJ (Current Mode)</button>
+<div id="spectator-ui" style="position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; pointer-events: none;">
+    <p style="color: #4facfe; margin: 0 0 5px 0; font-weight: bold; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px;">Spectator View</p>
+    <canvas id="spectator-canvas" width="320" height="180" style="border: 2px solid #4facfe; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5);"></canvas>
+</div>
+<button id="export-button-overlay">Export .OBJ (Current Mode)</button>
 
     <script type="module">
         import * as THREE from 'three';
@@ -160,9 +164,11 @@
         let wireWidth = 1; 
         let wireFill = true; 
 
-        let paintMode = 'brush'; 
-        let exportMode = 'boxes'; 
-        let renderMode = 'standard'; 
+    let paintMode = 'brush'; 
+    let exportMode = 'boxes'; 
+    let renderMode = 'standard'; 
+    let isDropperActive = false; // New: Color sampling state
+    let viewportActive = false;  // New: Spectator viewport state
         
         let planeOutline = true;
         let planeOutlineThick = 1;
@@ -370,8 +376,13 @@
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x111111);
 
-        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.25, 1000);
-        camera.position.set(0, 1.6, 3);
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.25, 1000);
+    camera.position.set(0, 1.6, 3);
+    
+    // Spectator Camera
+    const spectatorCamera = new THREE.PerspectiveCamera(50, 320 / 180, 0.1, 1000);
+    spectatorCamera.position.set(2, 2, 2);
+    spectatorCamera.lookAt(0, 0, 0);
 
         const renderer = new THREE.WebGLRenderer({ 
             canvas: canvas, 
@@ -1593,8 +1604,7 @@ function updatePlanePreview(start, end, isPainting) {
                 drawButton(colorMenuCtx, 375, 100, 107, 45, 'METAL', mType === 3);
 
                 drawColorPickerUI(colorMenuCtx, 256, 235, 75, 40, 315, 432, 15, targetColor, false);
-                const cMode = colorModes[activeMatSlot]; drawButton(colorMenuCtx, 30, 340, 105, 40, 'SOLID', cMode === 'solid'); drawButton(colorMenuCtx, 145, 340, 105, 40, 'GRAD-H', cMode === 'grad_h'); drawButton(colorMenuCtx, 260, 340, 105, 40, 'GRAD-V', cMode === 'grad_v'); drawButton(colorMenuCtx, 375, 340, 107, 40, 'SHIFT', cMode === 'shift');
-                const cA = slotColors[activeMatSlot][0], cB = slotColors[activeMatSlot][1];
+            const cMode = colorModes[activeMatSlot]; drawButton(colorMenuCtx, 30, 340, 105, 40, 'SOLID', cMode === 'solid'); drawButton(colorMenuCtx, 145, 340, 105, 40, 'GRAD-H', cMode === 'grad_h'); drawButton(colorMenuCtx, 260, 340, 105, 40, 'GRAD-V', cMode === 'grad_v'); drawButton(colorMenuCtx, 375, 340, 107, 40, 'DROPPER', isDropperActive);                const cA = slotColors[activeMatSlot][0], cB = slotColors[activeMatSlot][1];
                 colorMenuCtx.fillStyle = '#' + cA.getHexString(); colorMenuCtx.fillRect(30, 390, 216, 55); 
                 colorMenuCtx.strokeStyle = activeColorSubSlot === 0 ? '#fff' : '#444'; colorMenuCtx.lineWidth = activeColorSubSlot === 0 ? 4 : 2; colorMenuCtx.strokeRect(30, 390, 216, 55);
                 colorMenuCtx.fillStyle = '#' + cB.getHexString(); colorMenuCtx.fillRect(266, 390, 216, 55); 
@@ -1629,8 +1639,7 @@ function updatePlanePreview(start, end, isPainting) {
                 if (cx >= 260 && cx <= 365) matTypes[activeMatSlot] = 2;
                 if (cx >= 375 && cx <= 482) matTypes[activeMatSlot] = 3;
             } 
-            else if (cy >= 340 && cy <= 380) { if (cx >= 30 && cx <= 135) { colorModes[activeMatSlot] = 'solid'; activeColorSubSlot = 0; } if (cx >= 145 && cx <= 250) colorModes[activeMatSlot] = 'grad_h'; if (cx >= 260 && cx <= 365) colorModes[activeMatSlot] = 'grad_v'; if (cx >= 375 && cx <= 482) colorModes[activeMatSlot] = 'shift'; } 
-            else if (cy >= 390 && cy <= 445) {
+        else if (cy >= 340 && cy <= 380) { if (cx >= 30 && cx <= 135) { colorModes[activeMatSlot] = 'solid'; activeColorSubSlot = 0; } if (cx >= 145 && cx <= 250) colorModes[activeMatSlot] = 'grad_h'; if (cx >= 260 && cx <= 365) colorModes[activeMatSlot] = 'grad_v'; if (cx >= 375 && cx <= 482) { isDropperActive = !isDropperActive; } }             else if (cy >= 390 && cy <= 445) {
                 const sBase = activeMatSlot * 2;
                 if (cy >= 418) {
                     if (cx >= 35 && cx <= 135) { joyLTarget = joyLTarget === sBase ? -1 : sBase; if(joyRTarget === joyLTarget) joyRTarget = -1; }
@@ -1694,7 +1703,8 @@ function handleRightMenuClick(cx, cy) {
             drawButton(globalMenuCtx, 40, 210, 50, 50, '-', false); drawButton(globalMenuCtx, 100, 210, 312, 50, `Polar Symmetry: ${polarSymmetry}`, polarSymmetry > 1); drawButton(globalMenuCtx, 422, 210, 50, 50, '+', false);
             
             drawButton(globalMenuCtx, 40, 270, 432, 45, `Draw From Center: ${drawFromCenter ? 'ON' : 'OFF'}`, drawFromCenter);
-            drawButton(globalMenuCtx, 40, 330, 432, 45, `Render: ${renderMode === 'performance' ? 'PERFORMANCE' : 'STANDARD'}`, renderMode === 'performance');
+        drawButton(globalMenuCtx, 40, 330, 200, 45, `Render: ${renderMode === 'performance' ? 'PERF' : 'STD'}`, renderMode === 'performance');
+        drawButton(globalMenuCtx, 272, 330, 200, 45, `Viewport: ${viewportActive ? 'ON' : 'OFF'}`, viewportActive);
             drawButton(globalMenuCtx, 40, 390, 200, 45, 'Export: BOXES', exportMode === 'boxes'); 
             drawButton(globalMenuCtx, 272, 390, 200, 45, 'Export: MESH', exportMode === 'mesh');
             drawButton(globalMenuCtx, 40, 450, 432, 50, 'EXPORT TO .OBJ', false);
@@ -1708,8 +1718,24 @@ function handleRightMenuClick(cx, cy) {
             if (cy >= 210 && cy <= 260) { if (cx >= 40 && cx <= 90) polarSymmetry = Math.max(1, polarSymmetry - 1); if (cx >= 422 && cx <= 472) polarSymmetry = Math.min(16, polarSymmetry + 1); if (cx >= 100 && cx <= 412) polarSymmetry = polarSymmetry === 1 ? 4 : 1; updatePolarArrays(); }
             
             if (cy >= 270 && cy <= 315) drawFromCenter = !drawFromCenter;
-            if (cy >= 330 && cy <= 375) {
+        if (cy >= 330 && cy <= 375) {
+            if (cx >= 40 && cx <= 240) {
                 renderMode = renderMode === 'standard' ? 'performance' : 'standard';
+                chunks.forEach(chunk => {
+                    for (let i = 0; i < 4; i++) {
+                        const layer = chunk.layers[i];
+                        if (layer && layer.count > 0) {
+                            layer.mesh.visible = (renderMode === 'standard');
+                            layer.pointsMesh.visible = (renderMode === 'performance');
+                        }
+                    }
+                });
+            } else if (cx >= 272 && cx <= 472) {
+                viewportActive = !viewportActive;
+                document.getElementById('spectator-ui').style.display = viewportActive ? 'flex' : 'none';
+            }
+            if (hasSelection) updatePreviews();
+        }
                 chunks.forEach(chunk => {
                     for (let i = 0; i < 4; i++) {
                         const layer = chunk.layers[i];
@@ -2947,8 +2973,22 @@ function executeQuadSphereTool(startPos, endPos, isPainting) {
             });
             lockCtx.active = true;
 
-            if (this === xrRight) {
-                if (activeTool==='select') {                  if(hasSelection){ 
+        if (this === xrRight) {
+            if (isDropperActive) {
+                const gx = Math.round(rightTargetLocal.x / VOXEL_SIZE);
+                const gy = Math.round(rightTargetLocal.y / VOXEL_SIZE);
+                const gz = Math.round(rightTargetLocal.z / VOXEL_SIZE);
+                const sampledMat = getVoxelMatAndColor(gx, gy, gz, tempColor);
+                if (sampledMat !== -1) {
+                    slotColors[activeMatSlot][activeColorSubSlot].copy(tempColor);
+                    matTypes[activeMatSlot] = sampledMat;
+                    isDropperActive = false;
+                    colorMenuNeedsUpdate = true;
+                    updateCursors();
+                }
+                return;
+            }
+            if (activeTool==='select') {                  if(hasSelection){ 
                     if(isSettingPivot){ pivotPoint.set(Math.round(rightTargetLocal.x/VOXEL_SIZE),Math.round(rightTargetLocal.y/VOXEL_SIZE),Math.round(rightTargetLocal.z/VOXEL_SIZE)); pivotIndicator.position.set(pivotPoint.x*VOXEL_SIZE,pivotPoint.y*VOXEL_SIZE,pivotPoint.z*VOXEL_SIZE); pivotIndicator.updateMatrix(); isSettingPivot=false; updateRotatedSelection(); updatePreviews(); leftMenuNeedsUpdate=true; } 
                     else { 
                         isDrawing=true; 
@@ -3257,8 +3297,27 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                 const effSize = VOXEL_SIZE * 1.15 * worldGroup.scale.y;
                 for (let i = 0; i < perfMaterials.length; i++) perfMaterials[i].size = effSize;
             }
-            renderer.render(scene, camera);
-        });
+        renderer.render(scene, camera);
+
+        // Optional: Secondary render for spectator viewport
+        if (viewportActive) {
+            const spectatorCanvas = document.getElementById('spectator-canvas');
+            const specCtx = spectatorCanvas.getContext('2d');
+            // We update the spectator camera to roughly follow the user but from a distance
+            spectatorCamera.position.lerp(tempPos.copy(camera.position).add(new THREE.Vector3(2, 1, 2)), 0.05);
+            spectatorCamera.lookAt(worldGroup.position);
+            
+            // Clear and render to the small UI canvas
+            renderer.setViewport(0, 0, 320, 180);
+            renderer.render(scene, spectatorCamera);
+            
+            // Copy the small render result to the overlay canvas
+            specCtx.drawImage(renderer.domElement, 0, renderer.domElement.height - 180, 320, 180, 0, 0, 320, 180);
+            
+            // Reset viewport for the next main frame
+            renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+        }
+    });
         window.addEventListener('resize',()=>{ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); });
         
         // Add listener for the browser-based export button
