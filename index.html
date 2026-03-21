@@ -1771,36 +1771,36 @@ else if (cx >= 350 && cx <= 425) {
         let leftMenuNeedsUpdate = true, rightMenuNeedsUpdate = true, colorMenuNeedsUpdate = true, globalMenuNeedsUpdate = true, lastMenuUpdateTime = 0, lastColorJoystickUpdateTime = 0; 
 
         async function exportToOBJ() {
-            if (!window.showSaveFilePicker) {
-                const msg = "Streaming Export not supported. Use Chrome/Edge on Desktop.";
-                console.error(msg);
-                const box = document.createElement('div');
-                box.style = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#222;color:#ff4444;padding:20px;border:2px solid red;z-index:9999;border-radius:10px;text-align:center;font-family:sans-serif;";
-                box.innerHTML = `<h3>Export Error</h3><p>${msg}</p><button onclick="this.parentElement.remove()">Close</button>`;
-                document.body.appendChild(box);
-                return;
-            }
-
             const isMesh = exportMode === 'mesh';
             const fileName = isMesh ? 'vox_mesh.obj' : 'vox_boxes.obj';
-            
-            let fileHandle;
-            try {
-                fileHandle = await window.showSaveFilePicker({
-                    suggestedName: fileName,
-                    types: [{ description: 'OBJ Model', accept: { 'text/plain': ['.obj'] } }],
-                });
-            } catch (e) { return; }
-
-            const writable = await fileHandle.createWritable();
             const encoder = new TextEncoder();
-            const writer = writable.getWriter();
+            
+            let writer = null;
+            let blobParts = [];
+
+            if (window.showSaveFilePicker) {
+                try {
+                    const fileHandle = await window.showSaveFilePicker({
+                        suggestedName: fileName,
+                        types: [{ description: 'OBJ Model', accept: { 'text/plain': ['.obj'] } }],
+                    });
+                    const writable = await fileHandle.createWritable();
+                    writer = writable.getWriter();
+                } catch (e) { return; }
+            }
+
+
+            // Pre-allocated objects to avoid millions of allocations
+            const writeData = async (str) => {
+                if (writer) await writer.write(encoder.encode(str));
+                else blobParts.push(str);
+            };
 
             // Pre-allocated objects to avoid millions of allocations
             const vOffset = new THREE.Vector3(); 
             const calcPos = new THREE.Vector3();
 
-            await writer.write(encoder.encode("# VoxTrotBravo High-Efficiency Export\nmtllib voxel_materials.mtl\no VoxModel\n"));
+            await writeData("# VoxTrotBravo High-Efficiency Export\nmtllib voxel_materials.mtl\no VoxModel\n");
 
             const hs = 0.5;
             const faceVerts = {
@@ -1809,7 +1809,7 @@ else if (cx >= 350 && cx <= 425) {
                 py: [new THREE.Vector3(-hs, hs, hs), new THREE.Vector3( hs, hs, hs), new THREE.Vector3( hs, hs,-hs), new THREE.Vector3(-hs, hs,-hs)],
                 ny: [new THREE.Vector3(-hs,-hs,-hs), new THREE.Vector3( hs,-hs,-hs), new THREE.Vector3( hs,-hs, hs), new THREE.Vector3(-hs,-hs, hs)],
                 pz: [new THREE.Vector3(-hs,-hs, hs), new THREE.Vector3( hs,-hs, hs), new THREE.Vector3( hs, hs, hs), new THREE.Vector3(-hs, hs, hs)],
-                nz: [new THREE.Vector3( hs,-hs,-hs), new THREE.Vector3(-hs,-hs,-hs), new THREE.Vector3( hs, hs,-hs), new THREE.Vector3( hs, hs,-hs)]
+                nz: [new THREE.Vector3( hs,-hs,-hs), new THREE.Vector3(-hs,-hs,-hs), new THREE.Vector3(-hs, hs,-hs), new THREE.Vector3( hs, hs,-hs)]
             };
             const dirs = [{d:[1,0,0],v:faceVerts.px}, {d:[-1,0,0],v:faceVerts.nx}, {d:[0,1,0],v:faceVerts.py}, {d:[0,-1,0],v:faceVerts.ny}, {d:[0,0,1],v:faceVerts.pz}, {d:[0,0,-1],v:faceVerts.nz}];
             
@@ -1830,7 +1830,7 @@ else if (cx >= 350 && cx <= 425) {
             let currentChunkString = "";
 
             for (let m = 0; m < 4; m++) {
-                await writer.write(encoder.encode(`\ng ${matNames[m]}\nusemtl ${matNames[m]}\n`));
+                await writeData(`\ng ${matNames[m]}\nusemtl ${matNames[m]}\n`);
                 
                 for (let [key, chunk] of chunks) {
                     const layer = chunk.layers[m]; 
@@ -1847,7 +1847,6 @@ else if (cx >= 350 && cx <= 425) {
 
                         layer.mesh.getColorAt(i, tempColor);
                         if (tempColor.r > 1.0) { tempColor.r /= 255; tempColor.g /= 255; tempColor.b /= 255; }
-                        // Pre-calculate color strings once per voxel, not 24 times
                         const colorPart = `${tempColor.r.toFixed(3)} ${tempColor.g.toFixed(3)} ${tempColor.b.toFixed(3)}`;
 
                         for (let d = 0; d < 6; d++) {
@@ -1882,23 +1881,34 @@ else if (cx >= 350 && cx <= 425) {
                         }
 
                         voxelCounter++;
-                        // Flush more frequently for massive models to keep RAM footprint minimal
                         if (voxelCounter % 500 === 0) {
-                            await writer.write(encoder.encode(currentChunkString));
+                            await writeData(currentChunkString);
                             currentChunkString = "";
-                            if (exportBtn) exportBtn.innerText = `Streaming: ${Math.round((voxelCounter / totalActiveVoxels) * 100)}%`;
+                            if (exportBtn) exportBtn.innerText = `Exporting: ${Math.round((voxelCounter / totalActiveVoxels) * 100)}%`;
                             await new Promise(resolve => setTimeout(resolve, 0));
                         }
                     }
                 }
             }
 
-            if (currentChunkString.length > 0) await writer.write(encoder.encode(currentChunkString));
-            writer.releaseLock();
-            await writable.close();
+            if (currentChunkString.length > 0) await writeData(currentChunkString);
+
+            if (writer) {
+                writer.releaseLock();
+                await writable.close();
+            } else {
+                const blob = new Blob(blobParts, { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                link.click();
+                URL.revokeObjectURL(url);
+            }
             if (exportBtn) exportBtn.innerText = originalText;
             console.log("Export Complete");
         }
+
 
 
 
