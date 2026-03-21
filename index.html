@@ -3025,6 +3025,7 @@ let isDrawing=false, isErasing=false, isColorPicking=false, menuClickActive=fals
             } else if (this === xrLeft) {
                 if(activeTool==='select'&&hasSelection) applySelection(); else { isErasing=true; drawStartPos.copy(leftTargetLocal); if(activeTool==='box')isPreviewingBox=true; if(activeTool==='extrude')isPreviewingExtrude=true; if(activeTool==='quadsphere')isPreviewingSphere=true; if(activeTool==='plane')isPreviewingPlane=true; if(activeTool==='cylinder')isPreviewingCylinder=true; if(activeTool==='triangle')isPreviewingTriangle=true; if(activeTool==='icosahedron'){ isErasing=true; isPreviewingIcosahedron=true; drawStartPos.copy(leftTargetLocal); } }
             }
+        } // Added missing closing brace for onSelectStart
 
         function onSelectEnd() {
             if (this === xrRight) { 
