@@ -1419,7 +1419,7 @@ function updatePlanePreview(start, end, isPainting) {
                     drawButton(leftMenuCtx, 50, 70, 200, 40, 'BOX MODE', selectMode === 'box'); drawButton(leftMenuCtx, 262, 70, 200, 40, 'CONNECTED', selectMode === 'connected');
                     drawButton(leftMenuCtx, 50, 120, 130, 40, 'ALL', selectFilter === 'all'); drawButton(leftMenuCtx, 190, 120, 130, 40, 'COLOR', selectFilter === 'color'); drawButton(leftMenuCtx, 330, 120, 132, 40, 'MATERIAL', selectFilter === 'material');
                 } else {
-                    const btnW = 80; drawButton(leftMenuCtx, 50, 60, btnW, 30, 'MOVE', transformMode === 'move' && !isSettingPivot); drawButton(leftMenuCtx, 135, 60, btnW, 30, 'COPY', transformMode === 'copy' && !isSettingPivot); drawButton(leftMenuCtx, 220, 60, btnW, 30, 'DRAW', transformMode === 'draw' && !isSettingPivot); drawButton(leftMenuCtx, 305, 60, btnW, 30, 'PAINT', transformMode === 'paint' && !isSettingPivot); drawButton(leftMenuCtx, 390, 60, 85, 30, isSettingPivot ? 'PICK' : 'PIVOT', isSettingPivot);
+                    const btnW = 75; drawButton(leftMenuCtx, 30, 60, btnW, 30, 'MOVE', transformMode === 'move' && !isSettingPivot); drawButton(leftMenuCtx, 110, 60, btnW, 30, 'FREE', transformMode === 'free' && !isSettingPivot); drawButton(leftMenuCtx, 190, 60, btnW, 30, 'COPY', transformMode === 'copy' && !isSettingPivot); drawButton(leftMenuCtx, 270, 60, btnW, 30, 'DRAW', transformMode === 'draw' && !isSettingPivot); drawButton(leftMenuCtx, 350, 60, btnW, 30, 'GOLDEN', false); drawButton(leftMenuCtx, 430, 60, 60, 30, isSettingPivot ? 'PICK' : 'PIVOT', isSettingPivot);
                     drawSlider(leftMenuCtx, 50, 100, 412, 30, 'ROT X', selectionRotX, -180, 180); drawSlider(leftMenuCtx, 50, 140, 412, 30, 'ROT Y', selectionRotY, -180, 180); drawSlider(leftMenuCtx, 50, 180, 412, 30, 'ROT Z', selectionRotZ, -180, 180);
                     drawSlider(leftMenuCtx, 50, 220, 412, 30, 'SCALE', selectionScale, 0.1, 5.0, 'SCALE: %vx');
                     if (transformMode === 'copy') { 
@@ -1435,8 +1435,14 @@ function updatePlanePreview(start, end, isPainting) {
         function handleLeftMenuClick(cx, cy) {
             if (activeTool === 'select' && hasSelection) {
                 if (cy >= 60 && cy <= 90) {
-                    let newM = transformMode; if (cx >= 50 && cx <= 130) { newM = 'move'; isSettingPivot = false; } else if (cx >= 135 && cx <= 215) { newM = 'copy'; isSettingPivot = false; } else if (cx >= 220 && cx <= 300) { newM = 'draw'; isSettingPivot = false; } else if (cx >= 305 && cx <= 385) { newM = 'paint'; isSettingPivot = false; } else if (cx >= 390 && cx <= 475) isSettingPivot = !isSettingPivot;
-                    if (newM !== transformMode) { 
+                    let newM = transformMode; 
+                    if (cx >= 30 && cx <= 105) { newM = 'move'; isSettingPivot = false; } 
+                    else if (cx >= 110 && cx <= 185) { newM = 'free'; isSettingPivot = false; } 
+                    else if (cx >= 190 && cx <= 265) { newM = 'copy'; isSettingPivot = false; } 
+                    else if (cx >= 270 && cx <= 345) { newM = 'draw'; isSettingPivot = false; } 
+                    else if (cx >= 350 && cx <= 425) { selectionScale = (Math.abs(selectionScale - 1.618) < 0.1) ? 0.618 : 1.618; updateRotatedSelection(); leftMenuNeedsUpdate = true; }
+                    else if (cx >= 430 && cx <= 490) isSettingPivot = !isSettingPivot;
+                    if (newM !== transformMode) {  
                         transformMode = newM; 
                     }
                 }
@@ -3085,9 +3091,12 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                     }
                     const ax = source.gamepad.axes;
                     if (ax && ax.length >= 2) { 
-                        const xVal = ax.length >= 4 ?
-                        ax[2] : ax[0], yVal = ax.length >= 4 ? ax[3] : ax[1], dead = 0.15;
-                        if (Math.abs(xVal) > dead || Math.abs(yVal) > dead) { 
+                        const xVal = ax.length >= 4 ? ax[2] : ax[0], yVal = ax.length >= 4 ? ax[3] : ax[1], dead = 0.15;
+                        if (hasSelection && transformMode === 'free' && source.handedness === 'right' && Math.abs(yVal) > dead) {
+                            selectionScale = Math.max(0.1, Math.min(10, selectionScale - yVal * 0.05));
+                            updateRotatedSelection();
+                            leftMenuNeedsUpdate = true;
+                        } else if (Math.abs(xVal) > dead || Math.abs(yVal) > dead) { 
                             const targetIdx = source.handedness === 'right' ?
                             joyRTarget : joyLTarget;
                             if (targetIdx !== -1) {
@@ -3135,8 +3144,8 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                     cursorRight.position.copy(rightTargetLocal); cursorRight.updateMatrix(); cursorRight.visible=true; 
 
                     if(hasSelection && !isSettingPivot){
-                        // Snap to controller tip for brush-style modes (Draw/Paint)
-                        if (transformMode === 'draw' || transformMode === 'paint') {
+                        // Snap to controller tip for brush-style modes (Draw/Paint/Free)
+                        if (transformMode === 'draw' || transformMode === 'paint' || (transformMode === 'free' && isDrawing)) {
                             selectionGroup.position.set(rightTargetLocal.x - Math.round(selectionCenter.x)*VOXEL_SIZE, rightTargetLocal.y - Math.round(selectionCenter.y)*VOXEL_SIZE, rightTargetLocal.z - Math.round(selectionCenter.z)*VOXEL_SIZE);
                             
                             tempQuat.setFromRotationMatrix(xrRight.matrixWorld);
