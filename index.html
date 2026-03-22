@@ -1554,6 +1554,10 @@ else if (cx >= 350 && cx <= 425) {
                 if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; }
                 if (cy >= 210 && cy <= 260) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
                 if (cy >= 280 && cy <= 330) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); }
+            } else if (activeTool === 'sheet') {
+                if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; }
+                if (cy >= 210 && cy <= 260) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
+                if (cy >= 280 && cy <= 330) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); }
             } else if (activeTool === 'paint') { 
                 if (cy >= 70 && cy <= 120) { if (cx >= 50 && cx <= 250) paintMode = 'brush'; if (cx >= 262 && cx <= 462) paintMode = 'bucket'; }
                 if (paintMode === 'brush') {
@@ -1576,13 +1580,14 @@ else if (cx >= 350 && cx <= 425) {
                 } else if (cy >= 140 && cy <= 190) { if (cx >= 30 && cx <= 130) planeFill = !planeFill; if (cx >= 140 && cx <= 240) planeGrid = !planeGrid; if (cx >= 250 && cx <= 290) planeGridThick = Math.max(1, planeGridThick - 1); if (cx >= 430 && cx <= 470) planeGridThick = Math.min(10, planeGridThick + 1); } 
                 else if (cy >= 210 && cy <= 260) { if (cx >= 30 && cx <= 70) planeDivU = Math.max(1, planeDivU - 1); if (cx >= 190 && cx <= 230) planeDivU = Math.min(20, planeDivU + 1); if (cx >= 250 && cx <= 290) planeDivV = Math.max(1, planeDivV - 1); if (cx >= 410 && cx <= 450) planeDivV = Math.min(20, planeDivV + 1); } 
                 else if (cy >= 280 && cy <= 330) { if (cx >= 190 && cx <= 240) planeThick = Math.max(1, planeThick - 1); if (cx >= 420 && cx <= 470) planeThick = Math.min(20, planeThick + 1); }
-            }
-
-
-                if (cy >= 140 && cy <= 190) { if (cx >= 30 && cx <= 130) planeFill = !planeFill; if (cx >= 140 && cx <= 240) planeGrid = !planeGrid; if (cx >= 250 && cx <= 290) planeGridThick = Math.max(1, planeGridThick - 1); if (cx >= 430 && cx <= 470) planeGridThick = Math.min(10, planeGridThick + 1); } 
-                else if (cy >= 210 && cy <= 260) { if (cx >= 30 && cx <= 70) planeDivU = Math.max(1, planeDivU - 1); if (cx >= 190 && cx <= 230) planeDivU = Math.min(20, planeDivU + 1); if (cx >= 250 && cx <= 290) planeDivV = Math.max(1, planeDivV - 1); if (cx >= 410 && cx <= 450) planeDivV = Math.min(20, planeDivV + 1); } 
-                else if (cy >= 280 && cy <= 330) { if (cx >= 190 && cx <= 240) planeThick = Math.max(1, planeThick - 1); if (cx >= 420 && cx <= 470) planeThick = Math.min(20, planeThick + 1); }
             } else if (activeTool === 'brush') {
+                if (cy >= 70 && cy <= 120) {
+                    if (cx >= 50 && cx <= 250) brushShape = 'cube';
+                    if (cx >= 262 && cx <= 462) brushShape = 'sphere';
+                }
+                if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
+                if (cy >= 210 && cy <= 260) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); } 
+            }
                 if (cy >= 70 && cy <= 120) {
                     if (cx >= 50 && cx <= 250) brushShape = 'cube';
                     if (cx >= 262 && cx <= 462) brushShape = 'sphere';
