@@ -1549,38 +1549,35 @@ else if (cx >= 350 && cx <= 425) {
             } else if (activeTool === 'stroke') {
                 if (cy >= 70 && cy <= 120) { 
                     if (cx >= 50 && cx <= 250) strokeMode = 'continuous'; 
-                    if (cx >= 262 && cx <= 462) { 
-                        strokeMode = 'line'; 
-                        isPreviewingLineLeft = isPreviewingLineRight = false; 
-                        lineStartLeft.set(Infinity, Infinity, Infinity); 
-                        lineStartRight.set(Infinity, Infinity, Infinity); 
-                    } 
+                    if (cx >= 262 && cx <= 462) { strokeMode = 'line'; isPreviewingLineLeft = isPreviewingLineRight = false; lineStartLeft.set(Infinity, Infinity, Infinity); lineStartRight.set(Infinity, Infinity, Infinity); } 
                 }
+                if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; }
+                if (cy >= 210 && cy <= 260) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
+                if (cy >= 280 && cy <= 330) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); }
             } else if (activeTool === 'paint') { 
-                if (cy >= 70 && cy <= 120) {
-                    if (cx >= 50 && cx <= 250) paintMode = 'brush'; 
-                    if (cx >= 262 && cx <= 462) paintMode = 'bucket'; 
+                if (cy >= 70 && cy <= 120) { if (cx >= 50 && cx <= 250) paintMode = 'brush'; if (cx >= 262 && cx <= 462) paintMode = 'bucket'; }
+                if (paintMode === 'brush') {
+                    if (cy >= 140 && cy <= 190) { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; }
+                    if (cy >= 210 && cy <= 260) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
+                    if (cy >= 280 && cy <= 330) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); }
                 }
-            } else if (activeTool === 'box') { 
-                if (cy >= 70 && cy <= 120) {
-                    if (cx >= 20 && cx <= 160) boxMode = 'solid'; 
-                    if (cx >= 170 && cx <= 320) boxMode = 'shell'; 
-                    if (cx >= 330 && cx <= 490) boxMode = 'wireframe'; 
-                }
-            } else if (activeTool === 'quadsphere') { 
-                if (cy >= 70 && cy <= 120) {
-                    if (cx >= 50 && cx <= 250) sphereMode = 'solid'; 
-                    if (cx >= 262 && cx <= 462) sphereMode = 'shell'; 
-                }
+            } else if (activeTool === 'box') {
+                if (cy >= 70 && cy <= 120) { if (cx >= 20 && cx <= 160) boxMode = 'solid'; if (cx >= 170 && cx <= 320) boxMode = 'shell'; if (cx >= 330 && cx <= 490) boxMode = 'wireframe'; } 
+                else if (cy >= 140 && cy <= 190 && boxMode === 'wireframe') { if (cx >= 20 && cx <= 70) wireWidth = Math.max(1, wireWidth - 1); if (cx >= 250 && cx <= 300) wireWidth = Math.min(5, wireWidth + 1); if (cx >= 330 && cx <= 490) wireFill = !wireFill; } 
+                else if (cy >= 210 && cy <= 260) { if (cx >= 20 && cx <= 240) boxGridMode = boxGridMode === 'internal' ? 'surface' : 'internal'; if (cx >= 250 && cx <= 300) boxDivThick = Math.max(1, boxDivThick - 1); if (cx >= 440 && cx <= 490) boxDivThick = Math.min(10, boxDivThick + 1); } 
+                else if (cy >= 280 && cy <= 330) { if (cx >= 20 && cx <= 60) boxDivX = Math.max(1, boxDivX - 1); if (cx >= 180 && cx <= 220) boxDivX = Math.min(20, boxDivX + 1); if (cx >= 250 && cx <= 290) boxDivY = Math.max(1, boxDivY - 1); if (cx >= 410 && cx <= 450) boxDivY = Math.min(20, boxDivY + 1); } 
+                else if (cy >= 350 && cy <= 400) { if (cx >= 20 && cx <= 60) boxDivZ = Math.max(1, boxDivZ - 1); if (cx >= 180 && cx <= 220) boxDivZ = Math.min(20, boxDivZ + 1); }
+            } else if (activeTool === 'quadsphere') {
+                if (cy >= 70 && cy <= 120) { if (cx >= 50 && cx <= 250) sphereMode = 'solid'; if (cx >= 262 && cx <= 462) sphereMode = 'shell'; }
             } else if (activeTool === 'plane') {
-                // Handling the Outline toggle and thickness on the first row
                 if (cy >= 70 && cy <= 120) {
                     if (cx >= 30 && cx <= 180) planeOutline = !planeOutline;
-                    if (planeOutline) { 
-                        if (cx >= 190 && cx <= 240) planeOutlineThick = Math.max(1, planeOutlineThick - 1); 
-                        if (cx >= 420 && cx <= 470) planeOutlineThick = Math.min(10, planeOutlineThick + 1); 
-                    }
-                }
+                    if (planeOutline) { if (cx >= 190 && cx <= 240) planeOutlineThick = Math.max(1, planeOutlineThick - 1); if (cx >= 420 && cx <= 470) planeOutlineThick = Math.min(10, planeOutlineThick + 1); }
+                } else if (cy >= 140 && cy <= 190) { if (cx >= 30 && cx <= 130) planeFill = !planeFill; if (cx >= 140 && cx <= 240) planeGrid = !planeGrid; if (cx >= 250 && cx <= 290) planeGridThick = Math.max(1, planeGridThick - 1); if (cx >= 430 && cx <= 470) planeGridThick = Math.min(10, planeGridThick + 1); } 
+                else if (cy >= 210 && cy <= 260) { if (cx >= 30 && cx <= 70) planeDivU = Math.max(1, planeDivU - 1); if (cx >= 190 && cx <= 230) planeDivU = Math.min(20, planeDivU + 1); if (cx >= 250 && cx <= 290) planeDivV = Math.max(1, planeDivV - 1); if (cx >= 410 && cx <= 450) planeDivV = Math.min(20, planeDivV + 1); } 
+                else if (cy >= 280 && cy <= 330) { if (cx >= 190 && cx <= 240) planeThick = Math.max(1, planeThick - 1); if (cx >= 420 && cx <= 470) planeThick = Math.min(20, planeThick + 1); }
+            }
+
 
                 if (cy >= 140 && cy <= 190) { if (cx >= 30 && cx <= 130) planeFill = !planeFill; if (cx >= 140 && cx <= 240) planeGrid = !planeGrid; if (cx >= 250 && cx <= 290) planeGridThick = Math.max(1, planeGridThick - 1); if (cx >= 430 && cx <= 470) planeGridThick = Math.min(10, planeGridThick + 1); } 
                 else if (cy >= 210 && cy <= 260) { if (cx >= 30 && cx <= 70) planeDivU = Math.max(1, planeDivU - 1); if (cx >= 190 && cx <= 230) planeDivU = Math.min(20, planeDivU + 1); if (cx >= 250 && cx <= 290) planeDivV = Math.max(1, planeDivV - 1); if (cx >= 410 && cx <= 450) planeDivV = Math.min(20, planeDivV + 1); } 
