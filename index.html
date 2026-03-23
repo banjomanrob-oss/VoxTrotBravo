@@ -1293,20 +1293,42 @@ function updatePlanePreview(start, end, isPainting) {
             leftMenuCtx.fillStyle = 'rgba(20, 20, 20, 0.95)'; leftMenuCtx.fillRect(0, 0, 512, 512);
             leftMenuCtx.fillStyle = '#4facfe'; leftMenuCtx.font = 'bold 22px sans-serif'; leftMenuCtx.textAlign = 'center';
             leftMenuCtx.fillText(`Tool Options | Blocks: ${totalActiveVoxels.toLocaleString()}`, 256, 30);
- 	    if (activeTool === 'brush') {
-                drawButton(leftMenuCtx, 50, 60, 200, 45, 'ONE-HAND', lineMode === 'one-hand'); 
-                drawButton(leftMenuCtx, 262, 60, 200, 45, 'TWO-HAND', lineMode === 'two-hand');
-                drawButton(leftMenuCtx, 50, 115, 200, 45, 'STROKE', lineDrawMode === 'stroke'); 
-                drawButton(leftMenuCtx, 262, 115, 200, 45, 'SHEET', lineDrawMode === 'sheet');
-                drawButton(leftMenuCtx, 50, 170, 200, 45, 'STRAIGHT', lineType === 'straight'); 
-                drawButton(leftMenuCtx, 262, 170, 200, 45, 'ARC', lineType === 'arc');
-                drawButton(leftMenuCtx, 50, 225, 80, 45, '[-]', false); 
-                drawButton(leftMenuCtx, 140, 225, 232, 45, `Bulge: ${arcBulge.toFixed(1)}`, false); 
-                drawButton(leftMenuCtx, 382, 225, 80, 45, '[+]', false);
-                drawButton(leftMenuCtx, 50, 280, 80, 45, '[-]', false); 
-                drawButton(leftMenuCtx, 140, 280, 232, 45, `Radius: ${brushSize}`, false); 
-                drawButton(leftMenuCtx, 382, 280, 80, 45, '[+]', false);
-            } else if (activeTool === 'paint') {
+        if (activeTool === 'brush') {
+            drawButton(leftMenuCtx, 50, 70, 200, 50, 'Shape: CUBE', brushShape === 'cube'); 
+            drawButton(leftMenuCtx, 262, 70, 200, 50, 'Shape: SPHERE', brushShape === 'sphere');
+            drawButton(leftMenuCtx, 50, 140, 200, 50, 'SOLID', brushVolume === 'solid'); 
+            drawButton(leftMenuCtx, 262, 140, 200, 50, 'SHELL', brushVolume === 'shell');
+            drawButton(leftMenuCtx, 50, 210, 80, 50, '[-]', false); 
+            drawButton(leftMenuCtx, 140, 210, 232, 50, `Radius: ${brushSize}`, false); 
+            drawButton(leftMenuCtx, 382, 210, 80, 50, '[+]', false);
+        } else if (activeTool === 'extrude') {
+            drawButton(leftMenuCtx, 20, 60, 110, 40, 'FREE', extrudeAxis === 'free');
+            drawButton(leftMenuCtx, 140, 60, 110, 40, 'X', extrudeAxis === 'X');
+            drawButton(leftMenuCtx, 260, 60, 110, 40, 'Y', extrudeAxis === 'Y');
+            drawButton(leftMenuCtx, 380, 60, 112, 40, 'Z', extrudeAxis === 'Z');
+            drawButton(leftMenuCtx, 20, 110, 230, 40, 'PALETTE', extrudeColorMode === 'palette');
+            drawButton(leftMenuCtx, 262, 110, 230, 40, 'ORIGINAL', extrudeColorMode === 'original');
+            drawButton(leftMenuCtx, 20, 160, 230, 40, 'SOLID', extrudeVolumeMode === 'solid');
+            drawButton(leftMenuCtx, 262, 160, 230, 40, 'HOLLOW', extrudeVolumeMode === 'hollow');
+            drawButton(leftMenuCtx, 20, 210, 472, 40, `ADJOINING: ${extrudeAdjoining ? 'ON' : 'OFF'}`, extrudeAdjoining);
+            if (extrudeAdjoining) {
+                drawButton(leftMenuCtx, 20, 260, 230, 40, 'ALL', extrudeAdjoiningFilter === 'all');
+                drawButton(leftMenuCtx, 262, 260, 230, 40, 'COLOR', extrudeAdjoiningFilter === 'color');
+            }
+        } else if (activeTool === 'line') {
+            drawButton(leftMenuCtx, 50, 60, 200, 45, 'ONE-HAND', lineMode === 'one-hand'); 
+            drawButton(leftMenuCtx, 262, 60, 200, 45, 'TWO-HAND', lineMode === 'two-hand');
+            drawButton(leftMenuCtx, 50, 115, 200, 45, 'STROKE', lineDrawMode === 'stroke'); 
+            drawButton(leftMenuCtx, 262, 115, 200, 45, 'SHEET', lineDrawMode === 'sheet');
+            drawButton(leftMenuCtx, 50, 170, 200, 45, 'STRAIGHT', lineType === 'straight'); 
+            drawButton(leftMenuCtx, 262, 170, 200, 45, 'ARC', lineType === 'arc');
+            drawButton(leftMenuCtx, 50, 225, 80, 45, '[-]', false); 
+            drawButton(leftMenuCtx, 140, 225, 232, 45, `Bulge: ${arcBulge.toFixed(1)}`, false); 
+            drawButton(leftMenuCtx, 382, 225, 80, 45, '[+]', false);
+            drawButton(leftMenuCtx, 50, 280, 80, 45, '[-]', false); 
+            drawButton(leftMenuCtx, 140, 280, 232, 45, `Radius: ${brushSize}`, false); 
+            drawButton(leftMenuCtx, 382, 280, 80, 45, '[+]', false);
+        } else if (activeTool === 'paint') {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'BRUSH', paintMode === 'brush'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'BUCKET', paintMode === 'bucket');
                 if (paintMode === 'brush') {
                     drawButton(leftMenuCtx, 50, 140, 200, 50, 'Shape: CUBE', brushShape === 'cube'); drawButton(leftMenuCtx, 262, 140, 200, 50, 'Shape: SPHERE', brushShape === 'sphere');
