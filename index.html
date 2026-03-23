@@ -1914,20 +1914,26 @@ function handleRightMenuClick(cx, cy) {
             const baselineUp = new THREE.Vector3().crossVectors(side, lineAxis).normalize();
 
             // Helper to compute a bulge vector for a specific hand
-            const getHandBulge = (ctrl) => {
+            const getHandBulge = (ctrl, isLeft) => {
                 tempSEuler.setFromQuaternion(ctrl.quaternion, 'YZX');
                 const pitch = tempSEuler.x;  // Forward/Backward tilt
                 const roll = tempSEuler.z;   // Wrist twist
                 
-                // Roll magnitude determines bulge size (reversed sign per previous feedback)
-                const magnitude = -roll * dist * 0.75; 
-                // Pitch determines the rotation of the bulge around the baseline
+                // Sensitivity Curve: Use cubic power so bulge is subtle until near 90 degrees
+                // Roll is normalized against PI/2 (90 deg). 
+                const normalizedRoll = roll / (Math.PI / 2);
+                const curvedRoll = Math.pow(normalizedRoll, 3);
+                
+                // Left bulge is reversed relative to right bulge logic
+                const directionFactor = isLeft ? 1 : -1;
+                const magnitude = directionFactor * curvedRoll * dist * 1.5; 
+                
                 const bulgeDir = baselineUp.clone().applyAxisAngle(lineAxis, pitch);
                 return bulgeDir.multiplyScalar(magnitude);
             };
 
-            const bulgeVecL = getHandBulge(ctrlL);
-            const bulgeVecR = getHandBulge(ctrlR);
+            const bulgeVecL = getHandBulge(ctrlL, true);
+            const bulgeVecR = getHandBulge(ctrlR, false);
 
             // Control points are offset from their respective ends
             const cp1 = p1.clone().add(bulgeVecL);
