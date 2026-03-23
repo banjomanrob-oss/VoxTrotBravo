@@ -2501,11 +2501,9 @@ function executeLineTool(startPos, endPos, isPainting) {
                     if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
                     else if (wireFill && isFace) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
                 } else if (boxMode === 'shell') {
-                    if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
-                    else if (isFace) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                    if (isFace) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
                 } else {
-                    if (isEdge || isDivVoxel) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
-                    else setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                    setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
                 }
             }
         }
@@ -2593,8 +2591,13 @@ function executeQuadSphereTool(startPos, endPos, isPainting) {
             const sX=maxX-minX+1, sZ=maxZ-minZ+1, minYGrid=new Int32Array(sX*sZ).fill(999999), maxYGrid=new Int32Array(sX*sZ).fill(-999999), drawn=new Set();
             const updG=(gx,gy,gz)=>{ if(gx<minX||gx>maxX||gz<minZ||gz>maxZ)return; const idx=(gx-minX)+(gz-minZ)*sX; minYGrid[idx]=Math.min(minYGrid[idx],gy); maxYGrid[idx]=Math.max(maxYGrid[idx],gy); };
             const dV=(gx,gy,gz,col,m)=>{ if(gx<minX||gx>maxX||gy<minY||gy>maxY||gz<minZ||gz>maxZ)return; const h=(gx+32768)+(gy+32768)*65536+(gz+32768)*4294967296; if(!drawn.has(h)){ drawn.add(h); setVoxel(gx,gy,gz,isP,col,m); } updG(gx,gy,gz); };
-            for(const e of edges){ const p1=verts[e[0]], p2=verts[e[1]], steps=Math.max(1,Math.ceil(p1.distanceTo(p2)*2)), r=wireWidth-1; for(let i=0; i<=steps; i++){ tempPos.lerpVectors(p1,p2,i/steps); const cx=Math.round(tempPos.x); const cy=Math.round(tempPos.y); const cz=Math.round(tempPos.z); for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++)for(let dz=-r;dz<=r;dz++) if(dx*dx+dy*dy+dz*dz<=r*r+0.1) dV(cx+dx,cy+dy,cz+dz,getDrawColor(cx,cy,cz,minX,maxX,minY,maxY,1),matTypes[1]); } }
-            if(icosahedronMode!=='wireframe'||wireFill) for(const f of faces){ const p1=verts[f[0]], p2=verts[f[1]], p3=verts[f[2]], steps=Math.max(1,Math.ceil(Math.max(p1.distanceTo(p2),p2.distanceTo(p3),p3.distanceTo(p1))*2)); for(let u=0; u<=steps; u++)for(let v=0; v<=steps-u; v++){ const w=steps-u-v, fU=u/steps, fV=v/steps, fW=w/steps, px=Math.round(p1.x*fU+p2.x*fV+p3.x*fW), py=Math.round(p1.y*fU+p2.y*fV+p3.y*fW), pz=Math.round(p1.z*fU+p2.z*fV+p3.z*fW); dV(px,py,pz,getDrawColor(px,py,pz,minX,maxX,minY,maxY,0),matTypes[0]); } }
+            if (icosahedronMode === 'wireframe') {
+                for(const e of edges){ const p1=verts[e[0]], p2=verts[e[1]], steps=Math.max(1,Math.ceil(p1.distanceTo(p2)*2)), r=wireWidth-1; for(let i=0; i<=steps; i++){ tempPos.lerpVectors(p1,p2,i/steps); const cx=Math.round(tempPos.x); const cy=Math.round(tempPos.y); const cz=Math.round(tempPos.z); for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++)for(let dz=-r;dz<=r;dz++) if(dx*dx+dy*dy+dz*dz<=r*r+0.1) dV(cx+dx,cy+dy,cz+dz,getDrawColor(cx,cy,cz,minX,maxX,minY,maxY,1),matTypes[1]); } }
+                if (wireFill) for(const f of faces){ const p1=verts[f[0]], p2=verts[f[1]], p3=verts[f[2]], steps=Math.max(1,Math.ceil(Math.max(p1.distanceTo(p2),p2.distanceTo(p3),p3.distanceTo(p1))*2)); for(let u=0; u<=steps; u++)for(let v=0; v<=steps-u; v++){ const w=steps-u-v, fU=u/steps, fV=v/steps, fW=w/steps, px=Math.round(p1.x*fU+p2.x*fV+p3.x*fW), py=Math.round(p1.y*fU+p2.y*fV+p3.y*fW), pz=Math.round(p1.z*fU+p2.z*fV+p3.z*fW); dV(px,py,pz,getDrawColor(px,py,pz,minX,maxX,minY,maxY,0),matTypes[0]); } }
+            } else {
+                for(const f of faces){ const p1=verts[f[0]], p2=verts[f[1]], p3=verts[f[2]], steps=Math.max(1,Math.ceil(Math.max(p1.distanceTo(p2),p2.distanceTo(p3),p3.distanceTo(p1))*2)); for(let u=0; u<=steps; u++)for(let v=0; v<=steps-u; v++){ const w=steps-u-v, fU=u/steps, fV=v/steps, fW=w/steps, px=Math.round(p1.x*fU+p2.x*fV+p3.x*fW), py=Math.round(p1.y*fU+p2.y*fV+p3.y*fW), pz=Math.round(p1.z*fU+p2.z*fV+p3.z*fW); dV(px,py,pz,getDrawColor(px,py,pz,minX,maxX,minY,maxY,0),matTypes[0]); } }
+            }
+
             if(icosahedronMode==='solid'||(clearInterior&&isP)){ for(let gx=minX; gx<=maxX; gx++)for(let gz=minZ; gz<=maxZ; gz++){ const idx=(gx-minX)+(gz-minZ)*sX, min_y=minYGrid[idx], max_y=maxYGrid[idx]; if(min_y<=max_y)for(let gy=min_y; gy<=max_y; gy++){ const h=(gx+32768)+(gy+32768)*65536+(gz+32768)*4294967296; if(!drawn.has(h)){ if(icosahedronMode==='solid') setVoxel(gx,gy,gz,isP,getDrawColor(gx,gy,gz,minX,maxX,minY,maxY,0),matTypes[0]); else if(clearInterior&&isP) setVoxel(gx,gy,gz,false,null); } } } }
             leftMenuNeedsUpdate = true;
         }
@@ -2680,14 +2683,12 @@ function executeCylinderTool(startPos, endPos, isPainting) {
                     
                     if (cylinderMode === 'solid') {
                         shouldDraw = true;
-                        if (isDivPos) { drawColor = getDrawColor(gx, gy, gz, loopMinX, loopMaxX, loopMinY, loopMaxY, 1); drawMat = matTypes[1]; }
                     } else if (cylinderMode === 'shell') {
-                        if (isSurface || isDivPos) {
+                        if (isSurface) {
                             if (!cylinderCap && isCap && !isSurface) {
                                 shouldDraw = false;
                             } else {
                                 shouldDraw = true;
-                                if (isDivPos) { drawColor = getDrawColor(gx, gy, gz, loopMinX, loopMaxX, loopMinY, loopMaxY, 1); drawMat = matTypes[1]; }
                             }
                         } else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null);
                     } else if (cylinderMode === 'wireframe') {
@@ -2851,15 +2852,13 @@ function executeCylinderTool(startPos, endPos, isPainting) {
                             if (isDivV && triangleGridMode === 'internal') setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
                             else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null);
                         }
+                    } else if (triangleMode === 'shell') {
+                        if (isSurf) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                        else if (clearInterior && isPainting) setVoxel(gx, gy, gz, false, null);
                     } else {
-                        if (clearInterior && isPainting && !isSurf && triangleMode === 'shell') {
-                            if (!(isDivV && triangleGridMode === 'internal')) {
-                                setVoxel(gx, gy, gz, false, null); continue;
-                            }
-                        }
-                        if ((isE && isSurf) || isDivV) setVoxel(gx, gy, gz, isPainting, cSec, matTypes[1]);
-                        else if (triangleMode === 'solid' || isSurf) setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
+                        setVoxel(gx, gy, gz, isPainting, cMain, matTypes[0]);
                     }
+
                 }
             }
         }
