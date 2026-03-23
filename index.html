@@ -1032,7 +1032,7 @@ function updateLinePreviewFromPoints(points, isPainting) {
 
         function updateCursors() {
             let effSize = brushSize;
-            if (activeTool === 'box' || activeTool === 'quadsphere' || activeTool === 'cylinder' || activeTool === 'select' || activeTool === 'plane' || activeTool === 'triangle' || activeTool === 'icosahedron' || (activeTool === 'paint' && paintMode === 'bucket')) effSize = 1;
+            if (activeTool === 'box' || activeTool === 'extrude' || activeTool === 'quadsphere' || activeTool === 'cylinder' || activeTool === 'select' || activeTool === 'plane' || activeTool === 'triangle' || activeTool === 'icosahedron' || (activeTool === 'paint' && paintMode === 'bucket')) effSize = 1;
             else if (activeTool === 'sculpt') effSize = sculptSize;
             const width = ((effSize - 1) * 2 + 1) * VOXEL_SIZE, isBoxShape = (brushShape === 'cube' && activeTool !== 'sculpt') || activeTool === 'box' || activeTool === 'select' || activeTool === 'cylinder' || activeTool === 'quadsphere' || activeTool === 'plane' || activeTool === 'triangle' || activeTool === 'icosahedron' || (activeTool === 'paint' && paintMode === 'bucket');
             const shapeKey = (isBoxShape ? 'box_' : 'sph_') + width;
@@ -1296,25 +1296,34 @@ function updatePlanePreview(start, end, isPainting) {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'Shape: CUBE', brushShape === 'cube'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'Shape: SPHERE', brushShape === 'sphere');
                 drawButton(leftMenuCtx, 50, 140, 200, 50, 'SOLID', brushVolume === 'solid'); drawButton(leftMenuCtx, 262, 140, 200, 50, 'SHELL', brushVolume === 'shell');
                 drawButton(leftMenuCtx, 50, 210, 80, 50, '[-]', false); drawButton(leftMenuCtx, 140, 210, 232, 50, `Radius: ${brushSize}`, false); drawButton(leftMenuCtx, 382, 210, 80, 50, '[+]', false);
-                drawButton(leftMenuCtx, 20, 60, 110, 45, 'FREE', extrudeAxis === 'free');
+            } else if (activeTool === 'extrude') {
+                drawButton(leftMenuCtx, 20, 60, 110, 40, 'FREE', extrudeAxis === 'free');
+                drawButton(leftMenuCtx, 140, 60, 110, 40, 'LOCK X', extrudeAxis === 'X');
+                drawButton(leftMenuCtx, 260, 60, 110, 40, 'LOCK Y', extrudeAxis === 'Y');
+                drawButton(leftMenuCtx, 380, 60, 112, 40, 'LOCK Z', extrudeAxis === 'Z');
+                
+                drawButton(leftMenuCtx, 20, 110, 230, 45, 'PALETTE COLOR', extrudeColorMode === 'palette');
+                drawButton(leftMenuCtx, 262, 110, 230, 45, 'ORIGINAL COLOR', extrudeColorMode === 'original');
 
+                drawButton(leftMenuCtx, 20, 165, 472, 45, `Mode: ${extrudeAdjoining ? 'ADJOINING FACES' : 'SINGLE VOXEL'}`, extrudeAdjoining);
+                
+                if (extrudeAdjoining) {
+                    drawButton(leftMenuCtx, 20, 220, 230, 45, 'ALL ADJOINING', extrudeAdjoiningFilter === 'all');
+                    drawButton(leftMenuCtx, 262, 220, 230, 45, 'SAME COLOR ONLY', extrudeAdjoiningFilter === 'color');
+                }
+            } else if (activeTool === 'line') {
                 drawButton(leftMenuCtx, 50, 60, 200, 45, 'ONE-HAND', lineMode === 'one-hand'); 
                 drawButton(leftMenuCtx, 262, 60, 200, 45, 'TWO-HAND', lineMode === 'two-hand');
-                
                 drawButton(leftMenuCtx, 50, 115, 200, 45, 'STROKE', lineDrawMode === 'stroke'); 
                 drawButton(leftMenuCtx, 262, 115, 200, 45, 'SHEET', lineDrawMode === 'sheet');
-
                 drawButton(leftMenuCtx, 50, 170, 200, 45, 'STRAIGHT', lineType === 'straight'); 
                 drawButton(leftMenuCtx, 262, 170, 200, 45, 'ARC', lineType === 'arc');
-                
                 drawButton(leftMenuCtx, 50, 225, 80, 45, '[-]', false); 
                 drawButton(leftMenuCtx, 140, 225, 232, 45, `Bulge: ${arcBulge.toFixed(1)}`, false); 
                 drawButton(leftMenuCtx, 382, 225, 80, 45, '[+]', false);
-
                 drawButton(leftMenuCtx, 50, 280, 80, 45, '[-]', false); 
                 drawButton(leftMenuCtx, 140, 280, 232, 45, `Radius: ${brushSize}`, false); 
                 drawButton(leftMenuCtx, 382, 280, 80, 45, '[+]', false);
-
             } else if (activeTool === 'paint') {
                 drawButton(leftMenuCtx, 50, 70, 200, 50, 'BRUSH', paintMode === 'brush'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'BUCKET', paintMode === 'bucket');
                 if (paintMode === 'brush') {
@@ -2355,42 +2364,41 @@ function executeLineTool(startPos, endPos, isPainting) {
             if (max === 0 && isP) return;
 
             const extrusionList = [];
+            const referenceColor = new THREE.Color();
+            const referenceMat = getVoxelMatAndColor(cSx, cSy, cSz, referenceColor);
+            if (referenceMat === -1) return;
+
             if (extrudeAdjoining) {
-                const startColor = new THREE.Color();
-                const targetMat = getVoxelMatAndColor(cSx, cSy, cSz, startColor);
-                if (targetMat !== -1) {
-                    fillVisited.clear(); fillQueue.length = 0;
-                    fillQueue.push(cSx, cSy, cSz);
-                    fillVisited.add((cSx+32768)+(cSy+32768)*65536+(cSz+32768)*4294967296);
-                    let qH = 0;
-                    while(qH < fillQueue.length && extrusionList.length < 5000) {
-                        const x = fillQueue[qH++], y = fillQueue[qH++], z = fillQueue[qH++];
-                        const vColor = new THREE.Color();
-                        const vMat = getVoxelMatAndColor(x, y, z, vColor);
-                        extrusionList.push({x, y, z, mat: vMat, color: vColor.clone()});
-                        
-                        const neighbors = (extrudeAxis === 'X') ? [0,1,0, 0,-1,0, 0,0,1, 0,0,-1] : 
-                                          (extrudeAxis === 'Y') ? [1,0,0, -1,0,0, 0,0,1, 0,0,-1] : 
-                                          [1,0,0, -1,0,0, 0,1,0, 0,-1,0];
-                        for (let i=0; i<neighbors.length; i+=3) {
-                            const nx=x+neighbors[i], ny=y+neighbors[i+1], nz=z+neighbors[i+2], k=(nx+32768)+(ny+32768)*65536+(nz+32768)*4294967296;
-                            if (!fillVisited.has(k)) {
-                                const nColor = new THREE.Color();
-                                const nMat = getVoxelMatAndColor(nx, ny, nz, nColor);
-                                if (nMat === targetMat) {
-                                    const matchColor = (extrudeAdjoiningFilter === 'all') || (nColor.equals(startColor));
-                                    if (matchColor) {
-                                        fillVisited.add(k); fillQueue.push(nx, ny, nz);
-                                    }
+                fillVisited.clear(); fillQueue.length = 0;
+                fillQueue.push(cSx, cSy, cSz);
+                fillVisited.add((cSx+32768)+(cSy+32768)*65536+(cSz+32768)*4294967296);
+                let qH = 0;
+                while(qH < fillQueue.length && extrusionList.length < 10000) {
+                    const x = fillQueue[qH++], y = fillQueue[qH++], z = fillQueue[qH++];
+                    const vColor = new THREE.Color();
+                    const vMat = getVoxelMatAndColor(x, y, z, vColor);
+                    extrusionList.push({x, y, z, mat: vMat, color: vColor.clone()});
+                    
+                    const neighbors = (extrudeAxis === 'X') ? [0,1,0, 0,-1,0, 0,0,1, 0,0,-1] : 
+                                      (extrudeAxis === 'Y') ? [1,0,0, -1,0,0, 0,0,1, 0,0,-1] : 
+                                      [1,0,0, -1,0,0, 0,1,0, 0,-1,0];
+                    for (let i=0; i<neighbors.length; i+=3) {
+                        const nx=x+neighbors[i], ny=y+neighbors[i+1], nz=z+neighbors[i+2];
+                        const k=(nx+32768)+(ny+32768)*65536+(nz+32768)*4294967296;
+                        if (!fillVisited.has(k)) {
+                            const nColor = new THREE.Color();
+                            const nMat = getVoxelMatAndColor(nx, ny, nz, nColor);
+                            if (nMat === referenceMat) {
+                                const isSameColor = Math.abs(nColor.r - referenceColor.r) < 0.01 && Math.abs(nColor.g - referenceColor.g) < 0.01 && Math.abs(nColor.b - referenceColor.b) < 0.01;
+                                if (extrudeAdjoiningFilter === 'all' || isSameColor) {
+                                    fillVisited.add(k); fillQueue.push(nx, ny, nz);
                                 }
                             }
                         }
                     }
                 }
             } else {
-                const vColor = new THREE.Color();
-                const vMat = getVoxelMatAndColor(cSx, cSy, cSz, vColor);
-                if (vMat !== -1) extrusionList.push({x: cSx, y: cSy, z: cSz, mat: vMat, color: vColor});
+                extrusionList.push({x: cSx, y: cSy, z: cSz, mat: referenceMat, color: referenceColor.clone()});
             }
 
             for (let step = 1; step <= max; step++) {
@@ -2398,13 +2406,14 @@ function executeLineTool(startPos, endPos, isPainting) {
                 const ox = Math.round(dx * t), oy = Math.round(dy * t), oz = Math.round(dz * t);
                 for (const v of extrusionList) {
                     const gx = v.x + ox, gy = v.y + oy, gz = v.z + oz;
-                    const finalColor = (extrudeColorMode === 'original') ? v.color : getDrawColor(gx, gy, gz, cSx-5, cSx+5, cSy-5, cSy+5, 0);
-                    const finalMat = (extrudeColorMode === 'original') ? v.mat : matTypes[0];
+                    const finalColor = (extrudeColorMode === 'original') ? v.color : slotColors[activeMatSlot][activeColorSubSlot];
+                    const finalMat = (extrudeColorMode === 'original') ? v.mat : matTypes[activeMatSlot];
                     setVoxel(gx, gy, gz, isP, finalColor, finalMat);
                 }
             }
             leftMenuNeedsUpdate = true;
         }
+
 
 
 
@@ -3233,19 +3242,11 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                         else if (extrudeAxis === 'Y') { e.x = s.x; e.z = s.z; }
                         else if (extrudeAxis === 'Z') { e.x = s.x; e.y = s.y; }
                         
-                        // Enhanced Preview: show the actual volume being extruded
-                        const cSx = Math.round(s.x / VOXEL_SIZE), cSy = Math.round(s.y / VOXEL_SIZE), cSz = Math.round(s.z / VOXEL_SIZE);
-                        const cEx = Math.round(e.x / VOXEL_SIZE), cEy = Math.round(e.y / VOXEL_SIZE), cEz = Math.round(e.z / VOXEL_SIZE);
-                        
-                        const dx = cEx - cSx, dy = cEy - cSy, dz = cEz - cSz;
-                        const max = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz));
-                        
-                        // We reuse the linePreviewMesh logic but ensure it represents the whole block if adjoining
                         if (extrudeAdjoining) {
-                            // If adjoining, we show a box-like preview representing the extrusion path
+                            // Represent the volume by updating a box preview that encapsulates the pull range
                             updateBoxPreview(s, e, true);
                         } else {
-                            // If single voxel, the line preview is sufficient but we ensure it's snapped
+                            // Single voxel mode: update snapped line preview
                             updateLinePreviewMesh(s, e, true);
                             linePreviewMesh.visible = true;
                         }
