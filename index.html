@@ -1327,8 +1327,9 @@ function updatePlanePreview(start, end, isPainting) {
             drawButton(leftMenuCtx, 50, 225, 80, 45, '[-]', false); 
             drawButton(leftMenuCtx, 140, 225, 232, 45, `Bulge: ${arcBulge.toFixed(1)}`, false); 
             drawButton(leftMenuCtx, 382, 225, 80, 45, '[+]', false);
+            const radiusLocked = (lineDrawMode === 'sheet');
             drawButton(leftMenuCtx, 50, 280, 80, 45, '[-]', false); 
-            drawButton(leftMenuCtx, 140, 280, 232, 45, `Radius: ${brushSize}`, false); 
+            drawButton(leftMenuCtx, 140, 280, 232, 45, radiusLocked ? `Radius: LOCKED` : `Radius: ${brushSize}`, radiusLocked); 
             drawButton(leftMenuCtx, 382, 280, 80, 45, '[+]', false);
             drawButton(leftMenuCtx, 50, 335, 200, 45, 'SOLID', brushVolume === 'solid'); 
             drawButton(leftMenuCtx, 262, 335, 200, 45, 'HOLLOW', brushVolume === 'shell');
@@ -1523,7 +1524,13 @@ if (cy >= 60 && cy <= 90) {
                 else if (cy >= 115 && cy <= 160) { if (cx >= 50 && cx <= 250) lineDrawMode = 'stroke'; if (cx >= 262 && cx <= 462) { lineDrawMode = 'sheet'; brushSize = 1; } } 
                 else if (cy >= 170 && cy <= 215) { if (cx >= 50 && cx <= 250) lineType = 'straight'; if (cx >= 262 && cx <= 462) lineType = 'arc'; } 
                 else if (cy >= 225 && cy <= 270) { if (cx >= 50 && cx <= 130) arcBulge = Math.max(-5.0, arcBulge - 0.5); if (cx >= 382 && cx <= 462) arcBulge = Math.min(5.0, arcBulge + 0.5); } 
-                else if (cy >= 280 && cy <= 325) { if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); }
+                                else if (cy >= 280 && cy <= 325) { 
+                    // Disable radius adjustment if in Sheet Mode
+                    if (lineDrawMode !== 'sheet') {
+                        if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); 
+                        if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); 
+                    }
+                }
                 else if (cy >= 335 && cy <= 380) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
             } else if (activeTool === 'paint') {
                 if (cy >= 70 && cy <= 120) { if (cx >= 50 && cx <= 250) paintMode = 'brush'; if (cx >= 262 && cx <= 462) paintMode = 'bucket'; }
@@ -3261,7 +3268,11 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                     if (activeTool === 'line' && lineType === 'arc') {
                         // Extract Roll (Z rotation in YZX order)
                         tempSEuler.setFromQuaternion(xrRight.quaternion, 'YZX');
-                        arcBulge = tempSEuler.z * 1.5; // Map roll range (~ -3 to 3) to bulge factor
+                        
+                        // Cubic Mapping: Slow change at center, fast change near 90 degrees
+                        // Normalizing by ~1.57 (90 degrees) and applying power of 3
+                        const normalizedRoll = tempSEuler.z / 1.5708;
+                        arcBulge = Math.pow(normalizedRoll, 3) * 4.0; 
 
                         if (xrLeft) {
                             tempSEuler.setFromQuaternion(xrLeft.quaternion, 'YZX');
