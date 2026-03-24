@@ -757,75 +757,83 @@ const bucketPreviewMesh = new THREE.InstancedMesh(voxelGeometry, new THREE.MeshB
         for(let i=0; i<30000; i++) { linePreviewMesh.instanceMatrix.array[i*16]=1; linePreviewMesh.instanceMatrix.array[i*16+5]=1; linePreviewMesh.instanceMatrix.array[i*16+10]=1; linePreviewMesh.instanceMatrix.array[i*16+15]=1;
         }
         worldGroup.add(linePreviewMesh);       
-        function updateLinePreviewFromPoints(points, isPainting, arcUp = new THREE.Vector3(0,1,0)) {
+function updateLinePreviewFromPoints(points, isPainting, arcUp = new THREE.Vector3(0,1,0)) {
             let instCount = 0;
-            const r = (brushSize - 1) * VOXEL_SIZE;
-            const rSq = (r + VOXEL_SIZE*0.1) * (r + VOXEL_SIZE*0.1);
-            fillVisited.clear();
-
-            // Pre-allocate math objects to reduce GC pressure
+            const r = brushSize - 1, rSq = (r + 0.1) * (r + 0.1);
+            
+            // Vectors for oriented square logic
             const segDir = new THREE.Vector3();
             const uAxis = new THREE.Vector3();
             const vAxis = new THREE.Vector3();
-            const wPos = new THREE.Vector3();
             const distVec = new THREE.Vector3();
 
-            const isInside = (pos) => {
-                for (let i = 0; i < points.length - 1; i++) {
-                    const A = points[i], B = points[i+1];
-                    segDir.subVectors(B, A);
-                    const L2 = segDir.lengthSq();
-                    wPos.subVectors(pos, A);
-                    const t = Math.max(0, Math.min(1, wPos.dot(segDir) / L2));
-                    const proj = new THREE.Vector3().copy(A).addScaledVector(segDir, t);
-                    distVec.subVectors(pos, proj);
-
-                    if (brushShape === 'sphere') {
-                        if (distVec.lengthSq() <= rSq) return true;
-                    } else {
-                        segDir.normalize();
-                        uAxis.copy(arcUp).projectOnPlane(segDir).normalize();
-                        if (uAxis.lengthSq() < 0.01) uAxis.set(1,0,0).projectOnPlane(segDir).normalize();
-                        vAxis.crossVectors(segDir, uAxis);
-                        if (Math.abs(distVec.dot(uAxis)) <= r + 0.001 && Math.abs(distVec.dot(vAxis)) <= r + 0.001) return true;
-                    }
-                }
-                return false;
+            const isInside = (dx, dy, dz, cx, cy, cz) => {
+                if (brushShape === 'sphere') return (dx*dx + dy*dy + dz*dz <= rSq);
+                
+                // For square profiles, we need to find the segment orientation
+                // In the previewer, we approximate using the closest segment direction
+                // (Optimized: we assume the nearest point in the 'points' array is sufficient)
+                distVec.set(dx, dy, dz);
+                const dU = Math.abs(distVec.dot(uAxis));
+                const dV = Math.abs(distVec.dot(vAxis));
+                return (dU <= r + 0.001 && dV <= r + 0.001);
             };
+            fillVisited.clear();
+            
+            // NEW: Track the last voxel evaluated to prevent millions of redundant calculations
+            let lastGx = Infinity, lastGy = Infinity, lastGz = Infinity;
 
-            // Optimization: Iterate within arc bounding box instead of per-point brush loops
-            let min = new THREE.Vector3(Infinity,Infinity,Infinity), max = new THREE.Vector3(-Infinity,-Infinity,-Infinity);
-            points.forEach(p => { min.min(p); max.max(p); });
-            const pad = (brushSize + 1) * VOXEL_SIZE;
-            const gMinX = Math.round((min.x - pad) / VOXEL_SIZE), gMaxX = Math.round((max.x + pad) / VOXEL_SIZE);
-            const gMinY = Math.round((min.y - pad) / VOXEL_SIZE), gMaxY = Math.round((max.y + pad) / VOXEL_SIZE);
-            const gMinZ = Math.round((min.z - pad) / VOXEL_SIZE), gMaxZ = Math.round((max.z + pad) / VOXEL_SIZE);
+            for (let i = 0; i < points.length - 1; i++) {
+                const segmentStart = points[i];
+                const segmentEnd = points[i+1];
+                const dist = segmentStart.distanceTo(segmentEnd);
+                const steps = Math.max(1, Math.ceil(dist / (VOXEL_SIZE * 0.25)));
+                
+                for (let j = 0; j <= steps; j++) {
+                    tempPos.lerpVectors(segmentStart, segmentEnd, j / steps);
+                    const cx = Math.round(tempPos.x / VOXEL_SIZE);
+                    const cy = Math.round(tempPos.y / VOXEL_SIZE);
+                    const cz = Math.round(tempPos.z / VOXEL_SIZE);
+                    
+                    // NEW: Only run the heavy 3D brush loop if we actually moved to a new voxel
+                    if (cx !== lastGx || cy !== lastGy || cz !== lastGz) {
+                        for (let dx = -r; dx <= r; dx++) {
+                            for (let dy = -r; dy <= r; dy++) {
+                                for (let dz = -r; dz <= r; dz++) {
+                                    if (!isInside(dx, dy, dz)) continue;
+                                    
+                                    if (brushVolume === 'shell' && r > 0) {
+                                        const isSurface = !isInside(dx + 1, dy, dz) || !isInside(dx - 1, dy, dz) ||
+                                                          !isInside(dx, dy + 1, dz) || !isInside(dx, dy - 1, dz) ||
+                                                          !isInside(dx, dy, dz + 1) || !isInside(dx, dy, dz - 1);
+                                        if (!isSurface) continue;
+                                    }
 
-            for(let gx=gMinX; gx<=gMaxX; gx++)
-            for(let gy=gMinY; gy<=gMaxY; gy++)
-            for(let gz=gMinZ; gz<=gMaxZ; gz++) {
-                tempPos.set(gx * VOXEL_SIZE, gy * VOXEL_SIZE, gz * VOXEL_SIZE);
-                if (isInside(tempPos)) {
-                    if (brushVolume === 'shell' && brushSize > 1) {
-                        let isSurface = false;
-                        const neighbors = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
-                        for(let n of neighbors) {
-                            if (!isInside(new THREE.Vector3(tempPos.x + n[0]*VOXEL_SIZE, tempPos.y + n[1]*VOXEL_SIZE, tempPos.z + n[2]*VOXEL_SIZE))) {
-                                isSurface = true; break;
+                                    const hash = (cx+dx + 32768) + (cy+dy + 32768) * 65536 + (cz+dz + 32768) * 4294967296;
+                                    if (!fillVisited.has(hash)) {
+                                        fillVisited.add(hash);
+                                        if (instCount < 30000) {
+                                            const mArr = linePreviewMesh.instanceMatrix.array;
+                                            mArr[instCount*16+12] = cx+dx;
+                                            mArr[instCount*16+13] = cy+dy;
+                                            mArr[instCount*16+14] = cz+dz;
+                                            instCount++;
+                                        }
+                                    }
+                                }
                             }
                         }
-                        if (!isSurface) continue;
+                        lastGx = cx;
+                        lastGy = cy;
+                        lastGz = cz;
                     }
-                    const mArr = linePreviewMesh.instanceMatrix.array;
-                    mArr[instCount*16+12] = gx; mArr[instCount*16+13] = gy; mArr[instCount*16+14] = gz;
-                    if (++instCount >= 30000) break;
                 }
-                if (instCount >= 30000) break;
             }
 
             linePreviewMesh.count = instCount;
             linePreviewMesh.instanceMatrix.needsUpdate = true;
-            linePreviewMesh.material.color.copy(isPainting ? slotColors[activeMatSlot][activeColorSubSlot] : new THREE.Color(0xff0055));
+            if (isPainting) linePreviewMesh.material.color.copy(slotColors[activeMatSlot][activeColorSubSlot]); 
+            else linePreviewMesh.material.color.setHex(0xff0055);
         }
 
         
@@ -1948,7 +1956,7 @@ function handleRightMenuClick(cx, cy) {
                 p.z = Math.pow(1 - t, 2) * p1.z + 2 * (1 - t) * t * controlPoint.z + Math.pow(t, 2) * p2.z;
                 outPoints.push(p);
             }
-            return avgUp; // Crucial for oriented square math
+            return avgUp; // Return the Up vector for oriented square calculation
         }
 
 
@@ -2403,59 +2411,82 @@ function placeBrushVoxels(pos, isP) {
             }
 
             const r = (brushSize - 1) * VOXEL_SIZE;
-            const rSq = (r + VOXEL_SIZE*0.1) * (r + VOXEL_SIZE*0.1);
+            const candidates = new Set();
             
-            const segDir = new THREE.Vector3(), uAxis = new THREE.Vector3(), vAxis = new THREE.Vector3(), wPos = new THREE.Vector3(), distVec = new THREE.Vector3();
+            // Densified candidate gathering
+            for (let i = 0; i < points.length - 1; i++) {
+                const A = points[i], B = points[i+1];
+                const dist = A.distanceTo(B);
+                const steps = Math.max(1, Math.ceil(dist / (VOXEL_SIZE * 0.5)));
+                for (let s = 0; s <= steps; s++) {
+                    tempPos.lerpVectors(A, B, s / steps);
+                    const gX = Math.round(tempPos.x / VOXEL_SIZE);
+                    const gY = Math.round(tempPos.y / VOXEL_SIZE);
+                    const gZ = Math.round(tempPos.z / VOXEL_SIZE);
+                    const radSteps = brushSize;
+                    for(let x=-radSteps; x<=radSteps; x++) 
+                        for(let y=-radSteps; y<=radSteps; y++) 
+                            for(let z=-radSteps; z<=radSteps; z++) 
+                                candidates.add(`${gX+x},${gY+y},${gZ+z}`);
+                }
+            }
 
-            const isInside = (pos) => {
+            // Local variables for orientation-based square profile
+            const segmentDir = new THREE.Vector3();
+            const uAxis = new THREE.Vector3();
+            const vAxis = new THREE.Vector3();
+            const wPos = new THREE.Vector3();
+            const projVec = new THREE.Vector3();
+
+            const isInsideStroke = (pos) => {
+                let minDistSq = Infinity;
+                let inside = false;
+
                 for (let i = 0; i < points.length - 1; i++) {
                     const A = points[i], B = points[i+1];
-                    segDir.subVectors(B, A);
-                    const L2 = segDir.lengthSq();
+                    segmentDir.subVectors(B, A);
+                    const L2 = segmentDir.lengthSq();
                     wPos.subVectors(pos, A);
-                    const t = Math.max(0, Math.min(1, wPos.dot(segDir) / L2));
-                    const proj = new THREE.Vector3().copy(A).addScaledVector(segDir, t);
-                    distVec.subVectors(pos, proj);
+                    const t = Math.max(0, Math.min(1, wPos.dot(segmentDir) / L2));
+                    projVec.copy(A).addScaledVector(segmentDir, t);
+                    const distVec = new THREE.Vector3().subVectors(pos, projVec);
+
                     if (brushShape === 'sphere') {
-                        if (distVec.lengthSq() <= rSq) return true;
+                        if (distVec.lengthSq() <= (r + 0.001) * (r + 0.001)) return true;
                     } else {
-                        segDir.normalize();
-                        uAxis.copy(arcUp).projectOnPlane(segDir).normalize();
-                        if (uAxis.lengthSq() < 0.01) uAxis.set(1,0,0).projectOnPlane(segDir).normalize();
-                        vAxis.crossVectors(segDir, uAxis);
-                        if (Math.abs(distVec.dot(uAxis)) <= r + 0.001 && Math.abs(distVec.dot(vAxis)) <= r + 0.001) return true;
+                        // Square Profile Calculation
+                        segmentDir.normalize();
+                        uAxis.copy(arcUp).projectOnPlane(segmentDir).normalize();
+                        if (uAxis.lengthSq() < 0.01) uAxis.set(1, 0, 0).projectOnPlane(segmentDir).normalize();
+                        vAxis.crossVectors(segmentDir, uAxis);
+
+                        const distU = Math.abs(distVec.dot(uAxis));
+                        const distV = Math.abs(distVec.dot(vAxis));
+                        if (distU <= r + 0.001 && distV <= r + 0.001) return true;
                     }
                 }
                 return false;
             };
 
-            let min = new THREE.Vector3(Infinity,Infinity,Infinity), max = new THREE.Vector3(-Infinity,-Infinity,-Infinity);
-            points.forEach(p => { min.min(p); max.max(p); });
-            const pad = (brushSize + 1) * VOXEL_SIZE;
-            const gMinX = Math.round((min.x - pad) / VOXEL_SIZE), gMaxX = Math.round((max.x + pad) / VOXEL_SIZE);
-            const gMinY = Math.round((min.y - pad) / VOXEL_SIZE), gMaxY = Math.round((max.y + pad) / VOXEL_SIZE);
-            const gMinZ = Math.round((min.z - pad) / VOXEL_SIZE), gMaxZ = Math.round((max.z + pad) / VOXEL_SIZE);
-
-            for(let gx=gMinX; gx<=gMaxX; gx++)
-            for(let gy=gMinY; gy<=gMaxY; gy++)
-            for(let gz=gMinZ; gz<=gMaxZ; gz++) {
+            candidates.forEach(key => {
+                const [gx, gy, gz] = key.split(',').map(Number);
                 tempPos.set(gx * VOXEL_SIZE, gy * VOXEL_SIZE, gz * VOXEL_SIZE);
-                if (isInside(tempPos)) {
-                    if (brushVolume === 'solid' || brushSize === 1) {
+                
+                if (isInsideStroke(tempPos)) {
+                    if (brushVolume === 'solid') {
                         setVoxel(gx, gy, gz, isPainting, getDrawColor(gx, gy, gz, 0, 0, 0, 0, 0), matTypes[0]);
                     } else {
-                        let isSurface = false;
+                        let isShell = false;
                         const neighbors = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
                         for(let n of neighbors) {
-                            if (!isInside(new THREE.Vector3(tempPos.x + n[0]*VOXEL_SIZE, tempPos.y + n[1]*VOXEL_SIZE, tempPos.z + n[2]*VOXEL_SIZE))) {
-                                isSurface = true; break;
-                            }
+                            tempPos.set((gx+n[0])*VOXEL_SIZE, (gy+n[1])*VOXEL_SIZE, (gz+n[2])*VOXEL_SIZE);
+                            if (!isInsideStroke(tempPos)) { isShell = true; break; }
                         }
-                        if (isSurface) setVoxel(gx, gy, gz, isPainting, getDrawColor(gx, gy, gz, 0, 0, 0, 0, 0), matTypes[0]);
+                        if (isShell) setVoxel(gx, gy, gz, isPainting, getDrawColor(gx, gy, gz, 0, 0, 0, 0, 0), matTypes[0]);
                         else if (isPainting) setVoxel(gx, gy, gz, false, null); 
                     }
                 }
-            }
+            });
         }
 
         function executeExtrudeTool(start, end, isP) {
@@ -3494,6 +3525,7 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                         const up = calculateArcPoints(leftTargetLocal, rightTargetLocal, xrLeft, xrRight, arcPoints);
                         updateLinePreviewFromPoints(arcPoints, true, up);
                     } else {
+                        // For straight lines, use right controller orientation
                         const up = new THREE.Vector3(0,1,0).applyQuaternion(xrRight.quaternion);
                         updateLinePreviewFromPoints([leftTargetLocal, rightTargetLocal], true, up);
                     }
