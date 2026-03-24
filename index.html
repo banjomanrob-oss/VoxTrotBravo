@@ -1904,62 +1904,30 @@ function handleRightMenuClick(cx, cy) {
 
 
         function calculateArcPoints(p1, p2, ctrlL, ctrlR, outPoints, fixedSteps = 0) {
-            const dist = p1.distanceTo(p2);
-            if (dist < 0.001 || !ctrlL || !ctrlR) return;
+            const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+            const diff = new THREE.Vector3().subVectors(p2, p1);
+            const dist = diff.length();
             
-            // Use existing globals to prevent GC pressure and ReferenceErrors
-            const lineAxis = currentHandVec.subVectors(p2, p1).normalize();
+            const upL = new THREE.Vector3(0, 1, 0).applyQuaternion(ctrlL.quaternion);
+            const upR = new THREE.Vector3(0, 1, 0).applyQuaternion(ctrlR.quaternion);
+            const avgUp = new THREE.Vector3().addVectors(upL, upR).normalize();
             
-            // Capture world rotation to keep control intuitive relative to view
-            const worldGroupInvQuat = tempQuat2;
-            worldGroup.getWorldQuaternion(worldGroupInvQuat).invert();
-
-            const getHandBulge = (ctrl, targetVec) => {
-                // Get controller "Up" in local space
-                targetVec.set(0, 1, 0).applyQuaternion(ctrl.quaternion).applyQuaternion(worldGroupInvQuat);
-
-                // Project onto plane perpendicular to line
-                const dot = targetVec.dot(lineAxis);
-                targetVec.subScaledVector(lineAxis, dot);
-                
-                // Safety check: if hand is parallel to the line, use world "Up"
-                if (targetVec.lengthSq() < 0.0001) {
-                    targetVec.set(0, 1, 0).applyQuaternion(worldGroupInvQuat);
-                    const dotFallback = targetVec.dot(lineAxis);
-                    targetVec.subScaledVector(lineAxis, dotFallback);
-                }
-                
-                // Final safety: ensure we never normalize a zero-length vector (prevents NaNs)
-                if (targetVec.lengthSq() > 0.00001) {
-                    targetVec.normalize().multiplyScalar(arcBulge * dist * 0.5);
-                } else {
-                    targetVec.set(0, 0, 0);
-                }
-                return targetVec;
-            };
-
-            // Reuse existing vectors for control point math
-            const bulgeVecL = getHandBulge(ctrlL, tempPXZ); 
-            const bulgeVecR = getHandBulge(ctrlR, tempCXZ);
-
-            const cp1 = tempPos.copy(p1).add(bulgeVecL);
-            const cp2 = tempStart.copy(p2).add(bulgeVecR);
-
+            // Rotate the arc plane around the start-to-end axis based on controller roll
+            const lineAxis = new THREE.Vector3().subVectors(p2, p1).normalize();
+            if (lineAxis.lengthSq() > 0.0001) {
+                avgUp.applyAxisAngle(lineAxis, arcAngleOffset);
+            }
+            
+            const controlPoint = mid.clone().addScaledVector(avgUp, dist * 0.5 * arcBulge);
+            
             const steps = fixedSteps > 0 ? fixedSteps : Math.min(100, Math.max(10, Math.ceil(dist / (VOXEL_SIZE * 2))));
             outPoints.length = 0;
-            
             for (let i = 0; i <= steps; i++) {
                 const t = i / steps;
-                const omt = 1 - t;
-                const omt2 = omt * omt;
-                const t2 = t * t;
-                
-                // Standard Cubic Bezier calculation
                 const p = new THREE.Vector3();
-                p.addScaledVector(p1, omt2 * omt);
-                p.addScaledVector(cp1, 3 * omt2 * t);
-                p.addScaledVector(cp2, 3 * omt * t2);
-                p.addScaledVector(p2, t2 * t);
+                p.x = Math.pow(1 - t, 2) * p1.x + 2 * (1 - t) * t * controlPoint.x + Math.pow(t, 2) * p2.x;
+                p.y = Math.pow(1 - t, 2) * p1.y + 2 * (1 - t) * t * controlPoint.y + Math.pow(t, 2) * p2.y;
+                p.z = Math.pow(1 - t, 2) * p1.z + 2 * (1 - t) * t * controlPoint.z + Math.pow(t, 2) * p2.z;
                 outPoints.push(p);
             }
         }
@@ -3289,8 +3257,17 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                     rightTargetLocal.set(Math.round(rightTargetLocal.x/VOXEL_SIZE)*VOXEL_SIZE,Math.round(rightTargetLocal.y/VOXEL_SIZE)*VOXEL_SIZE,Math.round(rightTargetLocal.z/VOXEL_SIZE)*VOXEL_SIZE); 
                     cursorRight.position.copy(rightTargetLocal); cursorRight.updateMatrix(); cursorRight.visible=true; 
 
-                    // Real-time gesture control is now handled inside calculateArcPoints
-                    // using the active controller quaternions every frame.
+                    // Real-time Arc Control: Map Right Controller Roll to Bulge and Left Roll to Angle
+                    if (activeTool === 'line' && lineType === 'arc') {
+                        // Extract Roll (Z rotation in YZX order)
+                        tempSEuler.setFromQuaternion(xrRight.quaternion, 'YZX');
+                        arcBulge = tempSEuler.z * 1.5; // Map roll range (~ -3 to 3) to bulge factor
+
+                        if (xrLeft) {
+                            tempSEuler.setFromQuaternion(xrLeft.quaternion, 'YZX');
+                            arcAngleOffset = tempSEuler.z; // Rotate arc plane by left wrist twist
+                        }
+                    }
 
                     if(hasSelection && !isSettingPivot){
                         // Snap to controller tip for brush-style modes (Draw/Paint/Free)
