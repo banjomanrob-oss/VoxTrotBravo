@@ -187,7 +187,9 @@
         let lineMode = 'two-hand'; // 'one-hand' or 'two-hand'
         let lineType = 'straight';  // 'straight' or 'arc'
         let lineDrawMode = 'stroke'; // 'stroke' or 'sheet'
+        let lineColorMode = 'standard'; // 'standard', 'gradient', 'wild'
         let arcBulge = 1.0;        // Multiplier for the arc curve depth
+
         let arcAngleOffset = 0;    // Dynamic rotation of the arc plane
         let lastArcPoints = [];    // Cache for sheet extrusion
 
@@ -1316,8 +1318,11 @@ function updatePlanePreview(start, end, isPainting) {
             drawButton(leftMenuCtx, 50, 335, 80, 45, '[-]', false); 
             drawButton(leftMenuCtx, 140, 335, 232, 45, radiusLocked ? `Radius: LOCKED` : `Radius: ${brushSize}`, radiusLocked); 
             drawButton(leftMenuCtx, 382, 335, 80, 45, '[+]', false);
-            drawButton(leftMenuCtx, 50, 390, 200, 45, 'SOLID', brushVolume === 'solid'); 
-            drawButton(leftMenuCtx, 262, 390, 200, 45, 'HOLLOW', brushVolume === 'shell');
+            drawButton(leftMenuCtx, 50, 390, 140, 45, 'STD-CLR', lineColorMode === 'standard'); 
+            drawButton(leftMenuCtx, 200, 390, 140, 45, 'GRADIENT', lineColorMode === 'gradient');
+            drawButton(leftMenuCtx, 350, 390, 120, 45, 'WILD', lineColorMode === 'wild');
+            drawButton(leftMenuCtx, 50, 445, 200, 45, 'SOLID', brushVolume === 'solid'); 
+            drawButton(leftMenuCtx, 262, 445, 200, 45, 'HOLLOW', brushVolume === 'shell');
         } else if (activeTool === 'paint') {                drawButton(leftMenuCtx, 50, 70, 200, 50, 'BRUSH', paintMode === 'brush'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'BUCKET', paintMode === 'bucket');
                 if (paintMode === 'brush') {
                     drawButton(leftMenuCtx, 50, 140, 200, 50, 'Shape: CUBE', brushShape === 'cube'); drawButton(leftMenuCtx, 262, 140, 200, 50, 'Shape: SPHERE', brushShape === 'sphere');
@@ -1516,7 +1521,13 @@ if (cy >= 60 && cy <= 90) {
                         if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); 
                     }
                 }
-                else if (cy >= 390 && cy <= 435) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
+                else if (cy >= 390 && cy <= 435) {
+                    if (cx >= 50 && cx <= 190) lineColorMode = 'standard';
+                    else if (cx >= 200 && cx <= 340) lineColorMode = 'gradient';
+                    else if (cx >= 350 && cx <= 470) lineColorMode = 'wild';
+                }
+                else if (cy >= 445 && cy <= 490) { if (cx >= 50 && cx <= 250) brushVolume = 'solid'; if (cx >= 262 && cx <= 462) brushVolume = 'shell'; }
+
             }
  else if (activeTool === 'paint') {
                 if (cy >= 70 && cy <= 120) { if (cx >= 50 && cx <= 250) paintMode = 'brush'; if (cx >= 262 && cx <= 462) paintMode = 'bucket'; }
@@ -1894,6 +1905,32 @@ function handleRightMenuClick(cx, cy) {
             if (mode === 'shift') return tempColorForDraw[slotIndex].copy(cA).lerp(cB, shiftProgress);
             return cA;
         }
+
+
+
+        function getLineToolColor(gx, gy, gz, minX, maxX, minY, maxY) {
+            const slot = activeMatSlot;
+            const cA = slotColors[slot][0];
+            const cB = slotColors[slot][1];
+            
+            if (lineColorMode === 'wild') {
+                // Wild Mode: World-space trig patterns for a psychedelic, shifting look
+                const freq = 0.3; // Adjust frequency for pattern density
+                const pattern = Math.sin(gx * freq) * Math.cos(gy * freq) * Math.sin(gz * freq);
+                const t = (pattern + 1) / 2; 
+                return tempColorForDraw[slot].copy(cA).lerp(cB, t);
+            }
+            
+            if (lineColorMode === 'gradient') {
+                // Forced Local Gradient: Interpolates between Color A and B based on the stroke's bounding box
+                let t = (maxX > minX) ? (gx - minX) / (maxX - minX) : 0.5;
+                return tempColorForDraw[slot].copy(cA).lerp(cB, t);
+            }
+            
+            // Standard: Uses the global material/color logic (Solid, Grad-H, etc.)
+            return getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, slot);
+        }
+
 
 
         function calculateArcPoints(p1, p2, ctrlL, ctrlR, outPoints, fixedSteps = 0) {
@@ -2357,8 +2394,8 @@ function placeBrushVoxels(pos, isP) {
                                 const hash = (cx+dx+32768) + (cy+dy+32768)*65536 + (cz+dz+32768)*4294967296;
                                 if (!fillVisited.has(hash)) {
                                     fillVisited.add(hash);
-                                    // Use the wider gesture context for color mapping
-                                    setVoxel(cx+dx, cy+dy, cz+dz, isP, getDrawColor(cx+dx, cy+dy, cz+dz, minX, maxX, minY, maxY, 0), matTypes[0]);
+                                    const finalColor = getLineToolColor(cx+dx, cy+dy, cz+dz, minX, maxX, minY, maxY);
+                                    setVoxel(cx+dx, cy+dy, cz+dz, isP, finalColor, matTypes[0]);
                                 }
                             }
                         }
@@ -2473,8 +2510,9 @@ function placeBrushVoxels(pos, isP) {
                 const pos = new THREE.Vector3(gx * VOXEL_SIZE, gy * VOXEL_SIZE, gz * VOXEL_SIZE);
                 
                 if (isInsideStroke(pos)) {
+                    const finalColor = getLineToolColor(gx, gy, gz, minX, maxX, minY, maxY);
                     if (brushVolume === 'solid' || brushSize === 1) {
-                        setVoxel(gx, gy, gz, isPainting, getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, 0), matTypes[0]);
+                        setVoxel(gx, gy, gz, isPainting, finalColor, matTypes[0]);
                     } else {
                         let isShell = false;
                         const neighbors = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
