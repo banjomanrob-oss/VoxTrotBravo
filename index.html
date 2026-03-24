@@ -737,7 +737,7 @@
 
         function hideAllPreviews() {
             boxPreviewMesh.visible = spherePreviewMesh.visible = cylinderPreviewMesh.visible = 
-            conePreviewMesh.visible = polyPreviewMesh.visible = false;
+            conePreviewMesh.visible = polyPreviewMesh.visible = lineWireframeMesh.visible = false;
         }
 
 const bucketPreviewMesh = new THREE.InstancedMesh(voxelGeometry, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, depthTest: false }), 30000);
@@ -1698,7 +1698,8 @@ function handleRightMenuClick(cx, cy) {
                 if (idx >= 0 && idx < 12) {
                     if (hasSelection) applySelection();
                     isPreviewingBox = isPreviewingSphere = isPreviewingPlane = isPreviewingTriangle = isPreviewingCylinder = isPreviewingIcosahedron = false;
-                    boxPreviewMesh.visible = spherePreviewMesh.visible = bucketPreviewMesh.visible = linePreviewMesh.visible = false;
+                    boxPreviewMesh.visible = spherePreviewMesh.visible = bucketPreviewMesh.visible = linePreviewMesh.visible = lineWireframeMesh.visible = false;
+
                     
                     const tools = ['brush', 'extrude', 'line', 'paint', 'sculpt', 'plane', 'box', 'quadsphere', 'cylinder', 'triangle', 'icosahedron', 'select'];
                     
@@ -3608,6 +3609,7 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                 if(needsSync(conePreviewMesh, showM)) syncMirrorProxies(conePreviewMesh, getMirrorProxies(conePreviewMesh), showM);
                 if(needsSync(polyPreviewMesh, showM)) syncMirrorProxies(polyPreviewMesh, getMirrorProxies(polyPreviewMesh), showM);
                 if(needsSync(linePreviewMesh, showM)) syncMirrorProxies(linePreviewMesh, getMirrorProxies(linePreviewMesh), showM);
+                if(needsSync(lineWireframeMesh, showM)) syncMirrorProxies(lineWireframeMesh, getMirrorProxies(lineWireframeMesh), showM);
                 chunks.forEach(c=>c.updateBuffers());
             }
             if (renderMode === 'performance') {
