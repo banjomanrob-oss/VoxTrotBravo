@@ -1897,45 +1897,54 @@ function handleRightMenuClick(cx, cy) {
 
 
 
-        function getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, slotIndex) {
+        function getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, slotIndex, pathT = -1) {
             const mode = colorModes[slotIndex], cA = slotColors[slotIndex][0], cB = slotColors[slotIndex][1];
             if (mode === 'solid') return cA;
-            if (mode === 'grad_h') { let t = (maxX > minX) ? (gx - minX) / (maxX - minX) : 0; return tempColorForDraw[slotIndex].copy(cA).lerp(cB, t); } 
-            if (mode === 'grad_v') { let t = (maxY > minY) ? (gy - minY) / (maxY - minY) : 0; return tempColorForDraw[slotIndex].copy(cA).lerp(cB, t); } 
+            if (mode === 'grad_h' || mode === 'grad_v') {
+                let t = 0;
+                if (pathT !== -1) {
+                    t = pathT;
+                } else if (mode === 'grad_h') {
+                    t = (maxX > minX) ? (gx - minX) / (maxX - minX) : 0;
+                } else {
+                    t = (maxY > minY) ? (gy - minY) / (maxY - minY) : 0;
+                }
+                return tempColorForDraw[slotIndex].copy(cA).lerp(cB, THREE.MathUtils.clamp(t, 0, 1));
+            }
             if (mode === 'shift') return tempColorForDraw[slotIndex].copy(cA).lerp(cB, shiftProgress);
             return cA;
         }
 
 
 
-        function getLineToolColor(gx, gy, gz, minX, maxX, minY, maxY, minZ, maxZ) {
+        function getLineToolColor(gx, gy, gz, minX, maxX, minY, maxY, minZ, maxZ, pathT = -1) {
             const slot = activeMatSlot;
             const cA = slotColors[slot][0];
             const cB = slotColors[slot][1];
             
-        if (lineColorMode === 'wild') {
-            const freq = 0.4; 
-            const dist = Math.sqrt(gx*gx + gy*gy + gz*gz);
-            const pattern = Math.sin(gx * freq) * Math.cos(gy * freq) * Math.sin(gz * freq) + Math.sin(dist * freq * 0.5);
-            const t = THREE.MathUtils.clamp((pattern + 1) / 2, 0, 1);
-            return tempColorForDraw[slot].copy(cA).lerp(cB, t);
-        }
-        
-        if (lineColorMode === 'gradient') {
-            const dx = maxX - minX;
-            const dy = maxY - minY;
-            const dz = maxZ - minZ;
-            let t = (pathT !== -1) ? pathT : 0.5;
-            if (pathT === -1 && dx + dy + dz > 0) {
-                if (dx >= dy && dx >= dz) t = (gx - minX) / dx;
-                else if (dy >= dx && dy >= dz) t = (gy - minY) / dy;
-                else t = (gz - minZ) / dz;
+            if (lineColorMode === 'wild') {
+                const freq = 0.4; 
+                const dist = Math.sqrt(gx*gx + gy*gy + gz*gz);
+                const pattern = Math.sin(gx * freq) * Math.cos(gy * freq) * Math.sin(gz * freq) + Math.sin(dist * freq * 0.5);
+                const t = THREE.MathUtils.clamp((pattern + 1) / 2, 0, 1);
+                return tempColorForDraw[slot].copy(cA).lerp(cB, t);
             }
-            return tempColorForDraw[slot].copy(cA).lerp(cB, THREE.MathUtils.clamp(t, 0, 1));
+            
+            if (lineColorMode === 'gradient') {
+                const dx = maxX - minX;
+                const dy = maxY - minY;
+                const dz = maxZ - minZ;
+                let t = (pathT !== -1) ? pathT : 0.5;
+                if (pathT === -1 && dx + dy + dz > 0) {
+                    if (dx >= dy && dx >= dz) t = (gx - minX) / dx;
+                    else if (dy >= dx && dy >= dz) t = (gy - minY) / dy;
+                    else t = (gz - minZ) / dz;
+                }
+                return tempColorForDraw[slot].copy(cA).lerp(cB, THREE.MathUtils.clamp(t, 0, 1));
+            }
+            
+            return getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, slot, pathT);
         }
-        
-        return getDrawColor(gx, gy, gz, minX, maxX, minY, maxY, slot, pathT);
-    }
 
 
 
