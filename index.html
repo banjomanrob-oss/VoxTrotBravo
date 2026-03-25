@@ -1472,7 +1472,11 @@ if (cy >= 60 && cy <= 90) {
         updateRotatedSelection(); 
         if (typeof updatePreviews === 'function') updatePreviews();
     } else if (cx >= 417 && cx <= 497) isSettingPivot = !isSettingPivot;
-    if (newM !== transformMode) transformMode = newM;
+    if (newM !== transformMode) {
+        transformMode = newM;
+        // Refresh selection visuals to immediately show/hide the wireframe based on mode
+        updateSelectionVisuals();
+    }
 }
                 if (transformMode === 'copy') { 
                     if (cy >= 260 && cy <= 290) { if (cx >= 50 && cx <= 130) numCopies = Math.max(1, numCopies - 1); if (cx >= 382 && cx <= 462) numCopies = Math.min(20, numCopies + 1); } 
@@ -2083,7 +2087,14 @@ function handleRightMenuClick(cx, cy) {
             selMeshSolid.count = iS; selMeshGlass.count = iG; selMeshEmission.count = iE; selMeshMetal.count = iM;
             selMeshSolid.visible = iS > 0; selMeshGlass.visible = iG > 0; selMeshEmission.visible = iE > 0; selMeshMetal.visible = iM > 0;
             
-            if (selectedVoxelsCount > 0) { selBoxMesh.position.set((minX+maxX)/2*VOXEL_SIZE, (minY+maxY)/2*VOXEL_SIZE, (minZ+maxZ)/2*VOXEL_SIZE); selBoxMesh.scale.set((maxX-minX+1.1)*VOXEL_SIZE, (maxY-minY+1.1)*VOXEL_SIZE, (maxZ-minZ+1.1)*VOXEL_SIZE); selBoxMesh.updateMatrix(); selectionGroup.visible = true; } else selectionGroup.visible = false;
+            if (selectedVoxelsCount > 0) { 
+                selBoxMesh.position.set((minX+maxX)/2*VOXEL_SIZE, (minY+maxY)/2*VOXEL_SIZE, (minZ+maxZ)/2*VOXEL_SIZE); 
+                selBoxMesh.scale.set((maxX-minX+1.1)*VOXEL_SIZE, (maxY-minY+1.1)*VOXEL_SIZE, (maxZ-minZ+1.1)*VOXEL_SIZE); 
+                selBoxMesh.updateMatrix(); 
+                // Hide wireframe in Draw/Paint modes as the selection itself provides sufficient feedback
+                selBoxMesh.visible = (transformMode !== 'draw' && transformMode !== 'paint');
+                selectionGroup.visible = true; 
+            } else selectionGroup.visible = false;
         }
         
         function updateRotatedSelection() {
@@ -2104,7 +2115,11 @@ function handleRightMenuClick(cx, cy) {
         }
 
         function finalizeSelection() {
+            // Reset all transform tool parameters to defaults for a clean slate on each new selection
             transformMode = 'move'; numCopies = 1; selectionRotX = selectionRotY = selectionRotZ = 0; selectionScale = 1.0;
+            copyStepRotX = copyStepRotY = copyStepRotZ = 0; copyStepScale = 1.0;
+            isSettingPivot = false;
+
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
             // FIX: Removed setVoxelCore(..., false, null) here to keep world voxels visible until transformed
             for(let i=0; i<baseSelectionCount; i++) { const v=baseSelection[i]; minX=Math.min(minX, v.x); maxX=Math.max(maxX, v.x); minY=Math.min(minY, v.y); maxY=Math.max(maxY, v.y); minZ=Math.min(minZ, v.z); maxZ=Math.max(maxZ, v.z); }
