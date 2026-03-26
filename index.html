@@ -1766,27 +1766,22 @@ function handleRightMenuClick(cx, cy) {
             if (cy >= 210 && cy <= 260) { if (cx >= 40 && cx <= 90) polarSymmetry = Math.max(1, polarSymmetry - 1); if (cx >= 422 && cx <= 472) polarSymmetry = Math.min(16, polarSymmetry + 1); if (cx >= 100 && cx <= 412) polarSymmetry = polarSymmetry === 1 ? 4 : 1; updatePolarArrays(); }
             
             if (cy >= 270 && cy <= 315) drawFromCenter = !drawFromCenter;
-        if (cy >= 330 && cy <= 375) {
-            if (cx >= 40 && cx <= 240) {
-                renderMode = renderMode === 'standard' ? 'performance' : 'standard';
-                // ... (existing render mode logic)
-            }
-            if (cx >= 272 && cx <= 472) performUndo();
-            if (hasSelection) updatePreviews();
-        }
-                renderMode = renderMode === 'standard' ? 'performance' : 'standard';
-                chunks.forEach(chunk => {
-                    for (let i = 0; i < 4; i++) {
-                        const layer = chunk.layers[i];
-                        if (layer && layer.count > 0) {
-                            layer.mesh.visible = (renderMode === 'standard');
-                            layer.pointsMesh.visible = (renderMode === 'performance');
+            if (cy >= 330 && cy <= 375) {
+                if (cx >= 40 && cx <= 240) {
+                    renderMode = renderMode === 'standard' ? 'performance' : 'standard';
+                    chunks.forEach(chunk => {
+                        for (let i = 0; i < 4; i++) {
+                            const layer = chunk.layers[i];
+                            if (layer && layer.count > 0) {
+                                layer.mesh.visible = (renderMode === 'standard');
+                                layer.pointsMesh.visible = (renderMode === 'performance');
+                            }
                         }
-                    }
-                });
-            } // <-- Added missing brace to close the "Render" button logic
-            if (hasSelection) updatePreviews();
-        }
+                    });
+                }
+                if (cx >= 272 && cx <= 472) performUndo();
+                if (hasSelection) updatePreviews();
+            }
             if (cy >= 390 && cy <= 435) { if (cx >= 40 && cx <= 240) exportMode = 'boxes'; if (cx >= 272 && cx <= 472) exportMode = 'mesh'; }
             if (cy >= 450 && cy <= 500 && cx >= 40 && cx <= 472) exportToOBJ();
 
