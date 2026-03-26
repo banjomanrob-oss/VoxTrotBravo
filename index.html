@@ -1713,7 +1713,14 @@ function handleRightMenuClick(cx, cy) {
                     
                     const tools = ['brush', 'extrude', 'line', 'paint', 'sculpt', 'plane', 'box', 'quadsphere', 'cylinder', 'triangle', 'icosahedron', 'select'];
                     
-                    activeTool = tools[idx];  
+                    activeTool = tools[idx];
+                    
+                    // Bug Fix: Ensure brushSize is reset to 1 when re-entering Line Tool in Sheet Mode.
+                    // This prevents brush size contamination from other tools (like Brush or Paint).
+                    if (activeTool === 'line' && lineDrawMode === 'sheet') {
+                        brushSize = 1;
+                    }
+
                     updateCursors(); 
                     rightMenuNeedsUpdate = leftMenuNeedsUpdate = true;
                 }
