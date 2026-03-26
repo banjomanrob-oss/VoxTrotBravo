@@ -117,6 +117,11 @@
 
         let totalActiveVoxels = 0;
         
+        // --- Undo System State ---
+        const undoStack = [];
+        const MAX_UNDO_STEPS = 10;
+        let currentStrokeChanges = null; // Holds changes for the active operation
+        
         let activeTool = 'brush'; 
         let extrudeAxis = 'free';
         let extrudeAdjoining = false;
@@ -1745,9 +1750,10 @@ function handleRightMenuClick(cx, cy) {
             drawButton(globalMenuCtx, 40, 210, 50, 50, '-', false); drawButton(globalMenuCtx, 100, 210, 312, 50, `Polar Symmetry: ${polarSymmetry}`, polarSymmetry > 1); drawButton(globalMenuCtx, 422, 210, 50, 50, '+', false);
             
             drawButton(globalMenuCtx, 40, 270, 432, 45, `Draw From Center: ${drawFromCenter ? 'ON' : 'OFF'}`, drawFromCenter);
-        drawButton(globalMenuCtx, 40, 330, 200, 45, `Render: ${renderMode === 'performance' ? 'PERF' : 'STD'}`, renderMode === 'performance');
+            drawButton(globalMenuCtx, 40, 330, 200, 45, `Render: ${renderMode === 'performance' ? 'PERF' : 'STD'}`, renderMode === 'performance');
+            drawButton(globalMenuCtx, 272, 330, 200, 45, `UNDO (${undoStack.length})`, false);
 
-            drawButton(globalMenuCtx, 40, 390, 200, 45, 'Export: BOXES', exportMode === 'boxes'); 
+            drawButton(globalMenuCtx, 40, 390, 200, 45, 'Export: BOXES', exportMode === 'boxes');
             drawButton(globalMenuCtx, 272, 390, 200, 45, 'Export: MESH', exportMode === 'mesh');
             drawButton(globalMenuCtx, 40, 450, 432, 50, 'EXPORT TO .OBJ', false);
             
@@ -1762,6 +1768,12 @@ function handleRightMenuClick(cx, cy) {
             if (cy >= 270 && cy <= 315) drawFromCenter = !drawFromCenter;
         if (cy >= 330 && cy <= 375) {
             if (cx >= 40 && cx <= 240) {
+                renderMode = renderMode === 'standard' ? 'performance' : 'standard';
+                // ... (existing render mode logic)
+            }
+            if (cx >= 272 && cx <= 472) performUndo();
+            if (hasSelection) updatePreviews();
+        }
                 renderMode = renderMode === 'standard' ? 'performance' : 'standard';
                 chunks.forEach(chunk => {
                     for (let i = 0; i < 4; i++) {
@@ -2025,6 +2037,19 @@ function handleRightMenuClick(cx, cy) {
         
         function setVoxelCore(gx, gy, gz, isP, color, mOver = -1) {
             const cx = gx >> 5, cy = gy >> 5, cz = gz >> 5, k = (cx+65536)+(cy+65536)*131072+(cz+65536)*17179869184, lx = gx&31, ly = gy&31, lz = gz&31;
+            
+            // Record change for undo if a stroke is active
+            if (currentStrokeChanges) {
+                const prevColor = new THREE.Color();
+                const prevMat = getVoxelMatAndColor(gx, gy, gz, prevColor);
+                const targetMat = isP ? (mOver !== -1 ? mOver : matTypes[0]) : -1;
+                
+                // Only record if state actually changes
+                if (prevMat !== targetMat || (isP && !prevColor.equals(color))) {
+                    currentStrokeChanges.push({ gx, gy, gz, prevMat, prevColor: prevMat !== -1 ? prevColor.clone() : null });
+                }
+            }
+
             let chunk = chunks.get(k);
             if (isP) { if (!chunk) { chunk = new Chunk(cx, cy, cz); chunks.set(k, chunk); } chunk.addVoxel(lx, ly, lz, gx, gy, gz, color, mOver !== -1 ? mOver : matTypes[0]); } else if (chunk) chunk.removeVoxel(lx, ly, lz);
         }
@@ -3226,9 +3251,40 @@ let isDrawing=false, isErasing=false, isColorPicking=false, menuClickActive=fals
         function stampSelection(ox, oy, oz) { for(let i=0; i<selectedVoxelsCount; i++){ const v=selectedVoxels[i]; setVoxel(v.x + ox, v.y + oy, v.z + oz, true, v.color, v.mat); } }
         function paintSelection(ox, oy, oz) { for(let i=0; i<selectedVoxelsCount; i++){ const v=selectedVoxels[i]; recolorVoxelSet(v.x + ox, v.y + oy, v.z + oz, v.color, v.mat); } }
 
+
+
+        function performUndo() {
+            if (undoStack.length === 0) return;
+            const lastStep = undoStack.pop();
+            
+            // Temporary disable recording to avoid recursive undo recording
+            const tempStroke = currentStrokeChanges;
+            currentStrokeChanges = null;
+            
+            // Apply changes in reverse to handle overlapping modifications in a single stroke correctly
+            for (let i = lastStep.length - 1; i >= 0; i--) {
+                const change = lastStep[i];
+                if (change.prevMat === -1) {
+                    // It was air, so remove it
+                    setVoxelCore(change.gx, change.gy, change.gz, false, null);
+                } else {
+                    // It was a voxel, restore color and material
+                    setVoxelCore(change.gx, change.gy, change.gz, true, change.prevColor, change.prevMat);
+                }
+            }
+            
+            currentStrokeChanges = tempStroke;
+            globalMenuNeedsUpdate = true;
+            leftMenuNeedsUpdate = true;
+        }
+
+
+
+
         function onSelectStart() {
             menuClickActive = false; // Reset on every press
-            if (this === xrRight) { 
+            currentStrokeChanges = []; // Start recording changes for this action
+            if (this === xrRight) {  
                 if (leftMenuHovered && leftMenuMesh.visible) {
                     menuClickActive = true;
                     const cx=Math.floor(leftMenuUV.x*512), cy=Math.floor((1-leftMenuUV.y)*512);
@@ -3302,6 +3358,14 @@ let isDrawing=false, isErasing=false, isColorPicking=false, menuClickActive=fals
         }
 
         function onSelectEnd() {
+            // Commit changes to undo stack
+            if (currentStrokeChanges && currentStrokeChanges.length > 0) {
+                undoStack.push(currentStrokeChanges);
+                if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
+                globalMenuNeedsUpdate = true;
+            }
+            currentStrokeChanges = null;
+
             if (this === xrRight) { 
                 if(activeSliderDrag) activeSliderDrag=null;
                 else if(isColorPicking) { isColorPicking=isPaletteMagnified=false; updateColorMenuTexture(); } 
