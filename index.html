@@ -194,8 +194,8 @@
         let lineDrawMode = 'stroke'; // 'stroke' or 'sheet'
         let lineColorMode = 'standard'; // 'standard', 'gradient', 'wild'
         let arcBulge = 1.0;        // Multiplier for the arc curve depth
-
-        let arcAngleOffset = 0;    // Dynamic rotation of the arc plane
+        let arcControlMode = 'dynamic'; // 'dynamic' or 'manual'
+        let arcTilt = 0;           // Tilt angle in degrees
         let lastArcPoints = [];    // Cache for sheet extrusion
 
 
@@ -1308,28 +1308,37 @@ function updatePlanePreview(start, end, isPainting) {
                 drawButton(leftMenuCtx, 262, 260, 230, 40, 'COLOR', extrudeAdjoiningFilter === 'color');
             }
         } else if (activeTool === 'line') {
-            drawButton(leftMenuCtx, 50, 60, 200, 45, 'ONE-HAND', lineMode === 'one-hand'); 
-            drawButton(leftMenuCtx, 262, 60, 200, 45, 'TWO-HAND', lineMode === 'two-hand');
-            drawButton(leftMenuCtx, 50, 115, 200, 45, 'STROKE', lineDrawMode === 'stroke'); 
-            drawButton(leftMenuCtx, 262, 115, 200, 45, 'SHEET', lineDrawMode === 'sheet');
-            drawButton(leftMenuCtx, 50, 170, 200, 45, 'STRAIGHT', lineType === 'straight'); 
-            drawButton(leftMenuCtx, 262, 170, 200, 45, 'ARC', lineType === 'arc');
-            // Added Shape Selector
-            drawButton(leftMenuCtx, 50, 225, 200, 45, 'Shape: CUBE', brushShape === 'cube'); 
-            drawButton(leftMenuCtx, 262, 225, 200, 45, 'Shape: SPHERE', brushShape === 'sphere');
+            drawButton(leftMenuCtx, 50, 45, 200, 40, 'ONE-HAND', lineMode === 'one-hand'); 
+            drawButton(leftMenuCtx, 262, 45, 200, 40, 'TWO-HAND', lineMode === 'two-hand');
+            drawButton(leftMenuCtx, 50, 90, 200, 40, 'STROKE', lineDrawMode === 'stroke'); 
+            drawButton(leftMenuCtx, 262, 90, 200, 40, 'SHEET', lineDrawMode === 'sheet');
+            drawButton(leftMenuCtx, 50, 135, 200, 40, 'STRAIGHT', lineType === 'straight'); 
+            drawButton(leftMenuCtx, 262, 135, 200, 40, 'ARC', lineType === 'arc');
             
-            drawButton(leftMenuCtx, 50, 280, 80, 45, '[-]', false); 
-            drawButton(leftMenuCtx, 140, 280, 232, 45, `Bulge: ${arcBulge.toFixed(1)}`, false); 
-            drawButton(leftMenuCtx, 382, 280, 80, 45, '[+]', false);
+            // Dynamic vs Manual Toggle
+            drawButton(leftMenuCtx, 50, 180, 200, 40, 'DYNAMIC ARC', arcControlMode === 'dynamic'); 
+            drawButton(leftMenuCtx, 262, 180, 200, 40, 'MANUAL ARC', arcControlMode === 'manual');
+
+            // Bulge Control (Slider format)
+            drawSlider(leftMenuCtx, 50, 225, 412, 35, 'Bulge', arcBulge, -5.0, 5.0, 'Bulge: %v');
+            
+            // Tilt Control
+            drawSlider(leftMenuCtx, 50, 265, 412, 35, 'Tilt', arcTilt, -180, 180);
+
             const radiusLocked = (lineDrawMode === 'sheet');
-            drawButton(leftMenuCtx, 50, 335, 80, 45, '[-]', false); 
-            drawButton(leftMenuCtx, 140, 335, 232, 45, radiusLocked ? `Radius: LOCKED` : `Radius: ${brushSize}`, radiusLocked); 
-            drawButton(leftMenuCtx, 382, 335, 80, 45, '[+]', false);
-            drawButton(leftMenuCtx, 50, 390, 140, 45, 'STD-CLR', lineColorMode === 'standard'); 
-            drawButton(leftMenuCtx, 200, 390, 140, 45, 'GRADIENT', lineColorMode === 'gradient');
-            drawButton(leftMenuCtx, 350, 390, 120, 45, 'WILD', lineColorMode === 'wild');
-            drawButton(leftMenuCtx, 50, 445, 200, 45, 'SOLID', brushVolume === 'solid'); 
-            drawButton(leftMenuCtx, 262, 445, 200, 45, 'HOLLOW', brushVolume === 'shell');
+            drawButton(leftMenuCtx, 50, 310, 80, 40, '[-]', false); 
+            drawButton(leftMenuCtx, 140, 310, 232, 40, radiusLocked ? `Radius: LOCKED` : `Radius: ${brushSize}`, radiusLocked); 
+            drawButton(leftMenuCtx, 382, 310, 80, 40, '[+]', false);
+
+            drawButton(leftMenuCtx, 50, 355, 200, 40, 'Shape: CUBE', brushShape === 'cube'); 
+            drawButton(leftMenuCtx, 262, 355, 200, 40, 'Shape: SPHERE', brushShape === 'sphere');
+
+            drawButton(leftMenuCtx, 50, 400, 140, 40, 'STD-CLR', lineColorMode === 'standard'); 
+            drawButton(leftMenuCtx, 200, 400, 140, 40, 'GRADIENT', lineColorMode === 'gradient');
+            drawButton(leftMenuCtx, 350, 400, 120, 40, 'WILD', lineColorMode === 'wild');
+
+            drawButton(leftMenuCtx, 50, 445, 200, 40, 'SOLID', brushVolume === 'solid'); 
+            drawButton(leftMenuCtx, 262, 445, 200, 40, 'HOLLOW', brushVolume === 'shell');
         } else if (activeTool === 'paint') {                drawButton(leftMenuCtx, 50, 70, 200, 50, 'BRUSH', paintMode === 'brush'); drawButton(leftMenuCtx, 262, 70, 200, 50, 'BUCKET', paintMode === 'bucket');
                 if (paintMode === 'brush') {
                     drawButton(leftMenuCtx, 50, 140, 200, 50, 'Shape: CUBE', brushShape === 'cube'); drawButton(leftMenuCtx, 262, 140, 200, 50, 'Shape: SPHERE', brushShape === 'sphere');
@@ -1525,17 +1534,18 @@ if (cy >= 60 && cy <= 90) {
                     if (cx >= 262 && cx <= 492) extrudeAdjoiningFilter = 'color'; 
                 }
             } else if (activeTool === 'line') {
-                if (cy >= 60 && cy <= 105) { if (cx >= 50 && cx <= 250) lineMode = 'one-hand'; if (cx >= 262 && cx <= 462) lineMode = 'two-hand'; } 
-                else if (cy >= 115 && cy <= 160) { if (cx >= 50 && cx <= 250) lineDrawMode = 'stroke'; if (cx >= 262 && cx <= 462) { lineDrawMode = 'sheet'; brushSize = 1; } } 
-                else if (cy >= 170 && cy <= 215) { if (cx >= 50 && cx <= 250) lineType = 'straight'; if (cx >= 262 && cx <= 462) lineType = 'arc'; } 
-                else if (cy >= 225 && cy <= 270) { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; } 
-                else if (cy >= 280 && cy <= 325) { if (cx >= 50 && cx <= 130) arcBulge = Math.max(-5.0, arcBulge - 0.5); if (cx >= 382 && cx <= 462) arcBulge = Math.min(5.0, arcBulge + 0.5); } 
-                else if (cy >= 335 && cy <= 380) { 
+                if (cy >= 45 && cy <= 85) { if (cx >= 50 && cx <= 250) lineMode = 'one-hand'; if (cx >= 262 && cx <= 462) lineMode = 'two-hand'; } 
+                else if (cy >= 90 && cy <= 130) { if (cx >= 50 && cx <= 250) lineDrawMode = 'stroke'; if (cx >= 262 && cx <= 462) { lineDrawMode = 'sheet'; brushSize = 1; } } 
+                else if (cy >= 135 && cy <= 175) { if (cx >= 50 && cx <= 250) lineType = 'straight'; if (cx >= 262 && cx <= 462) lineType = 'arc'; } 
+                else if (cy >= 180 && cy <= 220) { if (cx >= 50 && cx <= 250) arcControlMode = 'dynamic'; if (cx >= 262 && cx <= 462) arcControlMode = 'manual'; }
+                else if (cy >= 310 && cy <= 350) { 
                     if (lineDrawMode !== 'sheet') {
                         if (cx >= 50 && cx <= 130) brushSize = Math.max(1, brushSize - 1); 
                         if (cx >= 382 && cx <= 462) brushSize = Math.min(10, brushSize + 1); 
                     }
                 }
+                else if (cy >= 355 && cy <= 395) { if (cx >= 50 && cx <= 250) brushShape = 'cube'; if (cx >= 262 && cx <= 462) brushShape = 'sphere'; } 
+
                 else if (cy >= 390 && cy <= 435) {
                     if (cx >= 50 && cx <= 190) lineColorMode = 'standard';
                     else if (cx >= 200 && cx <= 340) lineColorMode = 'gradient';
@@ -1990,16 +2000,19 @@ function handleRightMenuClick(cx, cy) {
             const lineDir = diff.clone().normalize();
             
             // 1. Calculate a consistent "Up" vector perpendicular to the chord
-            // Synced threshold (0.9) with the control loop to ensure coordinate spaces match
             let upVec = new THREE.Vector3(0, 1, 0);
             if (Math.abs(lineDir.y) > 0.9) upVec.set(0, 0, 1);
             
-            // Generate an orthonormal basis (lookAt style)
             const side = new THREE.Vector3().crossVectors(upVec, lineDir).normalize();
-            // Robust fallback if line matches the alternate Up vector as well
             if (side.lengthSq() < 0.001) side.set(1, 0, 0).cross(lineDir).normalize();
             
             const bulgeVec = new THREE.Vector3().crossVectors(lineDir, side).normalize();
+            
+            // NEW: Apply Tilt Rotation
+            if (arcTilt !== 0) {
+                const tiltQuat = new THREE.Quaternion().setFromAxisAngle(lineDir, THREE.MathUtils.degToRad(arcTilt));
+                bulgeVec.applyQuaternion(tiltQuat);
+            }
             
             // 2. Symmetric Apex: Placing the control point at the normal offset from the midpoint
             const controlPoint = mid.clone().addScaledVector(bulgeVec, dist * 0.5 * arcBulge);
@@ -2009,7 +2022,6 @@ function handleRightMenuClick(cx, cy) {
             for (let i = 0; i <= steps; i++) {
                 const t = i / steps;
                 const p = new THREE.Vector3();
-                // Quadratic Bezier Formula: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
                 p.x = Math.pow(1 - t, 2) * p1.x + 2 * (1 - t) * t * controlPoint.x + Math.pow(t, 2) * p2.x;
                 p.y = Math.pow(1 - t, 2) * p1.y + 2 * (1 - t) * t * controlPoint.y + Math.pow(t, 2) * p2.y;
                 p.z = Math.pow(1 - t, 2) * p1.z + 2 * (1 - t) * t * controlPoint.z + Math.pow(t, 2) * p2.z;
@@ -3300,8 +3312,23 @@ let isDrawing=false, isErasing=false, isColorPicking=false, menuClickActive=fals
                 if (leftMenuHovered && leftMenuMesh.visible) {
                     menuClickActive = true;
                     const cx=Math.floor(leftMenuUV.x*512), cy=Math.floor((1-leftMenuUV.y)*512);
-                    if(activeTool==='select'&&hasSelection){ if(cy>=100&&cy<=130) activeSliderDrag='rotX'; else if(cy>=140&&cy<=170) activeSliderDrag='rotY'; else if(cy>=180&&cy<=210) activeSliderDrag='rotZ'; else if(cy>=220&&cy<=250) activeSliderDrag='scale'; else if(transformMode==='copy'){ if(cy>=300&&cy<=330) activeSliderDrag='stepRotX'; else if(cy>=335&&cy<=365) activeSliderDrag='stepRotY'; else if(cy>=370&&cy<=400) activeSliderDrag='stepRotZ'; else if(cy>=405&&cy<=435) activeSliderDrag='stepScale'; else handleLeftMenuClick(cx,cy); } else handleLeftMenuClick(cx,cy); } else handleLeftMenuClick(cx,cy);
-                    return;
+                    if(activeTool==='select'&&hasSelection){ 
+                        if(cy>=100&&cy<=130) activeSliderDrag='rotX'; 
+                        else if(cy>=140&&cy<=170) activeSliderDrag='rotY'; 
+                        else if(cy>=180&&cy<=210) activeSliderDrag='rotZ'; 
+                        else if(cy>=220&&cy<=250) activeSliderDrag='scale'; 
+                        else if(transformMode==='copy'){ 
+                            if(cy>=300&&cy<=330) activeSliderDrag='stepRotX'; 
+                            else if(cy>=335&&cy<=365) activeSliderDrag='stepRotY'; 
+                            else if(cy>=370&&cy<=400) activeSliderDrag='stepRotZ'; 
+                            else if(cy>=405&&cy<=435) activeSliderDrag='stepScale'; 
+                            else handleLeftMenuClick(cx,cy); 
+                        } else handleLeftMenuClick(cx,cy); 
+                    } else if (activeTool === 'line') {
+                        if(cy >= 225 && cy <= 260) activeSliderDrag = 'arcBulge';
+                        else if(cy >= 265 && cy <= 300) activeSliderDrag = 'arcTilt';
+                        else handleLeftMenuClick(cx, cy);
+                    } else handleLeftMenuClick(cx,cy);                    return;
                 } else if (colorMenuHovered && colorMenuMesh.visible) {
                     menuClickActive = true;
                     const cx=Math.floor(colorMenuUV.x*512), cy=Math.floor((1-colorMenuUV.y)*512);
@@ -3503,7 +3530,26 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                 if(Date.now()-lastMenuUpdateTime>100){ if(leftMenuMesh.visible&&leftMenuNeedsUpdate){ updateLeftMenuTexture(); leftMenuNeedsUpdate=false; } if(rightMenuMesh.visible&&rightMenuNeedsUpdate){ updateRightMenuTexture(); rightMenuNeedsUpdate=false; } if(colorMenuMesh.visible&&colorMenuNeedsUpdate){ updateColorMenuTexture(); colorMenuNeedsUpdate=false; } if(globalMenuMesh.visible&&globalMenuNeedsUpdate){ updateGlobalMenuTexture(); globalMenuNeedsUpdate=false; } lastMenuUpdateTime=Date.now(); }
                 if((rightMenuMesh.visible||globalMenuMesh.visible)&&xrLeft){ raycaster.set(leftPointerPos, leftDir); if(rightMenuMesh.visible){ const inters=raycaster.intersectObject(rightMenuMesh); if(inters.length>0){ rightMenuHovered=true; rightMenuUV.x=inters[0].uv.x; rightMenuUV.y=inters[0].uv.y; leftLaserLine.scale.z=inters[0].distance; } else rightMenuHovered=false; } else if(globalMenuMesh.visible){ const inters=raycaster.intersectObject(globalMenuMesh); if(inters.length>0){ globalMenuHovered=true; globalMenuUV.x=inters[0].uv.x; globalMenuUV.y=inters[0].uv.y; leftLaserLine.scale.z=inters[0].distance; } else globalMenuHovered=false; } leftLaserLine.visible=true; } else { rightMenuHovered=globalMenuHovered=false; if(leftLaserLine)leftLaserLine.visible=false; }
                 if((leftMenuMesh.visible||colorMenuMesh.visible)&&xrRight){ raycaster.set(rightPointerPos, rightDir); if(leftMenuMesh.visible){ const inters=raycaster.intersectObject(leftMenuMesh); if(inters.length>0){ leftMenuHovered=true; leftMenuUV.x=inters[0].uv.x; leftMenuUV.y=inters[0].uv.y; rightLaserLine.scale.z=inters[0].distance; } else leftMenuHovered=false; } else if(colorMenuMesh.visible){ const inters=raycaster.intersectObject(colorMenuMesh); if(inters.length>0){ colorMenuHovered=true; colorMenuUV.x=inters[0].uv.x; colorMenuUV.y=inters[0].uv.y; rightLaserLine.scale.z=inters[0].distance; } else colorMenuHovered=false; } rightLaserLine.visible=true; } else { leftMenuHovered=colorMenuHovered=false; if(rightLaserLine)rightLaserLine.visible=false; }
-                if(activeSliderDrag&&leftMenuHovered){ const pct=Math.max(0,Math.min(1,(leftMenuUV.x*512-50)/412)); let ch=false; if(activeSliderDrag==='scale'||activeSliderDrag==='stepScale'){ const s=Math.round((0.1+pct*4.9)*10)/10; if(activeSliderDrag==='scale'&&selectionScale!==s){selectionScale=s; ch=true;} if(activeSliderDrag==='stepScale'&&copyStepScale!==s){copyStepScale=s; ch=true;} } else { const v=Math.round((-180+pct*360)/15)*15; if(activeSliderDrag==='rotX'&&selectionRotX!==v){selectionRotX=v; ch=true;} if(activeSliderDrag==='rotY'&&selectionRotY!==v){selectionRotY=v; ch=true;} if(activeSliderDrag==='rotZ'&&selectionRotZ!==v){selectionRotZ=v; ch=true;} if(activeSliderDrag==='stepRotX'&&copyStepRotX!==v){copyStepRotX=v; ch=true;} if(activeSliderDrag==='stepRotY'&&copyStepRotY!==v){copyStepRotY=v; ch=true;} if(activeSliderDrag==='stepRotZ'&&copyStepRotZ!==v){copyStepRotZ=v; ch=true;} } if(ch){ if(!activeSliderDrag.startsWith('step'))updateRotatedSelection(); leftMenuNeedsUpdate=true; } }
+                if(activeSliderDrag&&leftMenuHovered){
+                    const pct=Math.max(0,Math.min(1,(leftMenuUV.x*512-50)/412));
+                    let ch=false;
+                    if(activeSliderDrag==='arcBulge'){ arcBulge = Math.round((-5.0 + pct * 10.0) * 10) / 10; ch = true; }
+                    else if(activeSliderDrag==='arcTilt'){ arcTilt = Math.round((-180 + pct * 360) / 5) * 5; ch = true; }
+                    else if(activeSliderDrag==='scale'||activeSliderDrag==='stepScale'){ 
+                        const s=Math.round((0.1+pct*4.9)*10)/10; 
+                        if(activeSliderDrag==='scale'&&selectionScale!==s){selectionScale=s; ch=true;} 
+                        if(activeSliderDrag==='stepScale'&&copyStepScale!==s){copyStepScale=s; ch=true;} 
+                    } else { 
+                        const v=Math.round((-180+pct*360)/15)*15; 
+                        if(activeSliderDrag==='rotX'&&selectionRotX!==v){selectionRotX=v; ch=true;} 
+                        if(activeSliderDrag==='rotY'&&selectionRotY!==v){selectionRotY=v; ch=true;} 
+                        if(activeSliderDrag==='rotZ'&&selectionRotZ!==v){selectionRotZ=v; ch=true;} 
+                        if(activeSliderDrag==='stepRotX'&&copyStepRotX!==v){copyStepRotX=v; ch=true;} 
+                        if(activeSliderDrag==='stepRotY'&&copyStepRotY!==v){copyStepRotY=v; ch=true;} 
+                        if(activeSliderDrag==='stepRotZ'&&copyStepRotZ!==v){copyStepRotZ=v; ch=true;} 
+                    } 
+                    if(ch){ if(!activeSliderDrag.startsWith('step') && !activeSliderDrag.startsWith('arc'))updateRotatedSelection(); leftMenuNeedsUpdate=true; } 
+                }
                 else if(isColorPicking&&colorMenuHovered) pickColorFromCanvas(Math.max(20,Math.min(492,colorMenuUV.x*512)), isPaletteMagnified?Math.max(50,Math.min(450,(1-colorMenuUV.y)*512)):Math.max(155,Math.min(335,(1-colorMenuUV.y)*512)));
                 if(gripRight) gripRight.getWorldPosition(rightPos); if(gripLeft) gripLeft.getWorldPosition(leftPos);
                 if(isRightGripping&&isLeftGripping){ const dist=rightPos.distanceTo(leftPos); midPos.copy(rightPos).lerp(leftPos,0.5); currentHandVec.subVectors(rightPos,leftPos).normalize(); if(prevGripDist>0){ const sD=dist/prevGripDist; panDelta.copy(midPos).sub(prevMid); tempQuat.setFromUnitVectors(prevHandVec,currentHandVec); if(isVerticalLock){ tempPXZ.set(prevHandVec.x,0,prevHandVec.z).normalize(); tempCXZ.set(currentHandVec.x,0,currentHandVec.z).normalize(); if(tempPXZ.lengthSq()>0.001&&tempCXZ.lengthSq()>0.001)tempQuat.setFromUnitVectors(tempPXZ,tempCXZ); else tempQuat.identity(); } worldGroup.position.add(panDelta).sub(midPos).multiplyScalar(sD).applyQuaternion(tempQuat).add(midPos); worldGroup.scale.multiplyScalar(sD); worldGroup.quaternion.premultiply(tempQuat); } prevGripDist=dist; prevMid.copy(midPos); prevHandVec.copy(currentHandVec); prevRightPos.copy(rightPos); prevLeftPos.copy(leftPos); } else if(isRightGripping){ worldGroup.position.add(tempPos.copy(rightPos).sub(prevRightPos)); prevRightPos.copy(rightPos); } else if(isLeftGripping){ worldGroup.position.add(tempPos.copy(leftPos).sub(prevLeftPos)); prevLeftPos.copy(leftPos); } else prevGripDist=0;
@@ -3514,30 +3560,23 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                     rightTargetLocal.copy(rightPointerPos).addScaledVector(rightDir,0.05); worldGroup.worldToLocal(rightTargetLocal); 
                     rightTargetLocal.set(Math.round(rightTargetLocal.x/VOXEL_SIZE)*VOXEL_SIZE,Math.round(rightTargetLocal.y/VOXEL_SIZE)*VOXEL_SIZE,Math.round(rightTargetLocal.z/VOXEL_SIZE)*VOXEL_SIZE); 
                     cursorRight.position.copy(rightTargetLocal); cursorRight.updateMatrix(); cursorRight.visible=true; 
-                    // Real-time Arc Control: Dynamic Bulge via Wrist Pitch (Upright Locked)
-                    if (activeTool === 'line' && lineType === 'arc' && xrRight) {
+                    // Real-time Arc Control: Dynamic Bulge via Wrist Pitch
+                    if (activeTool === 'line' && lineType === 'arc' && xrRight && arcControlMode === 'dynamic') {
                         const pStart = (lineMode === 'two-hand' && xrLeft) ? leftTargetLocal : drawStartPos;
                         const pEnd = rightTargetLocal;
                         
-                        // 1. Calculate Line Orientation with Singularity Guard
                         const diff = new THREE.Vector3().subVectors(pEnd, pStart);
                         if (diff.lengthSq() > 0.0001) {
                             const lineDir = diff.normalize();
                             let upVec = new THREE.Vector3(0, 1, 0);
-                            // Standardize to 0.9 threshold to match calculateArcPoints
                             if (Math.abs(lineDir.y) > 0.9) upVec.set(0, 0, 1); 
                             
-                            const lookMat = new THREE.Matrix4().lookAt(pStart, pEnd, upVec);
-                            const lineQuat = new THREE.Quaternion().setFromRotationMatrix(lookMat);
-                            
-                           // 2. Map Controller Orientation to Line Space via Vector Projection (Stabilized)
                             const ctrlUp = new THREE.Vector3(0, 1, 0).applyQuaternion(xrRight.quaternion);
                             const side = new THREE.Vector3().crossVectors(upVec, lineDir).normalize();
                             const projUp = ctrlUp.clone().projectOnPlane(side).normalize();
                             
-                            // 3. Bulge follows the angle between projected controller "Up" and the line reference "Up"
+                            // Wrist pitch is mapped directly to the bulge depth
                             arcBulge = Math.atan2(projUp.dot(lineDir), projUp.dot(upVec)) * 2.2;
-                            arcAngleOffset = 0;  
                         }
                     }
 
