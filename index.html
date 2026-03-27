@@ -1990,18 +1990,15 @@ function handleRightMenuClick(cx, cy) {
             const lineDir = diff.clone().normalize();
             
             // 1. Calculate a consistent "Up" vector perpendicular to the chord
-            // Improved Stability: Switch reference Up if the line is vertical to avoid zero-length cross products
-            let worldUp = new THREE.Vector3(0, 1, 0);
-            if (Math.abs(lineDir.y) > 0.99) worldUp.set(0, 0, 1);
+            // Synced threshold (0.9) with the control loop to ensure coordinate spaces match
+            let upVec = new THREE.Vector3(0, 1, 0);
+            if (Math.abs(lineDir.y) > 0.9) upVec.set(0, 0, 1);
             
-            let side = new THREE.Vector3().crossVectors(worldUp, lineDir).normalize();
+            // Generate an orthonormal basis (lookAt style)
+            const side = new THREE.Vector3().crossVectors(upVec, lineDir).normalize();
+            // Robust fallback if line matches the alternate Up vector as well
+            if (side.lengthSq() < 0.001) side.set(1, 0, 0).cross(lineDir).normalize();
             
-            // Fallback for extreme cases (e.g. line also parallel to Z)
-            if (side.lengthSq() < 0.001) {
-                side.set(1, 0, 0).cross(lineDir).normalize();
-            }
-            
-            // The actual bulge direction is perpendicular to both the chord and the side vector
             const bulgeVec = new THREE.Vector3().crossVectors(lineDir, side).normalize();
             
             // 2. Symmetric Apex: Placing the control point at the normal offset from the midpoint
@@ -3523,21 +3520,24 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                         const pEnd = rightTargetLocal;
                         
                         // 1. Calculate Line Orientation with Singularity Guard
-                        const lineDir = new THREE.Vector3().subVectors(pEnd, pStart).normalize();
-                        let upVec = new THREE.Vector3(0, 1, 0);
-                        if (Math.abs(lineDir.y) > 0.95) upVec.set(0, 0, 1); // Use Z-up if line is vertical
-                        
-                        const lookMat = new THREE.Matrix4().lookAt(pStart, pEnd, upVec);
-                        const lineQuat = new THREE.Quaternion().setFromRotationMatrix(lookMat);
-                        
-                        // 2. Map Controller Orientation to Line Space
-                        const relativeQuat = xrRight.quaternion.clone().premultiply(lineQuat.invert());
-                        tempSEuler.setFromQuaternion(relativeQuat, 'YZX');
-                        
-                        // 3. Bulge follows wrist Pitch. 
-                        // The multiplier (2.5) can be tuned for sensitivity.
-                        arcBulge = tempSEuler.x * 2.5; 
-                        arcAngleOffset = 0; 
+                        const diff = new THREE.Vector3().subVectors(pEnd, pStart);
+                        if (diff.lengthSq() > 0.0001) {
+                            const lineDir = diff.normalize();
+                            let upVec = new THREE.Vector3(0, 1, 0);
+                            // Standardize to 0.9 threshold to match calculateArcPoints
+                            if (Math.abs(lineDir.y) > 0.9) upVec.set(0, 0, 1); 
+                            
+                            const lookMat = new THREE.Matrix4().lookAt(pStart, pEnd, upVec);
+                            const lineQuat = new THREE.Quaternion().setFromRotationMatrix(lookMat);
+                            
+                            // 2. Map Controller Orientation to Line Space
+                            const relativeQuat = xrRight.quaternion.clone().premultiply(lineQuat.invert());
+                            tempSEuler.setFromQuaternion(relativeQuat, 'YZX');
+                            
+                            // 3. Bulge follows wrist Pitch. Multiplier dampens sensitivity for precision.
+                            arcBulge = tempSEuler.x * 2.2; 
+                            arcAngleOffset = 0; 
+                        }
                     }
 
                     if(hasSelection && !isSettingPivot){
