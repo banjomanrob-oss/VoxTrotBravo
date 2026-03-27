@@ -3833,34 +3833,29 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                         currentPoints.push(leftTargetLocal.clone(), rightTargetLocal.clone());
                     }
                     
-                    // If in Point Mode and we have a starting rib, show the "Ghost Sheet"
+                    // If in Point Mode and we have a starting rib, show a lightweight Wireframe "X" preview
                     if (lineDrawMode === 'sheet' && lineSheetType === 'point' && lastArcPoints.length === currentPoints.length) {
-                        let instCount = 0;
-                        const mArr = linePreviewMesh.instanceMatrix.array;
-                        
-                        // Visualize the full surface between ribs
-                        for (let i = 0; i < currentPoints.length - 1; i++) {
-                            const p1L = lastArcPoints[i], p1R = lastArcPoints[i+1];
-                            const p2L = currentPoints[i], p2R = currentPoints[i+1];
-                            
-                            const stepsV = Math.max(1, Math.ceil(Math.max(p1L.distanceTo(p2L), p1R.distanceTo(p2R)) / (VOXEL_SIZE * 0.5)));
-                            for (let v = 0; v <= stepsV && instCount < 25000; v++) {
-                                const sideA = new THREE.Vector3().lerpVectors(p1L, p2L, v/stepsV);
-                                const sideB = new THREE.Vector3().lerpVectors(p1R, p2R, v/stepsV);
-                                const stepsU = Math.max(1, Math.ceil(sideA.distanceTo(sideB) / (VOXEL_SIZE * 0.5)));
-                                for (let u = 0; u <= stepsU && instCount < 25000; u++) {
-                                    tempPos.lerpVectors(sideA, sideB, u/stepsU);
-                                    mArr[instCount*16+12] = Math.round(tempPos.x / VOXEL_SIZE);
-                                    mArr[instCount*16+13] = Math.round(tempPos.y / VOXEL_SIZE);
-                                    mArr[instCount*16+14] = Math.round(tempPos.z / VOXEL_SIZE);
-                                    instCount++;
-                                }
-                            }
+                        const wirePoints = [];
+                        const lastIdx = currentPoints.length - 1;
+
+                        // 1. Draw the two ribs (the saved rib and the dynamic one)
+                        for (let i = 0; i < lastIdx; i++) {
+                            wirePoints.push(lastArcPoints[i], lastArcPoints[i+1]);
+                            wirePoints.push(currentPoints[i], currentPoints[i+1]);
                         }
-                        linePreviewMesh.count = instCount;
-                        linePreviewMesh.instanceMatrix.needsUpdate = true;
-                        linePreviewMesh.material.color.setHex(0x00ffcc); 
-                        linePreviewMesh.visible = true;
+
+                        // 2. Draw the side boundaries
+                        wirePoints.push(lastArcPoints[0], currentPoints[0]);
+                        wirePoints.push(lastArcPoints[lastIdx], currentPoints[lastIdx]);
+
+                        // 3. Draw the "X" across the sheet for visibility at scale
+                        wirePoints.push(lastArcPoints[0], currentPoints[lastIdx]);
+                        wirePoints.push(lastArcPoints[lastIdx], currentPoints[0]);
+
+                        lineWireframeMesh.geometry.setFromPoints(wirePoints);
+                        lineWireframeMesh.material.color.setHex(0x00ffcc); 
+                        lineWireframeMesh.visible = true;
+                        linePreviewMesh.visible = false; // Hide the heavy voxel preview
                     } else {
                         // Standard line/arc wireframe preview
                         updateLinePreviewFromPoints(currentPoints, true, up);
