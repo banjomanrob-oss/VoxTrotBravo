@@ -194,6 +194,7 @@
         let lineDrawMode = 'stroke'; // 'stroke' or 'sheet'
         let lineSheetType = 'continuous'; // 'continuous' or 'point'
         let lineColorMode = 'standard'; // 'standard', 'gradient', 'wild'
+
         let arcBulge = 1.0;        // Multiplier for the arc curve depth
         let arcControlMode = 'dynamic'; // 'dynamic' or 'manual'
         let arcTilt = 0;           // Tilt angle in degrees
@@ -1311,6 +1312,8 @@ function updatePlanePreview(start, end, isPainting) {
         } else if (activeTool === 'line') {
             drawButton(leftMenuCtx, 50, 45, 200, 40, 'ONE-HAND', lineMode === 'one-hand'); 
             drawButton(leftMenuCtx, 262, 45, 200, 40, 'TWO-HAND', lineMode === 'two-hand');
+            
+            // Adjusted widths to fit the new toggle
             drawButton(leftMenuCtx, 50, 90, 140, 40, 'STROKE', lineDrawMode === 'stroke'); 
             drawButton(leftMenuCtx, 200, 90, 140, 40, 'SHEET', lineDrawMode === 'sheet');
             
@@ -1320,6 +1323,7 @@ function updatePlanePreview(start, end, isPainting) {
             } else {
                 drawButton(leftMenuCtx, 350, 90, 120, 40, '---', false);
             }
+
             drawButton(leftMenuCtx, 50, 135, 200, 40, 'STRAIGHT', lineType === 'straight'); 
             drawButton(leftMenuCtx, 262, 135, 200, 40, 'ARC', lineType === 'arc');
             
@@ -1544,13 +1548,13 @@ if (cy >= 60 && cy <= 90) {
             } else if (activeTool === 'line') {
                 if (cy >= 45 && cy <= 85) { if (cx >= 50 && cx <= 250) lineMode = 'one-hand'; if (cx >= 262 && cx <= 462) lineMode = 'two-hand'; } 
                 else if (cy >= 90 && cy <= 130) { 
-                    if (cx >= 50 && cx <= 190) lineDrawMode = 'stroke'; 
-                    if (cx >= 200 && cx <= 340) { lineDrawMode = 'sheet'; brushSize = 1; }
+                    if (cx >= 50 && cx <= 190) { lineDrawMode = 'stroke'; lastArcPoints = []; }
+                    if (cx >= 200 && cx <= 340) { lineDrawMode = 'sheet'; brushSize = 1; lastArcPoints = []; }
                     if (cx >= 350 && cx <= 470 && lineDrawMode === 'sheet') {
                         lineSheetType = (lineSheetType === 'continuous') ? 'point' : 'continuous';
                         lastArcPoints = []; // Reset point memory when switching
                     }
-                } 
+                }  
                 else if (cy >= 135 && cy <= 175) { if (cx >= 50 && cx <= 250) lineType = 'straight'; if (cx >= 262 && cx <= 462) lineType = 'arc'; } 
                 else if (cy >= 180 && cy <= 220) { if (cx >= 50 && cx <= 250) arcControlMode = 'dynamic'; if (cx >= 262 && cx <= 462) arcControlMode = 'manual'; }
                 else if (cy >= 310 && cy <= 350) { 
@@ -3407,21 +3411,19 @@ let isDrawing=false, isErasing=false, isColorPicking=false, menuClickActive=fals
 		else { if(selectMode==='box'){ isDrawing=true; drawStartPos.copy(rightTargetLocal); isPreviewingBox=true; } else if(selectMode==='connected') executeSelectConnected(rightTargetLocal); } }
                 else { isDrawing=true; drawStartPos.copy(rightTargetLocal); if(activeTool==='box')isPreviewingBox=true; if(activeTool==='extrude')isPreviewingExtrude=true; if(activeTool==='quadsphere')isPreviewingSphere=true; if(activeTool==='plane')isPreviewingPlane=true; if(activeTool==='cylinder')isPreviewingCylinder=true; if(activeTool==='triangle')isPreviewingTriangle=true;                     if(activeTool==='icosahedron'){ isDrawing=true; isPreviewingIcosahedron=true; drawStartPos.copy(rightTargetLocal); } 
                     
-                    // Point Mode Implementation for Sheet
+                    // --- Point Mode Logic for Sheet ---
                     if(activeTool==='line' && lineDrawMode === 'sheet' && lineSheetType === 'point' && xrLeft && xrRight) {
                         const currentPoints = [];
                         if (lineType === 'arc') calculateArcPoints(leftTargetLocal, rightTargetLocal, xrLeft, xrRight, currentPoints, 24);
                         else { currentPoints.push(leftTargetLocal.clone(), rightTargetLocal.clone()); }
 
                         if (lastArcPoints.length === currentPoints.length) {
-                            // If we have a previous point, fill the gap
-                            for (let i = 0; i < currentPoints.length - 1; i++) {
-                                drawSheetQuad(lastArcPoints[i], lastArcPoints[i+1], currentPoints[i], currentPoints[i+1], true, brushSize);
-                            }
+                            // If we have a previous point, fill the gap with a voxel quad
+                            drawSheetQuad(lastArcPoints[0], lastArcPoints[lastArcPoints.length-1], currentPoints[0], currentPoints[currentPoints.length-1], true, brushSize);
                         }
                         // Update memory to the new point
                         lastArcPoints = currentPoints.map(p => p.clone());
-                        return; // Prevent continuous drawing logic from firing
+                        return; // Exit early to prevent standard "dragging" logic
                     }
                 }
             } else if (this === xrLeft) { 
@@ -3804,15 +3806,20 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                     
                     // If in Point Mode and we have a starting rib, show the "Ghost Quad"
                     if (lineDrawMode === 'sheet' && lineSheetType === 'point' && lastArcPoints.length === currentPoints.length) {
-                        // Using linePreviewMesh to visualize where the next stamp will go
                         let instCount = 0;
                         const mArr = linePreviewMesh.instanceMatrix.array;
-                        for (let i = 0; i < currentPoints.length; i++) {
-                            const p1 = lastArcPoints[i], p2 = currentPoints[i];
-                            const dist = p1.distanceTo(p2);
-                            const steps = Math.ceil(dist / (VOXEL_SIZE * 0.5));
-                            for (let s = 0; s <= steps && instCount < 20000; s++) {
-                                tempPos.lerpVectors(p1, p2, s / (steps || 1));
+                        
+                        // Visualize the connecting surface between last point and current preview
+                        const pStartL = lastArcPoints[0], pStartR = lastArcPoints[lastArcPoints.length - 1];
+                        const pEndL = currentPoints[0], pEndR = currentPoints[currentPoints.length - 1];
+                        
+                        const stepsV = Math.max(1, Math.ceil(Math.max(pStartL.distanceTo(pEndL), pStartR.distanceTo(pEndR)) / (VOXEL_SIZE * 0.5)));
+                        for (let v = 0; v <= stepsV && instCount < 20000; v++) {
+                            const sideA = new THREE.Vector3().lerpVectors(pStartL, pEndL, v/stepsV);
+                            const sideB = new THREE.Vector3().lerpVectors(pStartR, pEndR, v/stepsV);
+                            const stepsU = Math.max(1, Math.ceil(sideA.distanceTo(sideB) / (VOXEL_SIZE * 0.5)));
+                            for (let u = 0; u <= stepsU && instCount < 20000; u++) {
+                                tempPos.lerpVectors(sideA, sideB, u/stepsU);
                                 mArr[instCount*16+12] = Math.round(tempPos.x / VOXEL_SIZE);
                                 mArr[instCount*16+13] = Math.round(tempPos.y / VOXEL_SIZE);
                                 mArr[instCount*16+14] = Math.round(tempPos.z / VOXEL_SIZE);
@@ -3821,9 +3828,10 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                         }
                         linePreviewMesh.count = instCount;
                         linePreviewMesh.instanceMatrix.needsUpdate = true;
-                        linePreviewMesh.material.color.setHex(0x00ffcc);
+                        linePreviewMesh.material.color.setHex(0x00ffcc); // Cyan for the "Ghost" segment
                         linePreviewMesh.visible = true;
                     } else {
+                        // Standard line/arc wireframe preview
                         updateLinePreviewFromPoints(currentPoints, true, up);
                         linePreviewMesh.visible = true;
                     }
