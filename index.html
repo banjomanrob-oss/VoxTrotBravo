@@ -1988,8 +1988,15 @@ function handleRightMenuClick(cx, cy) {
             const diff = new THREE.Vector3().subVectors(p2, p1);
             const dist = diff.length();
             
-            // Force upright orientation
-            const avgUp = new THREE.Vector3(0, 1, 0);
+            // Force upright orientation (World Up)
+            let avgUp = new THREE.Vector3(0, 1, 0);
+            
+            // Edge Case: If the line is already vertical, "Up" is ambiguous. 
+            // We shift the bulge direction to "Forward" so the arc is still visible.
+            const lineDir = diff.clone().normalize();
+            if (Math.abs(lineDir.dot(avgUp)) > 0.99) {
+                avgUp.set(0, 0, -1); 
+            }
             
             const controlPoint = mid.clone().addScaledVector(avgUp, dist * 0.5 * arcBulge);
             const steps = fixedSteps > 0 ? fixedSteps : Math.min(100, Math.max(10, Math.ceil(dist / (VOXEL_SIZE * 2))));
@@ -1997,6 +2004,7 @@ function handleRightMenuClick(cx, cy) {
             for (let i = 0; i <= steps; i++) {
                 const t = i / steps;
                 const p = new THREE.Vector3();
+                // Quadratic Bezier: (1-t)^2*P0 + 2(1-t)t*P1 + t^2*P2
                 p.x = Math.pow(1 - t, 2) * p1.x + 2 * (1 - t) * t * controlPoint.x + Math.pow(t, 2) * p2.x;
                 p.y = Math.pow(1 - t, 2) * p1.y + 2 * (1 - t) * t * controlPoint.y + Math.pow(t, 2) * p2.y;
                 p.z = Math.pow(1 - t, 2) * p1.z + 2 * (1 - t) * t * controlPoint.z + Math.pow(t, 2) * p2.z;
@@ -3501,8 +3509,25 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                     rightTargetLocal.copy(rightPointerPos).addScaledVector(rightDir,0.05); worldGroup.worldToLocal(rightTargetLocal); 
                     rightTargetLocal.set(Math.round(rightTargetLocal.x/VOXEL_SIZE)*VOXEL_SIZE,Math.round(rightTargetLocal.y/VOXEL_SIZE)*VOXEL_SIZE,Math.round(rightTargetLocal.z/VOXEL_SIZE)*VOXEL_SIZE); 
                     cursorRight.position.copy(rightTargetLocal); cursorRight.updateMatrix(); cursorRight.visible=true; 
-                    // Real-time Arc Control: Removed wrist-tilt manipulation. 
-                    // Bulge and orientation are now controlled via the Tool Options menu and world-up vector.
+                    // Real-time Arc Control: Dynamic Bulge via Wrist Pitch (Upright Locked)
+                    if (activeTool === 'line' && lineType === 'arc' && xrRight) {
+                        const pStart = (lineMode === 'two-hand' && xrLeft) ? leftTargetLocal : drawStartPos;
+                        const pEnd = rightTargetLocal;
+                        
+                        // Define the line axis direction
+                        const lookMat = new THREE.Matrix4().lookAt(pStart, pEnd, new THREE.Vector3(0, 1, 0));
+                        const lineQuat = new THREE.Quaternion().setFromRotationMatrix(lookMat);
+                        
+                        // Transform the Right Controller's orientation into this local Line Space
+                        const relativeQuat = xrRight.quaternion.clone().premultiply(lineQuat.invert());
+                        tempSEuler.setFromQuaternion(relativeQuat, 'YZX');
+                        
+                        // Dynamically update Bulge based on wrist "bending" (Pitch)
+                        arcBulge = tempSEuler.x * 2.5; 
+
+                        // We explicitly ignore the Z component (Roll) to keep the tool upright.
+                        arcAngleOffset = 0; 
+                    }
 
                     if(hasSelection && !isSettingPivot){
                         // Snap to controller tip for brush-style modes (Draw/Paint/Free)
@@ -3682,15 +3707,19 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
 		// --- NEW: Always-On Two-Handed Arc Preview ---
                 if (activeTool === 'line' && lineMode === 'two-hand' && !isDrawing && !isErasing && xrLeft && xrRight) {
                     hideAllPreviews();
-                    const up = new THREE.Vector3(0, 1, 0); // Forced world-up
+                    const up = new THREE.Vector3(0, 1, 0); 
                     if (lineType === 'arc') {
                         const arcPoints = [];
+                        // CalculateArcPoints already uses world-up internally now
                         calculateArcPoints(leftTargetLocal, rightTargetLocal, xrLeft, xrRight, arcPoints);
                         updateLinePreviewFromPoints(arcPoints, true, up);
                     } else {
+                        // For straight lines, ensure the square tube is upright
                         updateLinePreviewFromPoints([leftTargetLocal, rightTargetLocal], true, up);
                     }
                     linePreviewMesh.visible = true;
+                }
+
                 } else if (!isDrawing && !isErasing && linePreviewMesh) {
                     linePreviewMesh.visible = false;
                 }
