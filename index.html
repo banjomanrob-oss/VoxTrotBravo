@@ -2485,13 +2485,15 @@ function placeBrushVoxels(pos, isP) {
         }
 
         function drawSheetQuad(pL1, pR1, pL2, pR2, isP, thick) {
-            // Gradient Bounds: Use the drawStartPos and current Right Controller as context for smooth gradients
-            const contextStart = drawStartPos, contextEnd = rightTargetLocal;
-            const minX = Math.round(Math.min(contextStart.x, contextEnd.x)/VOXEL_SIZE), maxX = Math.round(Math.max(contextStart.x, contextEnd.x)/VOXEL_SIZE);
-            const minY = Math.round(Math.min(contextStart.y, contextEnd.y)/VOXEL_SIZE), maxY = Math.max(Math.round(contextStart.y/VOXEL_SIZE), Math.round(contextEnd.y/VOXEL_SIZE));
+            // Calculate bounds dynamically from the quad points to ensure gradients are localized to the specific sheet
+            const minX = Math.round(Math.min(pL1.x, pR1.x, pL2.x, pR2.x) / VOXEL_SIZE);
+            const maxX = Math.round(Math.max(pL1.x, pR1.x, pL2.x, pR2.x) / VOXEL_SIZE);
+            const minY = Math.round(Math.min(pL1.y, pR1.y, pL2.y, pR2.y) / VOXEL_SIZE);
+            const maxY = Math.round(Math.max(pL1.y, pR1.y, pL2.y, pR2.y) / VOXEL_SIZE);
+            const minZ = Math.round(Math.min(pL1.z, pR1.z, pL2.z, pR2.z) / VOXEL_SIZE);
+            const maxZ = Math.round(Math.max(pL1.z, pR1.z, pL2.z, pR2.z) / VOXEL_SIZE);
 
             const distL = pL1.distanceTo(pL2), distR = pR1.distanceTo(pR2);
-            // Increased sampling (0.15 instead of 0.25) to ensure "solid" fill during fast hand movements
             const stepsV = Math.max(1, Math.ceil(Math.max(distL, distR) / (VOXEL_SIZE * 0.15)));
             const r = thick - 1, rSq = (r + 0.1) * (r + 0.1);
             
@@ -2513,22 +2515,17 @@ function placeBrushVoxels(pos, isP) {
                             for (let dz = -r; dz <= r; dz++) {
                                 if (!isInside(dx, dy, dz)) continue;
                                 if (brushVolume === 'shell' && r > 0) {
-                                    const sur = !isInside(dx + 1, dy, dz) || !isInside(dx - 1, dy, dz) || !isInside(dx, dy + 1, dz) || !isInside(dx, dy - 1, dz) || !isInside(dx, dy, dz + 1) || !isInside(dx, dy, dz - 1);
+                                    const sur = !isInside(dx + 1, dy, dz) || !isInside(dx - 1, dy, dz) || !isInside(dx, dy + 1, dz) || !isInside(dx, dy - 1, dz) || !isInside(dx, dy, dz + 1) || !isInside(dx, dy - 1, dz);
                                     if (!sur) continue;
                                 }
                                 const hash = (cx+dx+32768) + (cy+dy+32768)*65536 + (cz+dz+32768)*4294967296;
                                 if (!fillVisited.has(hash)) {
                                     fillVisited.add(hash);
-                                    const minZ = Math.round(Math.min(contextStart.z, contextEnd.z)/VOXEL_SIZE);
-                                    const maxZ = Math.round(Math.max(contextStart.z, contextEnd.z)/VOXEL_SIZE);
-                                    
-                                    // Use u and v factors from the quad loops for geometry-locked gradients
                                     const uFactor = u / stepsU;
                                     const vFactor = v / stepsV; 
                                     const finalColor = getLineToolColor(cx+dx, cy+dy, cz+dz, minX, maxX, minY, maxY, minZ, maxZ, vFactor, uFactor);
                                     setVoxel(cx+dx, cy+dy, cz+dz, isP, finalColor, matTypes[0]);
                                 }
-
                             }
                         }
                     }
@@ -3418,12 +3415,17 @@ let isDrawing=false, isErasing=false, isColorPicking=false, menuClickActive=fals
                         else { currentPoints.push(leftTargetLocal.clone(), rightTargetLocal.clone()); }
 
                         if (lastArcPoints.length === currentPoints.length) {
-                            // Loop through rib segments to fill the entire curved sheet surface
                             for (let i = 0; i < currentPoints.length - 1; i++) {
                                 drawSheetQuad(lastArcPoints[i], lastArcPoints[i+1], currentPoints[i], currentPoints[i+1], true, brushSize);
                             }
+                            // Commit the discrete point operation to the undo stack
+                            if (currentStrokeChanges && currentStrokeChanges.length > 0) {
+                                undoStack.push(currentStrokeChanges);
+                                if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
+                            }
                         }
                         lastArcPoints = currentPoints.map(p => p.clone());
+                        currentStrokeChanges = null; // Clean up so onSelectEnd doesn't double-commit
                         return; 
                     }
                 }
@@ -3864,9 +3866,6 @@ controller0.addEventListener('selectstart', onSelectStart); controller1.addEvent
                         updateLinePreviewFromPoints(currentPoints, true, up);
                         linePreviewMesh.visible = true;
                     }
-                } else if (!isDrawing && !isErasing && linePreviewMesh) {
-                    linePreviewMesh.visible = false;
-                }
                 } else if (!isDrawing && !isErasing && linePreviewMesh) {
                     linePreviewMesh.visible = false;
                 }
