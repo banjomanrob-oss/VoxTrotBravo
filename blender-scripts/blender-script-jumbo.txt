@@ -1,0 +1,148 @@
+import bpy
+import time
+
+def process_massive_voxel_mesh():
+    """
+    High-Performance Voxel Cleanup for Blender 5.0+
+    Designed for datasets exceeding 10M+ voxels.
+    - Uses 'Data-Level' updates instead of 'Operator-Level' (UI) calls.
+    - Conditionally skips memory-heavy merging for extreme counts.
+    - Simplified PBR tree to prevent Cycles kernel crashes.
+    - Support for Solid, Glass, Emission, and Metal material types.
+    """
+    
+    # 1. Performance Thresholds
+    # If poly count exceeds this, we skip "Remove Doubles" to prevent RAM crashes
+    MERGE_THRESHOLD = 2000000 
+    # If poly count exceeds this, we skip the Bevel node (expensive render-time effect)
+    BEVEL_THRESHOLD = 5000000 
+
+    selected_objects = [o for o in bpy.context.selected_objects if o.type == 'MESH']
+    
+    if not selected_objects:
+        print("Error: No Mesh objects selected. Please select your imported OBJ.")
+        return
+
+    start_time = time.time()
+    print(f"--- Starting High-Performance Process on {len(selected_objects)} objects ---")
+
+    # Join objects using the most efficient context
+    if len(selected_objects) > 1:
+        print(f"Joining {len(selected_objects)} parts into one mesh...")
+        bpy.context.view_layer.objects.active = selected_objects[0]
+        bpy.ops.object.join()
+        
+    obj = bpy.context.active_object
+    poly_count = len(obj.data.polygons)
+    print(f"Total Polygon Count: {poly_count:,}")
+
+    # --- 2. Optimized Geometry Processing ---
+    # We avoid Edit Mode operators (bpy.ops.mesh.*) where possible for massive meshes
+    
+    if poly_count < MERGE_THRESHOLD:
+        print("Model size within merge limits. Cleaning up geometry...")
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.remove_doubles(threshold=0.0001)
+        bpy.ops.object.mode_set(mode='OBJECT')
+    else:
+        print("WARNING: Poly count too high for merging. Skipping 'Remove Doubles' to save RAM.")
+
+    # Optimized Flat Shading (Fastest way to set shading in Blender 5.0)
+    obj.data.polygons.foreach_set('use_smooth', [False] * poly_count)
+
+    # --- 3. Memory-Efficient PBR Material Setup ---
+    # We reuse a single Material tree structure where possible
+    
+    for mat in obj.data.materials:
+        if not mat: continue
+        
+        print(f"Optimizing material: {mat.name}")
+        mat.use_nodes = True
+        nodes = mat.node_tree.nodes
+        links = mat.node_tree.links
+        nodes.clear()
+
+        # Core Node Creation
+        out_node = nodes.new('ShaderNodeOutputMaterial')
+        out_node.location = (400, 0)
+
+        bsdf = nodes.new('ShaderNodeBsdfPrincipled')
+        bsdf.location = (0, 0)
+        links.new(bsdf.outputs['BSDF'], out_node.inputs['Surface'])
+
+        # Vertex Color Access (Essential for VoxTrotBravo imports)
+        attr = nodes.new('ShaderNodeAttribute')
+        attr.location = (-300, 100)
+        
+        # In Blender 5.0, color attributes are standard
+        color_attr = obj.data.color_attributes.active
+        attr.attribute_name = color_attr.name if color_attr else "Color"
+        links.new(attr.outputs['Color'], bsdf.inputs['Base Color'])
+
+        # Material Logic based on Material Name (Matching VoxTrotBravo Export Types)
+        if "Solid" in mat.name:
+            bsdf.inputs['Roughness'].default_value = 0.4
+            
+            if poly_count < BEVEL_THRESHOLD:
+                if 'Subsurface Weight' in bsdf.inputs:
+                    bsdf.inputs['Subsurface Weight'].default_value = 0.05
+                
+                # Add Bevel for subtle edge highlights
+                bevel = nodes.new('ShaderNodeBevel')
+                bevel.location = (-300, -200)
+                bevel.samples = 4
+                bevel.inputs['Radius'].default_value = 0.005
+                links.new(bevel.outputs['Normal'], bsdf.inputs['Normal'])
+
+        elif "Metal" in mat.name:
+            bsdf.inputs['Metallic'].default_value = 1.0
+            bsdf.inputs['Roughness'].default_value = 0.2
+
+        elif "Glass" in mat.name:
+            if 'Transmission Weight' in bsdf.inputs:
+                bsdf.inputs['Transmission Weight'].default_value = 1.0
+            bsdf.inputs['Roughness'].default_value = 0.05
+            bsdf.inputs['IOR'].default_value = 1.45
+            
+            # Legacy/Compatibility adjustments for Viewport Transparency
+            try:
+                mat.blend_method = 'HASHED'
+                # shadow_method is removed in Blender 4.2+ (EEVEE Next)
+                if bpy.app.version < (4, 2, 0):
+                    mat.shadow_method = 'HASHED'
+            except AttributeError:
+                pass
+
+        elif "Emission" in mat.name:
+            bsdf.inputs['Base Color'].default_value = (0, 0, 0, 1)
+            links.new(attr.outputs['Color'], bsdf.inputs['Emission Color'])
+            if 'Emission Strength' in bsdf.inputs:
+                bsdf.inputs['Emission Strength'].default_value = 10.0
+
+    # --- 4. Cycles Performance & Viewport Setup ---
+    bpy.context.scene.render.engine = 'CYCLES'
+    
+    # Fast BVH Build setup
+    if hasattr(bpy.context.scene.cycles, "debug_use_spatial_splits"):
+        bpy.context.scene.cycles.debug_use_spatial_splits = False
+        
+    # Corrected: Disable Caustics (Properties are found in obj.cycles)
+    try:
+        obj.cycles.is_caustics_caster = False
+        obj.cycles.is_caustics_receiver = False
+    except AttributeError:
+        # Fallback if Cycles properties aren't initialized or available
+        pass
+
+    # Force Viewport to show Material colors so user sees result instantly
+    for area in bpy.context.screen.areas:
+        if area.type == 'VIEW_3D':
+            for space in area.spaces:
+                if space.type == 'VIEW_3D':
+                    space.shading.type = 'MATERIAL'
+
+    end_time = time.time()
+    print(f"--- SUCCESS: Processed {poly_count:,} polygons in {round(end_time - start_time, 2)}s ---")
+
+if __name__ == "__main__":
+    process_massive_voxel_mesh()
