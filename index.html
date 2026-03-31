@@ -60,7 +60,6 @@
             overflow: hidden;
         }
 
-        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #333; }
@@ -125,19 +124,59 @@
             }
         ];
 
-        const DIGITAL_ART = [
-            { id: 1, title: "Architectural Twist", year: "2024", type: "Digital Study", thumb: "images/grsk-twist1-thumb.webp", full: "images/grsk-twist1-full.webp" },
-            { id: 2, title: "Symmetry Flourish", year: "2024", type: "Voxel Art", thumb: "images/vox-flour1-thumb.webp", full: "images/vox-flour1-full.webp" },
-            { id: 3, title: "Geometric Flow", year: "2023", type: "VR Render", thumb: "images/vox-fan1-thumb.webp", full: "images/vox-fan1-full.webp" },
-            { id: 4, title: "Light & Glass", year: "2023", type: "Material Study", thumb: "images/vox-spiglo1-thumb.webp", full: "images/vox-spiglo1-full.webp" },
-            { id: 5, title: "The Cathedral", year: "2024", type: "Voxel Architecture", thumb: "images/vox-deco1-thumb.webp", full: "images/vox-deco1-full.webp" },
-            { id: 6, title: "Procedural City", year: "2023", type: "Scene Study", thumb: "images/grsk-newton1-thumb.webp", full: "images/grsk-newton1-full.webp" },
-            { id: 7, title: "Luminescent Tower", year: "2024", type: "Stress Test", thumb: "images/vox-tower1-thumb.webp", full: "images/vox-tower1-full.webp" },
-            { id: 8, title: "Dodecahedron Bug", year: "2023", type: "Form Study", thumb: "images/vox-bug1-thumb.webp", full: "images/vox-bug1-full.webp" },
-            { id: 9, title: "Neon Symmetry", year: "2024", type: "Light Study", thumb: "images/vox-neon1-thumb.webp", full: "images/vox-neon1-full.webp" },
-            { id: 10, title: "Stairway Study", year: "2023", type: "Verticality", thumb: "images/vox-stairway1-thumb.webp", full: "images/vox-stairway1-full.webp" },
-            { id: 11, title: "Voxel Residence", year: "2024", type: "Design Study", thumb: "images/vox-house1-thumb.webp", full: "images/vox-house1-full.webp" },
-            { id: 12, title: "Brick Logic", year: "2023", type: "Texture Render", thumb: "images/grsk-brick-thumb.webp", full: "images/grsk-brick-full.webp" }
+        const VOXTROT_ART = [
+            { id: 'v1', title: "Symmetry Flourish", year: "2024", type: "Voxel Art", thumb: "images/vox-flour1-thumb.webp", full: "images/vox-flour1-full.webp" },
+            { id: 'v2', title: "Geometric Flow", year: "2023", type: "VR Render", thumb: "images/vox-fan1-thumb.webp", full: "images/vox-fan1-full.webp" },
+            { id: 'v3', title: "Light & Glass", year: "2023", type: "Material Study", thumb: "images/vox-spiglo1-thumb.webp", full: "images/vox-spiglo1-full.webp" },
+            { id: 'v4', title: "The Cathedral", year: "2024", type: "Voxel Architecture", thumb: "images/vox-deco1-thumb.webp", full: "images/vox-deco1-full.webp" },
+            { id: 'v5', title: "Luminescent Tower", year: "2024", type: "Stress Test", thumb: "images/vox-tower1-thumb.webp", full: "images/vox-tower1-full.webp" },
+            { id: 'v6', title: "Dodecahedron Bug", year: "2023", type: "Form Study", thumb: "images/vox-bug1-thumb.webp", full: "images/vox-bug1-full.webp" },
+            { id: 'v7', title: "Neon Symmetry", year: "2024", type: "Light Study", thumb: "images/vox-neon1-thumb.webp", full: "images/vox-neon1-full.webp" },
+            { id: 'v8', title: "Stairway Study", year: "2023", type: "Verticality", thumb: "images/vox-stairway1-thumb.webp", full: "images/vox-stairway1-full.webp" },
+            { id: 'v9', title: "Voxel Residence", year: "2024", type: "Design Study", thumb: "images/vox-house1-thumb.webp", full: "images/vox-house1-full.webp" },
+            { id: 'v10', title: "Arc Logic", year: "2024", type: "Bezier Study", thumb: "images/vox-arcs1-thumb.webp", full: "images/vox-arcs1-full.webp" },
+            { id: 'v11', title: "Circligit", year: "2023", type: "Form Study", thumb: "images/vox-circligit-thumb.webp", full: "images/vox-circligit-full.webp" },
+            { id: 'v12', title: "The Egg I", year: "2023", type: "Volume Study", thumb: "images/vox-egg1-thumb.webp", full: "images/vox-egg1-full.webp" },
+            { id: 'v13', title: "The Egg II", year: "2023", type: "Volume Study", thumb: "images/vox-egg2-thumb.webp", full: "images/vox-egg2-full.webp" },
+            { id: 'v14', title: "Forest Study I", year: "2024", type: "Landscape", thumb: "images/vox-forest1-thumb.webp", full: "images/vox-forest1-full.webp" },
+            { id: 'v15', title: "Forest Study II", year: "2024", type: "Landscape", thumb: "images/vox-forest2-thumb.webp", full: "images/vox-forest2-full.webp" },
+            { id: 'v16', title: "Hex Pavillion", year: "2023", type: "Architecture", thumb: "images/vox-hex1-thumb.webp", full: "images/vox-hex1-full.webp" },
+            { id: 'v17', title: "Voxel Hut", year: "2024", type: "Shelter Study", thumb: "images/vox-hut1-thumb.webp", full: "images/vox-hut1-full.webp" },
+            { id: 'v18', title: "Ico Form", year: "2023", type: "Platonic", thumb: "images/vox-ico1-thumb.webp", full: "images/vox-ico1-full.webp" },
+            { id: 'v19', title: "Voxel Lamp", year: "2023", type: "Emission Study", thumb: "images/vox-lamp1-thumb.webp", full: "images/vox-lamp1-full.webp" },
+            { id: 'v20', title: "Pattern Field", year: "2023", type: "Generative", thumb: "images/vox-patern1-thumb.webp", full: "images/vox-patern1-full.webp" },
+            { id: 'v21', title: "Test Sequence", year: "2023", type: "Feature Test", thumb: "images/vox-test1-thub.webp", full: "images/vox-test1-full.webp" },
+            { id: 'v22', title: "Wee Form I", year: "2024", type: "Small Scale", thumb: "images/vox-wee1-thumb.webp", full: "images/vox-wee1-full.webp" },
+            { id: 'v23', title: "Wee Form II", year: "2024", type: "Small Scale", thumb: "images/vox-wee2-thumb.webp", full: "images/vox-wee2-full.webp" }
+        ];
+
+        const EXTERNAL_ART = [
+            { id: 'e1', title: "Architectural Twist", year: "2024", type: "Gravity Sketch / Blender", thumb: "images/grsk-twist1-thumb.webp", full: "images/grsk-twist1-full.webp" },
+            { id: 'e2', title: "Procedural City", year: "2023", type: "Gravity Sketch / Blender", thumb: "images/grsk-newton1-thumb.webp", full: "images/grsk-newton1-full.webp" },
+            { id: 'e3', title: "Brick Logic I", year: "2023", type: "SketchUp / Blender", thumb: "images/grsk-brick-thumb.webp", full: "images/grsk-brick-full.webp" },
+            { id: 'e4', title: "Brick Logic II", year: "2023", type: "SketchUp / Blender", thumb: "images/grsk-brick2-thumb.webp", full: "images/grsk-brick2-full.webp" },
+            { id: 'e5', title: "Spatial Self", year: "2023", type: "Gravity Sketch", thumb: "images/grsk-self1-thumb.webp", full: "images/grsk-self1-full.webp" }
+        ];
+
+        const BLENDER_SCRIPTS = [
+            {
+                id: 'large-optimizer',
+                title: "Large Model Optimizer (>3M Voxels)",
+                description: "Blender Python script optimized for massive datasets. Streamlines geometry and vertex color data to prevent viewport lag with high-voxel counts.",
+                code: `# Blender Script: Large Model Optimizer\n# Optimized for 3,000,000+ Voxel Imports\nimport bpy\n\n# Replace this line with your actual Large Model logic\nprint("Optimizing Large Model Data...")`
+            },
+            {
+                id: 'high-quality',
+                title: "Best Quality Material Assignor",
+                description: "Best for smaller models. Automatically sets up advanced Cycles nodes for Emission, Metal, and Glass materials based on object naming.",
+                code: `# Blender Script: High Fidelity Materials\n# Best for detailed, small-scale renders\nimport bpy\n\n# Replace this line with your actual Material logic\nprint("Assigning High Fidelity Materials...")`
+            },
+            {
+                id: 'mesh-converter',
+                title: "Voxel-to-Smooth Mesh Converter",
+                description: "Automates the process of remeshing and smoothing voxel geometry while preserving vertex color data for a clean, organic look.",
+                code: `# Blender Script: Voxel-to-Smooth Converter\nimport bpy\n\n# Replace this line with your actual Smoothing logic\nprint("Converting Voxel Data to Smooth Mesh...")`
+            }
         ];
 
         const App = () => {
@@ -162,7 +201,7 @@
             };
 
             return (
-                <div className="min-h-screen blueprint">
+                <div className="min-h-screen blueprint pb-20">
                     <nav className="fixed top-0 w-full z-50 bg-[#080808]/95 border-b border-white/10 px-6 h-16 flex items-center justify-between">
                         <div className="flex items-center gap-4 cursor-pointer group" onClick={() => navigate('home')}>
                             <div className="w-8 h-8 border border-white/20 flex items-center justify-center text-white font-black italic group-hover:bg-white group-hover:text-black transition-all text-xs">R</div>
@@ -181,13 +220,13 @@
                         <div className="hidden lg:flex items-center gap-6 text-[9px] font-black text-neutral-700">
                             <span className="flex items-center gap-2 px-2 py-1 bg-white/5 border border-white/5"><Icon name="map-pin" size={10}/> WPG_MB</span>
                             <span className="flex items-center gap-2"><Icon name="clock" size={10}/> {time}</span>
-                            <a href="engine.html" className="border border-emerald-900/50 text-emerald-500 h-7 flex items-center px-4 hover:bg-emerald-500 hover:text-black transition-all font-black">
+                            <a href="engine.html" className="border border-emerald-900/50 text-emerald-500 h-7 flex items-center px-4 hover:bg-emerald-500 hover:text-black transition-all font-black uppercase">
                                 Launch_Engine
                             </a>
                         </div>
                     </nav>
 
-                    <main className="pt-32 pb-20 px-6 max-w-[1400px] mx-auto">
+                    <main className="pt-32 px-6 max-w-[1400px] mx-auto">
                         {view === 'home' && <HomeView navigate={navigate} setLightbox={setLightbox} />}
                         {view === 'work' && <WorkView navigate={navigate} setLightbox={setLightbox} />}
                         {view === 'art' && <ArtView setLightbox={setLightbox} />}
@@ -199,19 +238,19 @@
                             <div className="absolute top-8 right-8 text-white/50 hover:text-white transition-colors">
                                 <Icon name="x" size={32} />
                             </div>
-                            <img src={lightbox.full} alt={lightbox.title} className="max-w-full max-h-full object-contain" />
+                            <img src={lightbox.full} alt={lightbox.title} className="max-w-full max-h-full object-contain shadow-2xl" />
                             <div className="absolute bottom-8 left-8 text-left space-y-1">
-                                <p className="text-white font-black text-lg">{lightbox.title}</p>
-                                <p className="text-neutral-600 text-xs">{lightbox.year} // {lightbox.type}</p>
+                                <p className="text-white font-black text-lg uppercase">{lightbox.title}</p>
+                                <p className="text-neutral-600 text-xs uppercase">{lightbox.year} // {lightbox.type}</p>
                             </div>
                         </div>
                     )}
 
-                    <footer className="border-t border-white/5 py-12 bg-black/50 px-6">
+                    <footer className="mt-20 border-t border-white/5 py-12 bg-black/50 px-6">
                         <div className="max-w-[1400px] mx-auto flex flex-col md:flex-row justify-between items-center gap-8 text-[9px] font-black text-neutral-800 uppercase">
-                            <div className="flex gap-8">
+                            <div className="flex gap-8 text-left">
                                 <p>© 2026 R. Reynolds</p>
-                                <p>Built in Winnipeg</p>
+                                <p className="hidden md:block">Built in Winnipeg</p>
                             </div>
                             <div className="flex gap-10 items-center">
                                 <a href="https://github.com/banjomanrob-oss" className="hover:text-white transition-colors" target="_blank">GitHub</a>
@@ -238,29 +277,25 @@
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-6">
-                        <button onClick={() => navigate('work')} className="bg-white text-black hover:bg-neutral-200 btn-sharp px-10 h-14 text-xs font-black">Archive_Index</button>
-                        <button onClick={() => navigate('art')} className="border border-white/10 hover:border-white text-white btn-sharp px-10 h-14 text-xs font-black transition-all">Visuals</button>
+                        <button onClick={() => navigate('work')} className="bg-white text-black hover:bg-neutral-200 btn-sharp px-10 h-14 text-xs font-bold">Archive_Index</button>
+                        <button onClick={() => navigate('art')} className="border border-white/10 hover:border-white text-white btn-sharp px-10 h-14 text-xs font-bold transition-all">Visuals</button>
                     </div>
                 </div>
 
                 <div className="space-y-6">
                     <div className="flex justify-between items-center border-b border-white/5 pb-4">
-                        <p className="text-[9px] font-black text-neutral-700 underline underline-offset-8 decoration-emerald-900/50">Core_Project</p>
-                        <span className="text-[9px] text-neutral-800 font-black">v2.5 // BUILD_JOY</span>
+                        <p className="text-[9px] font-black text-neutral-700 underline underline-offset-8 decoration-emerald-900/50 uppercase">Flagship_Tool</p>
+                        <span className="text-[9px] text-neutral-800 font-black">STRESS_TEST // 29M VOXELS</span>
                     </div>
                     <div className="relative aspect-[21/9] bg-neutral-900 border border-white/5 overflow-hidden group cursor-pointer" onClick={() => window.location.href='engine.html'}>
-                        <img 
-                            src="images/vox-tower1-full.webp" 
-                            className="w-full h-full object-cover grayscale opacity-20 group-hover:opacity-40 transition-all duration-1000" 
-                            loading="lazy"
-                        />
-                        <div className="absolute inset-0 flex items-center p-12">
-                            <div className="space-y-6 max-w-lg text-left">
-                                <h2 className="text-5xl font-black text-white tracking-tighter">VoxTrot_Bravo</h2>
+                        <img src="images/vox-tower1-full.webp" className="w-full h-full object-cover grayscale opacity-20 group-hover:opacity-40 transition-all duration-1000" loading="lazy" />
+                        <div className="absolute inset-0 flex items-center p-12 text-left">
+                            <div className="space-y-6 max-w-lg">
+                                <h2 className="text-5xl font-black text-white tracking-tighter uppercase leading-none">VoxTrot_Bravo</h2>
                                 <p className="text-xs text-neutral-500 normal-text leading-relaxed">
-                                    A spatial tool built to prioritize creative flow. A study in color, light, and high-performance voxel architecture.
+                                    A spatial engine built to prioritize creative flow. A study in color, light, and high-performance voxel architecture.
                                 </p>
-                                <button className="border border-emerald-900/50 text-emerald-500 text-[10px] px-8 py-6 hover:bg-emerald-500 hover:text-black transition-all font-black">Launch_Engine</button>
+                                <button className="border border-emerald-900/50 text-emerald-500 text-[10px] px-8 py-6 hover:bg-emerald-500 hover:text-black transition-all font-black uppercase">Launch_Engine</button>
                             </div>
                         </div>
                     </div>
@@ -271,18 +306,18 @@
         const WorkView = ({ navigate, setLightbox }) => (
             <div className="space-y-24 fade-in">
                 <div className="space-y-4 text-left">
-                    <h2 className="text-5xl font-black tracking-tighter text-white uppercase">The_Archive</h2>
-                    <p className="text-[10px] font-black text-neutral-700">A mix of physical and digital construction.</p>
+                    <h2 className="text-5xl font-black tracking-tighter text-white uppercase leading-none">The_Archive</h2>
+                    <p className="text-[10px] font-black text-neutral-700 uppercase">Construction Logs & Technical Utilities</p>
                 </div>
 
                 {/* Buildings Section */}
                 <div className="space-y-12">
-                    <div className="text-[8px] font-black text-neutral-800 tracking-[0.8em] flex items-center gap-4">
-                        <div className="flex-1 h-px bg-white/5"></div> BUILDINGS & PHYSICAL_CRAFT <div className="flex-1 h-px bg-white/5"></div>
+                    <div className="text-[8px] font-black text-neutral-800 tracking-[0.8em] flex items-center gap-4 uppercase">
+                        <div className="flex-1 h-px bg-white/5"></div> Buildings & Physical_Craft <div className="flex-1 h-px bg-white/5"></div>
                     </div>
-                    <div className="grid md:grid-cols-2 gap-8">
+                    <div className="grid md:grid-cols-2 gap-8 text-left">
                         {PHYSICAL_BUILDINGS.map(item => (
-                            <div key={item.id} className="group p-8 border border-white/5 hover:border-white/20 transition-all flex gap-8 items-center bg-neutral-900/5 text-left">
+                            <div key={item.id} className="group p-8 border border-white/5 hover:border-white/20 transition-all flex gap-8 items-center bg-neutral-900/5">
                                 <div 
                                     className="w-40 h-40 bg-neutral-900 shrink-0 border border-white/5 grayscale group-hover:grayscale-0 overflow-hidden cursor-zoom-in relative"
                                     onClick={() => setLightbox({ full: item.img.replace('thumb', 'full'), title: item.title, year: 'Physical Build', type: item.material })}
@@ -295,12 +330,12 @@
                                 <div className="space-y-4">
                                     <div className="space-y-1">
                                         <p className="text-[8px] font-black text-neutral-800 tracking-widest uppercase">{item.material}</p>
-                                        <h3 className="text-2xl font-black text-white tracking-tighter">{item.title}</h3>
+                                        <h3 className="text-2xl font-black text-white tracking-tighter uppercase leading-tight">{item.title}</h3>
                                     </div>
                                     <p className="text-[11px] text-neutral-500 normal-text leading-relaxed line-clamp-3">{item.description}</p>
                                     <div className="pt-4 flex items-center gap-6">
                                         {item.link && (
-                                            <a href={item.link} target="_blank" className="text-[9px] font-black text-white hover:underline flex items-center gap-2">View_Project <Icon name="external-link" size={10}/></a>
+                                            <a href={item.link} target="_blank" className="text-[9px] font-black text-white hover:underline flex items-center gap-2 uppercase">View_Project <Icon name="external-link" size={10}/></a>
                                         )}
                                     </div>
                                 </div>
@@ -311,10 +346,10 @@
 
                 {/* Digital Systems Section */}
                 <div className="space-y-12">
-                    <div className="text-[8px] font-black text-neutral-800 tracking-[0.8em] flex items-center gap-4">
-                        <div className="flex-1 h-px bg-white/5"></div> DIGITAL_SYSTEMS <div className="flex-1 h-px bg-white/5"></div>
+                    <div className="text-[8px] font-black text-neutral-800 tracking-[0.8em] flex items-center gap-4 uppercase">
+                        <div className="flex-1 h-px bg-white/5"></div> Digital_Systems <div className="flex-1 h-px bg-white/5"></div>
                     </div>
-                    <div className="grid md:grid-cols-2 gap-8">
+                    <div className="grid md:grid-cols-2 gap-8 text-left">
                         {DIGITAL_SYSTEMS.map(p => (
                             <div key={p.id} className="group p-8 border border-white/5 hover:border-white/20 transition-all flex gap-8 items-center bg-neutral-900/5 text-left">
                                 <div 
@@ -325,13 +360,50 @@
                                 </div>
                                 <div className="space-y-4">
                                     <div className="space-y-1">
-                                        <p className="text-[8px] font-black text-neutral-800 tracking-widest">{p.category}</p>
-                                        <h3 className="text-2xl font-black text-white tracking-tighter">{p.title}</h3>
+                                        <p className="text-[8px] font-black text-neutral-800 tracking-widest uppercase">{p.category}</p>
+                                        <h3 className="text-2xl font-black text-white tracking-tighter uppercase leading-tight">{p.title}</h3>
                                     </div>
                                     <p className="text-[11px] text-neutral-500 normal-text leading-relaxed line-clamp-3">{p.description}</p>
-                                    <div className="pt-4 flex items-center gap-6">
-                                        <button onClick={() => window.location.href='engine.html'} className="text-[9px] font-black text-white hover:underline">Launch_Engine</button>
+                                    <div className="pt-4">
+                                        <button onClick={() => window.location.href='engine.html'} className="text-[9px] font-black text-white hover:underline uppercase">Launch_Engine</button>
                                     </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Blender Scripts Section */}
+                <div className="space-y-12">
+                    <div className="text-[8px] font-black text-neutral-800 tracking-[0.8em] flex items-center gap-4 uppercase">
+                        <div className="flex-1 h-px bg-white/5"></div> Blender Scripts & Utilities <div className="flex-1 h-px bg-white/5"></div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-8 text-left">
+                        {BLENDER_SCRIPTS.map(script => (
+                            <div key={script.id} className="bg-neutral-900/10 border border-white/5 p-8 space-y-6">
+                                <div className="space-y-2">
+                                    <h3 className="text-xl font-black text-white uppercase leading-none">{script.title}</h3>
+                                    <p className="text-xs text-neutral-500 normal-text max-w-2xl">{script.description}</p>
+                                </div>
+                                <div className="relative">
+                                    <div className="absolute top-4 right-4 z-10">
+                                        <button 
+                                            onClick={() => {
+                                                const el = document.createElement('textarea');
+                                                el.value = script.code;
+                                                document.body.appendChild(el);
+                                                el.select();
+                                                document.execCommand('copy');
+                                                document.body.removeChild(el);
+                                            }}
+                                            className="bg-white/5 border border-white/10 px-3 py-1 text-[8px] font-black text-white hover:bg-white hover:text-black transition-all uppercase"
+                                        >
+                                            Copy Script
+                                        </button>
+                                    </div>
+                                    <pre className="bg-black/60 border border-white/5 p-8 text-[11px] text-emerald-500/80 overflow-x-auto selection:bg-emerald-500/20 font-mono">
+                                        <code>{script.code}</code>
+                                    </pre>
                                 </div>
                             </div>
                         ))}
@@ -341,80 +413,95 @@
         );
 
         const ArtView = ({ setLightbox }) => (
-            <div className="space-y-16 fade-in">
+            <div className="space-y-24 fade-in">
                 <div className="space-y-4 text-left">
-                    <h2 className="text-5xl font-black tracking-tighter text-white uppercase">Visual_Gallery</h2>
-                    <p className="text-neutral-700 text-xs font-black tracking-widest">Digital sketches and sculptural renders.</p>
+                    <h2 className="text-5xl font-black tracking-tighter text-white uppercase leading-none">Visual_Gallery</h2>
+                    <p className="text-neutral-700 text-xs font-black tracking-widest uppercase">Form Studies & Digital Renders</p>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {DIGITAL_ART.map(art => (
-                        <div 
-                            key={art.id} 
-                            className="relative aspect-square bg-neutral-900 group border border-white/5 p-1 cursor-zoom-in overflow-hidden"
-                            onClick={() => setLightbox(art)}
-                        >
-                            <img 
-                                src={art.thumb} 
-                                className="w-full h-full object-cover grayscale opacity-30 group-hover:opacity-100 group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" 
-                                loading="lazy"
-                            />
-                            <div className="absolute inset-0 bg-black/90 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-8 border border-white/10 text-left">
-                                <div className="space-y-1">
-                                    <span className="text-[8px] text-white font-black tracking-widest">{art.year} // {art.type}</span>
-                                    <p className="text-xs font-black text-white">{art.title}</p>
-                                </div>
-                                <div className="w-8 h-8 border border-white/10 flex items-center justify-center">
-                                    <Icon name="maximize-2" size={12} className="text-neutral-700" />
-                                </div>
-                            </div>
-                        </div>
-                    ))}
+
+                <div className="space-y-12">
+                    <div className="flex items-center gap-4 uppercase text-left">
+                        <h3 className="text-[10px] font-black text-white px-2 py-1 bg-emerald-900/20 border border-emerald-900/50">01. VoxTrotBravo Experiments</h3>
+                        <div className="flex-1 h-px bg-white/5"></div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        {VOXTROT_ART.map(art => (
+                            <GalleryItem key={art.id} item={art} onClick={() => setLightbox(art)} />
+                        ))}
+                    </div>
                 </div>
+
+                <div className="space-y-12">
+                    <div className="flex items-center gap-4 uppercase text-left">
+                        <h3 className="text-[10px] font-black text-white px-2 py-1 bg-white/5 border border-white/10">02. External Tool Studies</h3>
+                        <div className="flex-1 h-px bg-white/5"></div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        {EXTERNAL_ART.map(art => (
+                            <GalleryItem key={art.id} item={art} onClick={() => setLightbox(art)} />
+                        ))}
+                    </div>
+                </div>
+
                 <div className="text-center py-20 border-t border-dashed border-white/5">
                     <p className="text-[10px] text-neutral-900 font-black tracking-[1em]">Archive_Continued</p>
                 </div>
             </div>
         );
 
+        const GalleryItem = ({ item, onClick }) => (
+            <div className="relative aspect-square bg-neutral-900 group border border-white/5 p-1 cursor-zoom-in overflow-hidden" onClick={onClick}>
+                <img src={item.thumb} className="w-full h-full object-cover grayscale opacity-30 group-hover:opacity-100 group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" loading="lazy" />
+                <div className="absolute inset-0 bg-black/90 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-8 border border-white/10 text-left">
+                    <div className="space-y-1">
+                        <span className="text-[8px] text-white font-black tracking-widest uppercase">{item.year} // {item.type}</span>
+                        <p className="text-xs font-black text-white uppercase">{item.title}</p>
+                    </div>
+                    <div className="w-8 h-8 border border-white/10 flex items-center justify-center">
+                        <Icon name="maximize-2" size={12} className="text-neutral-700" />
+                    </div>
+                </div>
+            </div>
+        );
+
         const AboutView = () => (
-            <div className="max-w-5xl mx-auto space-y-32 fade-in text-left">
+            <div className="max-w-5xl mx-auto space-y-32 fade-in text-left pb-20">
                 <section className="grid md:grid-cols-2 gap-20 items-start">
                     <div className="space-y-12">
                         <div className="aspect-[3/4] bg-neutral-900 border border-white/5 grayscale overflow-hidden">
                             <img src="images/life-dog-full.webp" className="w-full h-full object-cover opacity-80" loading="lazy" />
                         </div>
-                        <div className="p-8 border border-white/5 bg-neutral-900/10 text-center">
-                            <p className="text-[10px] text-neutral-800 font-black tracking-widest uppercase">WPG_MB // REYNOLDS_LAB</p>
+                        <div className="p-8 border border-white/5 bg-neutral-900/10 text-center font-black text-[9px] tracking-widest text-neutral-700 uppercase">
+                            WPG_MB // REYNOLDS_LAB
                         </div>
                     </div>
                     <div className="space-y-12">
                         <div className="space-y-4">
-                            <h2 className="text-6xl font-black tracking-tighter text-white leading-none">Rob <br/> Reynolds</h2>
-                            <p className="text-[8px] text-neutral-700 font-black tracking-[0.5em] border-b border-white/5 pb-6">Designer • Artist • Builder</p>
+                            <h2 className="text-6xl font-black tracking-tighter text-white leading-none uppercase">Rob <br/> Reynolds</h2>
+                            <p className="text-[8px] text-neutral-700 font-black tracking-[0.5em] border-b border-white/5 pb-6 uppercase text-left">Designer • Artist • Builder</p>
                         </div>
-                        <div className="space-y-8 normal-text text-neutral-500 text-base leading-relaxed font-light">
+                        <div className="space-y-8 normal-text text-neutral-500 text-base leading-relaxed font-light text-left">
                             <p>The practice exists at the intersection of material knowledge and digital possibility. It is interested in how tools shape creative output—whether that involves the physical grain of wood or the procedural logic of a voxel engine.</p>
                             <p>Building tools is an act of engineering for the sake of art. The goal is to design environments where complexity is managed by intuition, allowing for a direct connection between the creator and the form.</p>
                             <p>Based in Winnipeg, MB. Splitting time between freelance carpentry and digital tinkering. Most days are spent looking for form—whether that's through the grain of a piece of wood or the code behind a spatial engine.</p>
                         </div>
-                        <div className="pt-10 border-t border-white/5">
-                            <a href="mailto:rob@example.com" className="w-full flex justify-between items-center border border-white/10 py-10 px-12 hover:bg-white hover:text-black transition-all">
+                        <div className="pt-10 border-t border-white/5 text-left">
+                            <a href="mailto:rob@example.com" className="w-full flex justify-between items-center border border-white/10 py-10 px-12 hover:bg-white hover:text-black transition-all uppercase">
                                 <span className="text-xs font-black tracking-[0.4em]">Establish_Contact</span> 
                                 <Icon name="send" size={18} />
                             </a>
                         </div>
                     </div>
                 </section>
-
-                <div className="p-16 md:p-24 bg-neutral-900/10 border border-white/5 text-center space-y-12">
-                    <div className="space-y-4">
-                        <h3 className="text-3xl font-black text-white tracking-tighter">Project_Sustainability</h3>
+                <div className="p-16 md:p-24 bg-neutral-900/10 border border-white/5 text-center space-y-12 uppercase">
+                    <div className="space-y-4 text-center">
+                        <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Project_Sustainability</h3>
                         <p className="text-xs text-neutral-600 max-w-lg mx-auto normal-text italic leading-relaxed">
                             "These tools and archives are maintained as open community resources. Support helps keep the engines running and the research moving forward."
                         </p>
                     </div>
-                    <div className="flex justify-center">
-                        <button className="bg-white text-black hover:bg-neutral-200 btn-sharp h-20 px-16 text-[10px] font-black tracking-[0.4em] shadow-2xl">Support_on_Kofi</button>
+                    <div className="flex justify-center text-center">
+                        <button className="bg-white text-black hover:bg-neutral-200 btn-sharp h-20 px-16 text-[10px] font-black tracking-[0.4em] shadow-2xl uppercase">Support_on_Kofi</button>
                     </div>
                 </div>
             </div>
