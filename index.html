@@ -196,7 +196,7 @@
                             Systems & <br /> Structures
                         </h1>
                         <p className="normal-text text-neutral-500 text-lg max-w-xl text-left">
-                            Designer, Artist, and Carpenter specializing in voxel-based spatial engines and monumental timber installations.
+                            Artist, designer, and builder.
                         </p>
                     </div>
                     <div className="lg:col-span-4 flex flex-col gap-2">
@@ -213,7 +213,7 @@
 
                 <section className="border-t border-white/5 pt-12">
                     <div className="aspect-[21/9] bg-neutral-900 border border-white/5 relative overflow-hidden group cursor-pointer" onClick={() => setView('engine')}>
-                        <img src="images/vox-tower1-full.webp" className="w-full h-full object-cover opacity-20 grayscale group-hover:opacity-40 transition-all duration-1000" />
+                        <img src="images/vox-tower1-full.webp" className="w-full h-full object-cover opacity-20 grayscale group-hover:opacity-100 group-hover:grayscale-0 transition-all duration-1000" />
                         <div className="absolute inset-0 p-10 flex flex-col justify-end text-left">
                             <span className="text-[10px] font-black text-emerald-500 mb-2">VOXTROTBRAVO // CORE ENGINE</span>
                             <h2 className="text-4xl font-black text-white tracking-tighter uppercase leading-none">Spatial Building System</h2>
@@ -379,7 +379,7 @@
                                 </div>
                                 <div className="flex gap-2">
                                     {project.gallery.map((img, idx) => (
-                                        <div key={idx} className="w-20 h-20 bg-neutral-900 border border-white/5 cursor-zoom-in grayscale hover:grayscale-0 transition-all overflow-hidden" 
+                                        <div key={idx} className="w-20 h-20 bg-neutral-900 border border-white/5 cursor-zoom-in grayscale hover:grayscale-0 hover:brightness-125 transition-all overflow-hidden" 
                                              onClick={() => setLightbox({ full: img.replace('thumb', 'full'), title: `${project.title} - View ${idx + 2}`, type: project.material })}>
                                             <img src={img} className="w-full h-full object-cover" />
                                         </div>
@@ -387,7 +387,7 @@
                                 </div>
                             </div>
                             <div className="lg:col-span-7">
-                                <div className="aspect-[16/9] bg-neutral-900 border border-white/5 grayscale hover:grayscale-0 transition-all duration-700 cursor-zoom-in group overflow-hidden"
+                                <div className="aspect-[16/9] bg-neutral-900 border border-white/5 grayscale hover:grayscale-0 hover:brightness-125 transition-all duration-700 cursor-zoom-in group overflow-hidden"
                                      onClick={() => setLightbox({ full: project.hero.replace('thumb', 'full'), title: project.title, type: project.material })}>
                                     <img src={project.hero} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000" loading="lazy" />
                                 </div>
@@ -398,33 +398,61 @@
             </div>
         );
 
-        const ArtView = ({ setLightbox }) => (
-            <div className="space-y-24 py-10 fade-in text-left">
-                <div className="space-y-4">
-                    <h2 className="text-4xl font-black text-white tracking-tighter uppercase leading-none">Visual_Gallery</h2>
-                    <p className="text-[10px] font-black text-neutral-700 uppercase">Form Studies & Digital Renders</p>
-                </div>
+        const ArtView = ({ setLightbox }) => {
+            const voxItems = GALLERY.filter(item => item.thumb.includes('vox-'));
+            const grskItems = GALLERY.filter(item => item.thumb.includes('grsk-'));
 
+            const GalleryGrid = ({ items }) => (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {GALLERY.map(item => (
+                    {items.map(item => (
                         <div key={item.id} className="relative aspect-square bg-neutral-900 border border-white/5 p-1 cursor-zoom-in group overflow-hidden" onClick={() => setLightbox(item)}>
-                            <img src={item.thumb} className="w-full h-full object-cover grayscale opacity-20 group-hover:opacity-100 group-hover:grayscale-0 transition-all duration-700 group-hover:scale-105" loading="lazy" />
-                            <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity p-6 flex flex-col justify-end">
+                            <img src={item.thumb} className="w-full h-full object-cover grayscale opacity-20 group-hover:opacity-100 group-hover:grayscale-0 group-hover:brightness-125 transition-all duration-700 group-hover:scale-105" loading="lazy" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-6 flex flex-col justify-end">
                                 <span className="text-[8px] font-black text-emerald-500 mb-1 uppercase tracking-widest">{item.type}</span>
                                 <p className="text-xs font-black text-white uppercase">{item.title}</p>
                             </div>
                         </div>
                     ))}
                 </div>
-            </div>
-        );
+            );
+
+            return (
+                <div className="space-y-32 py-10 fade-in text-left">
+                    <section className="space-y-12">
+                        <div className="space-y-6 max-w-3xl">
+                            <div className="space-y-2">
+                                <h2 className="text-4xl font-black text-white tracking-tighter uppercase leading-none">VoxTrotBravo_Renders</h2>
+                                <p className="text-[10px] font-black text-neutral-700 uppercase tracking-widest">Process Studies & Digital Alchemy</p>
+                            </div>
+                            <p className="normal-text text-neutral-500 text-sm leading-relaxed">
+                                A collection of renders made while developing VoxTrotBravo. Each feature added felt like a new spell I could cast. Although they were made very quickly with playful gestures I hope they convey some of my joy.
+                            </p>
+                        </div>
+                        <GalleryGrid items={voxItems} />
+                    </section>
+
+                    <section className="space-y-12 border-t border-white/5 pt-24">
+                        <div className="space-y-6 max-w-3xl">
+                            <div className="space-y-2">
+                                <h2 className="text-4xl font-black text-white tracking-tighter uppercase leading-none">VR_Sculptures</h2>
+                                <p className="text-[10px] font-black text-neutral-700 uppercase tracking-widest">Pre-VoxTrot Form Research</p>
+                            </div>
+                            <p className="normal-text text-neutral-500 text-sm leading-relaxed">
+                                These represent a glimpse of a mountain of VR sculptures I have made in the years leading to the development of VoxTrotBravo. VoxTrotBravo is the lovechild of myself and this medium.
+                            </p>
+                        </div>
+                        <GalleryGrid items={grskItems} />
+                    </section>
+                </div>
+            );
+        };
 
         const AboutView = () => (
             <div className="max-w-5xl mx-auto space-y-32 fade-in text-left pb-20">
                 <section className="grid md:grid-cols-2 gap-20 items-start">
                     <div className="space-y-12">
-                        <div className="aspect-[3/4] bg-neutral-900 border border-white/5 grayscale overflow-hidden shadow-2xl">
-                            <img src="images/life-dog-full.webp" className="w-full h-full object-cover opacity-80" loading="lazy" />
+                        <div className="aspect-[3/4] bg-neutral-900 border border-white/5 grayscale hover:grayscale-0 hover:brightness-110 transition-all duration-700 overflow-hidden shadow-2xl group">
+                            <img src="images/life-dog-full.webp" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" loading="lazy" />
                         </div>
                         <div className="p-8 border border-white/5 bg-neutral-900/10 text-center font-black text-[9px] tracking-widest text-neutral-700 uppercase">
                             WPG_MB // REYNOLDS_LAB
@@ -433,11 +461,11 @@
                     <div className="space-y-12">
                         <div className="space-y-4 text-left">
                             <h2 className="text-6xl font-black tracking-tighter text-white leading-none uppercase">Rob <br/> Reynolds</h2>
-                            <p className="text-[8px] text-neutral-700 font-black tracking-[0.5em] border-b border-white/5 pb-6 uppercase">Designer • Artist • Carpenter</p>
+                            <p className="text-[8px] text-neutral-700 font-black tracking-[0.5em] border-b border-white/5 pb-6 uppercase">Designer • Artist • Builder</p>
                         </div>
                         <div className="space-y-8 normal-text text-neutral-500 text-base leading-relaxed font-light text-left">
-                            <p>Freelance designer, artist, and carpenter based in Winnipeg, MB. I specialize in the intersection of digital spatial engines and high-precision physical fabrication.</p>
-                            <p>My work spans from developing high-performance WebXR voxel engines to the design and construction of large-scale timber installations. I research how digital tools can better inform physical craft, and vice-versa.</p>
+                            <p>Freelance designer, artist, and builder based in Winnipeg, MB.</p>
+                            <p>My work explores the intersection of digital spatial systems and physical craft. From custom software to monumental structures, I specialize in high-precision fabrication and architectural research.</p>
                         </div>
                         <div className="space-y-4 pt-10 border-t border-white/5 text-left">
                             <a href="mailto:reynoldssystemslab@gmail.com" className="w-full flex justify-between items-center border border-white/10 py-10 px-12 hover:bg-white hover:text-black transition-all uppercase">
