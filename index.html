@@ -1,14 +1,12 @@
-<!-- 
-    Rob Reynolds | Portfolio & Technical Hub
-    Dedicated to Digital Craft, Physical Building, and Spatial Engines.
--->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rob Reynolds | Systems & Structures</title>
+    <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and Babel for the interactive UI -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -41,11 +39,6 @@
             text-transform: none;
             font-family: 'Inter', sans-serif;
             letter-spacing: normal;
-        }
-
-        .btn-sharp {
-            border-radius: 0;
-            transition: all 0.2s ease;
         }
 
         .fade-in {
@@ -94,8 +87,6 @@
         const Icon = ({ name, size = 18, className = "" }) => {
             return <i data-lucide={name} style={{ width: size, height: size }} className={`inline-block ${className}`}></i>;
         };
-
-        // --- Metadata Constants ---
 
         const BLENDER_SCRIPTS_META = [
             {
@@ -173,8 +164,6 @@
             { id: 'g22', title: "Brick Logic", type: "Tool Study", thumb: "images/grsk-brick-thumb.webp", full: "images/grsk-brick-full.webp" }
         ];
 
-        // --- View Components ---
-
         const Nav = ({ current, setView }) => (
             <nav className="fixed top-0 w-full z-50 bg-[#0a0a0a]/90 border-b border-white/5 backdrop-blur-sm px-6 h-14 flex items-center justify-between">
                 <div className="flex items-center gap-6">
@@ -193,6 +182,7 @@
                     </div>
                 </div>
                 <div className="hidden md:flex items-center gap-4">
+                    <a href="https://ko-fi.com/robertreynolds63876" target="_blank" className="text-[9px] font-black text-emerald-500 hover:text-emerald-400 transition-colors tracking-widest mr-4 uppercase">Support_Craft</a>
                     <a href="engine.html" className="bg-white text-black h-8 px-4 flex items-center text-[9px] font-black hover:bg-neutral-200 transition-colors">LAUNCH_ENGINE</a>
                 </div>
             </nav>
@@ -449,18 +439,20 @@
                             <p>Freelance designer, artist, and carpenter based in Winnipeg, MB. I specialize in the intersection of digital spatial engines and high-precision physical fabrication.</p>
                             <p>My work spans from developing high-performance WebXR voxel engines to the design and construction of large-scale timber installations. I research how digital tools can better inform physical craft, and vice-versa.</p>
                         </div>
-                        <div className="pt-10 border-t border-white/5 text-left">
+                        <div className="space-y-4 pt-10 border-t border-white/5 text-left">
                             <a href="mailto:reynoldssystemslab@gmail.com" className="w-full flex justify-between items-center border border-white/10 py-10 px-12 hover:bg-white hover:text-black transition-all uppercase">
                                 <span className="text-xs font-black tracking-[0.4em]">Establish_Contact</span> 
                                 <Icon name="send" size={18} />
+                            </a>
+                            <a href="https://ko-fi.com/robertreynolds63876" target="_blank" className="w-full flex justify-between items-center border border-emerald-500/20 py-10 px-12 hover:bg-emerald-500 hover:text-black transition-all uppercase group">
+                                <span className="text-xs font-black tracking-[0.4em]">Support_The_Project</span> 
+                                <Icon name="heart" size={18} className="text-emerald-500 group-hover:text-black" />
                             </a>
                         </div>
                     </div>
                 </section>
             </div>
         );
-
-        // --- Main Application ---
 
         const App = () => {
             const [view, setView] = useState('home');
@@ -486,7 +478,9 @@
             }, []);
 
             useEffect(() => {
-                lucide.createIcons();
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
                 window.scrollTo(0, 0);
             }, [view, lightbox]);
 
