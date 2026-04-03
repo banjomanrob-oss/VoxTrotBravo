@@ -497,9 +497,36 @@
         );
 
         const App = () => {
-            const [view, setView] = useState('home');
+            const [view, setView] = useState(() => {
+                const hash = window.location.hash.replace('#', '');
+                return ['home', 'engine', 'archive', 'art', 'about'].includes(hash) ? hash : 'home';
+            });
             const [lightbox, setLightbox] = useState(null);
             const [scripts, setScripts] = useState(BLENDER_SCRIPTS_META);
+
+            const handleNav = (newView) => {
+                setView(newView);
+                window.history.pushState({ view: newView }, '', '#' + newView);
+            };
+
+            useEffect(() => {
+                const handlePopState = (e) => {
+                    if (e.state && e.state.view) {
+                        setView(e.state.view);
+                    } else {
+                        const hash = window.location.hash.replace('#', '');
+                        setView(['home', 'engine', 'archive', 'art', 'about'].includes(hash) ? hash : 'home');
+                    }
+                };
+
+                window.addEventListener('popstate', handlePopState);
+                
+                if (!window.history.state || !window.history.state.view) {
+                    window.history.replaceState({ view: view }, '', '#' + view);
+                }
+                
+                return () => window.removeEventListener('popstate', handlePopState);
+            }, [view]);
 
             useEffect(() => {
                 const loadScripts = async () => {
@@ -533,10 +560,10 @@
 
             return (
                 <div className="min-h-screen blueprint pb-20">
-                    <Nav current={view} setView={setView} />
+                    <Nav current={view} setView={handleNav} />
                     
                     <main className="pt-24 px-6 max-w-[1400px] mx-auto">
-                        {view === 'home' && <HomeView setView={setView} />}
+                        {view === 'home' && <HomeView setView={handleNav} />}
                         {view === 'engine' && <EngineView scripts={scripts} />}
                         {view === 'archive' && <ArchiveView setLightbox={setLightbox} />}
                         {view === 'art' && <ArtView setLightbox={setLightbox} />}
@@ -560,7 +587,7 @@
                         <div className="max-w-[1400px] mx-auto flex flex-col md:flex-row justify-between items-center gap-8 text-[9px] font-black text-neutral-800 uppercase">
                             <p>© 2026 R. REYNOLDS // WINNIPEG, MB</p>
                             <div className="flex gap-10">
-                                <button onClick={() => setView('about')} className="hover:text-neutral-500 transition-colors uppercase">Profile</button>
+                                <button onClick={() => handleNav('about')} className="hover:text-neutral-500 transition-colors uppercase">Profile</button>
                                 <span className="text-neutral-900 select-none">SYSTEM_READY</span>
                             </div>
                         </div>
@@ -575,4 +602,3 @@
     </script>
 </body>
 </html>
-
