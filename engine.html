@@ -415,10 +415,10 @@
         const renderer = new THREE.WebGLRenderer({ 
             canvas: canvas, 
             context: gl, 
-            antialias: true, 
+            antialias: false, 
             powerPreference: "high-performance" 
         });
-        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setPixelRatio(1);
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.xr.enabled = true;
 
