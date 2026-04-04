@@ -2181,14 +2181,28 @@ function handleRightMenuClick(cx, cy) {
                 let mdy = dy * sym.sy;
                 let mdz = dz * sym.sz;
                 
-                let fdx = mdx, fdz = mdz;
-                if (sym.p > 0) {
-                    fdx = Math.round(mdx * sym.cos + mdz * sym.sin);
-                    fdz = Math.round(-mdx * sym.sin + mdz * sym.cos);
-                }
-
                 const startPos = sym.lockedStartG || {x:0, y:0, z:0};
-                setVoxelCore(startPos.x + fdx, sym.sy === -1 ? (startPos.y + mdy) : (startPos.y + mdy), startPos.z + fdz, isP, color, mOver);
+                const sY = startPos.y + mdy; // Simplified ternary
+
+                if (sym.p > 0) {
+                    const rx = mdx * sym.cos + mdz * sym.sin;
+                    const rz = -mdx * sym.sin + mdz * sym.cos;
+                    const fdx = Math.round(rx);
+                    const fdz = Math.round(rz);
+                    
+                    setVoxelCore(startPos.x + fdx, sY, startPos.z + fdz, isP, color, mOver);
+                    
+                    // Anti-aliasing / Hole-filling for discrete polar rotation
+                    const dx_frac = rx - fdx;
+                    const dz_frac = rz - fdz;
+                    if (Math.abs(dx_frac) > 0.25 || Math.abs(dz_frac) > 0.25) {
+                        const ox = Math.abs(dx_frac) > Math.abs(dz_frac) ? Math.sign(dx_frac) : 0;
+                        const oz = Math.abs(dz_frac) >= Math.abs(dx_frac) ? Math.sign(dz_frac) : 0;
+                        setVoxelCore(startPos.x + fdx + ox, sY, startPos.z + fdz + oz, isP, color, mOver);
+                    }
+                } else {
+                    setVoxelCore(startPos.x + mdx, sY, startPos.z + mdz, isP, color, mOver);
+                }
             }
         }
 
@@ -2204,15 +2218,32 @@ function handleRightMenuClick(cx, cy) {
             for (let i = 0; i < targetSyms.length; i++) {
                 const sym = targetSyms[i];
                 let mdx = dx * sym.sx, mdy = dy * sym.sy, mdz = dz * sym.sz;
-                let fdx = mdx, fdz = mdz;
-                if (sym.p > 0) {
-                    fdx = Math.round(mdx * sym.cos + mdz * sym.sin);
-                    fdz = Math.round(-mdx * sym.sin + mdz * sym.cos);
-                }
+                
                 const startPos = sym.lockedStartG || {x:0, y:0, z:0};
-                recolorVoxel(startPos.x + fdx, startPos.y + mdy, startPos.z + fdz, color, dM);
+                const sY = startPos.y + mdy;
+
+                if (sym.p > 0) {
+                    const rx = mdx * sym.cos + mdz * sym.sin;
+                    const rz = -mdx * sym.sin + mdz * sym.cos;
+                    const fdx = Math.round(rx);
+                    const fdz = Math.round(rz);
+                    
+                    recolorVoxel(startPos.x + fdx, sY, startPos.z + fdz, color, dM);
+                    
+                    // Anti-aliasing / Hole-filling for discrete polar rotation
+                    const dx_frac = rx - fdx;
+                    const dz_frac = rz - fdz;
+                    if (Math.abs(dx_frac) > 0.25 || Math.abs(dz_frac) > 0.25) {
+                        const ox = Math.abs(dx_frac) > Math.abs(dz_frac) ? Math.sign(dx_frac) : 0;
+                        const oz = Math.abs(dz_frac) >= Math.abs(dx_frac) ? Math.sign(dz_frac) : 0;
+                        recolorVoxel(startPos.x + fdx + ox, sY, startPos.z + fdz + oz, color, dM);
+                    }
+                } else {
+                    recolorVoxel(startPos.x + mdx, sY, startPos.z + mdz, color, dM);
+                }
             }
         }
+
 
         function updateSelectionVisuals() {
             selMeshSolid.count = selMeshGlass.count = selMeshEmission.count = selMeshMetal.count = 0;
