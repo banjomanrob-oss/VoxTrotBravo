@@ -186,10 +186,11 @@
         let wireWidth = 1; 
         let wireFill = true; 
 
-    let paintMode = 'brush'; 
-    let exportMode = 'boxes'; 
-    let renderMode = 'standard'; 
-    let isDropperActive = false;
+        let paintMode = 'brush'; 
+        let exportMode = 'boxes'; 
+        let renderMode = 'standard'; 
+        let isDropperActive = false;
+        let autoPerfEngaged = false;
 
 
 
@@ -1796,7 +1797,7 @@ function handleRightMenuClick(cx, cy) {
             drawButton(globalMenuCtx, 40, 210, 50, 50, '-', false); drawButton(globalMenuCtx, 100, 210, 312, 50, `Polar Symmetry: ${polarSymmetry}`, polarSymmetry > 1); drawButton(globalMenuCtx, 422, 210, 50, 50, '+', false);
             
             drawButton(globalMenuCtx, 40, 270, 432, 45, `Draw From Center: ${drawFromCenter ? 'ON' : 'OFF'}`, drawFromCenter);
-            drawButton(globalMenuCtx, 40, 330, 140, 45, renderMode === 'performance' ? 'PERF' : 'STD', renderMode === 'performance');
+            drawButton(globalMenuCtx, 40, 330, 140, 45, renderMode === 'performance' ? 'PERFORMANCE' : 'STANDARD', renderMode === 'performance');
             drawButton(globalMenuCtx, 187, 330, 140, 45, `UNDO (${undoStack.length})`, false);
             drawButton(globalMenuCtx, 334, 330, 140, 45, `REDO (${redoStack.length})`, false);
 
@@ -2856,7 +2857,7 @@ function placeBrushVoxels(pos, isP) {
     const minZ = Math.min(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
     const maxZ = Math.max(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
 
-    if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
+    if ((maxX - minX) > 600 || (maxY - minY) > 600 || (maxZ - minZ) > 600) return;
 
     const w = wireWidth - 1;
     const divX = new Uint8Array(maxX - minX + 1);
@@ -2958,7 +2959,7 @@ function executeQuadSphereTool(startPos, endPos, isPainting) {
     const minZ = Math.min(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
     const maxZ = Math.max(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
 
-    if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
+    if ((maxX - minX) > 600 || (maxY - minY) > 600 || (maxZ - minZ) > 600) return;
 
     const cX = (minX + maxX) / 2, cY = (minY + maxY) / 2, cZ = (minZ + maxZ) / 2;
     const rX = (maxX - minX) / 2, rY = (maxY - minY) / 2, rZ = (maxZ - minZ) / 2;
@@ -3049,7 +3050,7 @@ function executeCylinderTool(startPos, endPos, isPainting) {
     const minY = Math.min(rMinY, rMaxY), maxY = Math.max(rMinY, rMaxY);
     const minZ = Math.min(rMinZ, rMaxZ), maxZ = Math.max(rMinZ, rMaxZ);
 
-    if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
+    if ((maxX - minX) > 600 || (maxY - minY) > 600 || (maxZ - minZ) > 600) return;
 
     const cX = (minX + maxX) / 2, cY = (minY + maxY) / 2, cZ = (minZ + maxZ) / 2;
     const rX = (maxX - minX) / 2, rY = (maxY - minY) / 2, rZ = (maxZ - minZ) / 2;
@@ -3179,9 +3180,10 @@ function executeCylinderTool(startPos, endPos, isPainting) {
     const minY = Math.min(rMinY, rMaxY), maxY = Math.max(rMinY, rMaxY);
     const minZ = Math.min(rMinZ, rMaxZ), maxZ = Math.max(rMinZ, rMaxZ);
 
-    if ((maxX - minX) > 400 || (maxY - minY) > 400 || (maxZ - minZ) > 400) return;
+    if ((maxX - minX) > 600 || (maxY - minY) > 600 || (maxZ - minZ) > 600) return;
 
     const axMap = { 
+ 
         'X': { minW: minX, maxW: maxX, startW: Math.round(s.x / VOXEL_SIZE), endW: rMaxX }, 
         'Y': { minW: minY, maxW: maxY, startW: Math.round(s.y / VOXEL_SIZE), endW: rMaxY }, 
         'Z': { minW: minZ, maxW: maxZ, startW: Math.round(s.z / VOXEL_SIZE), endW: rMaxZ } 
@@ -3631,6 +3633,21 @@ let isDrawing=false, isErasing=false, isColorPicking=false, menuClickActive=fals
             }
             hideAllPreviews();
             lockCtx.active = false;
+
+            if (totalActiveVoxels >= 2000000 && !autoPerfEngaged && renderMode !== 'performance') {
+                renderMode = 'performance';
+                autoPerfEngaged = true;
+                chunks.forEach(chunk => {
+                    for (let i = 0; i < 4; i++) {
+                        const layer = chunk.layers[i];
+                        if (layer && layer.count > 0) {
+                            layer.mesh.visible = false;
+                            layer.pointsMesh.visible = true;
+                        }
+                    }
+                });
+                globalMenuNeedsUpdate = true;
+            }
 
             // Commit changes to undo stack AFTER all tools have finished executing
             if (currentStrokeChanges && currentStrokeChanges.length > 0) {
