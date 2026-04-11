@@ -2857,7 +2857,7 @@ function placeBrushVoxels(pos, isP) {
     const minZ = Math.min(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
     const maxZ = Math.max(Math.round(s.z / VOXEL_SIZE), Math.round(e.z / VOXEL_SIZE));
 
-    if ((maxX - minX) > 600 || (maxY - minY) > 600 || (maxZ - minZ) > 600) return;
+    if ((maxX - minX) > 800 || (maxY - minY) > 800 || (maxZ - minZ) > 800) return;
 
     const w = wireWidth - 1;
     const divX = new Uint8Array(maxX - minX + 1);
