@@ -830,7 +830,9 @@ const bucketPreviewMesh = new THREE.InstancedMesh(voxelGeometry, new THREE.MeshB
 
         
         const selectionGroup = new THREE.Group();
-        selectionGroup.visible = false; worldGroup.add(selectionGroup);
+        selectionGroup.visible = false;
+	selectionGroup.frustumCulled = false;
+	worldGroup.add(selectionGroup);
 
         const selMeshSolid = new THREE.InstancedMesh(voxelGeometry, matSolid, SEL_LIMIT); selMeshSolid.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE); selMeshSolid.matrixAutoUpdate = false; selMeshSolid.instanceMatrix.setUsage(THREE.DynamicDrawUsage); selMeshSolid.instanceColor = new THREE.InstancedBufferAttribute(new Uint8Array(SEL_LIMIT * 3), 3, true);
         const selMeshGlass = new THREE.InstancedMesh(voxelGeometry, matGlass, SEL_LIMIT); selMeshGlass.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE); selMeshGlass.matrixAutoUpdate = false; selMeshGlass.instanceMatrix.setUsage(THREE.DynamicDrawUsage); selMeshGlass.instanceColor = new THREE.InstancedBufferAttribute(new Uint8Array(SEL_LIMIT * 3), 3, true);
@@ -860,22 +862,28 @@ const bucketPreviewMesh = new THREE.InstancedMesh(voxelGeometry, new THREE.MeshB
         pivotIndicator.matrixAutoUpdate = false; pivotIndicator.visible = false;
         worldGroup.add(pivotIndicator);
 
-        const previewContainer = new THREE.Group();
-        worldGroup.add(previewContainer);
+	const previewContainer = new THREE.Group();
+	previewContainer.frustumCulled = false;
+	worldGroup.add(previewContainer);
         const previewGroups = [];
 
-        function updatePreviews() {
-            for (let i = 0; i < previewGroups.length; i++) previewGroups[i].visible = false;
-            if (!hasSelection) return;
+function updatePreviews() {
+    for (let i = 0; i < previewGroups.length; i++) previewGroups[i].visible = false;
+    if (!hasSelection) {
+        previewContainer.visible = false;
+        return;
+    }
 
-            let pIdx = 0;
-            function getPreviewGroup(tgtCX, tgtCY, tgtCZ, sx, sy, sz, step, polarAngle) {
-                if (pIdx >= previewGroups.length) {
-                    const g = new THREE.Group();
-                    g.matrixAutoUpdate = false;
-                    const pivotGroup = new THREE.Group();
-                    pivotGroup.matrixAutoUpdate = false;
-                    g.add(pivotGroup);
+    previewContainer.visible = true;
+
+    let pIdx = 0;
+    function getPreviewGroup(tgtCX, tgtCY, tgtCZ, sx, sy, sz, step, polarAngle) {
+        if (pIdx >= previewGroups.length) {
+            const g = new THREE.Group();
+            g.matrixAutoUpdate = false;
+            const pivotGroup = new THREE.Group();
+            pivotGroup.matrixAutoUpdate = false;
+            g.add(pivotGroup);
                     const m1 = new THREE.InstancedMesh(voxelGeometry, matSolid, 1); m1.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
                     const m2 = new THREE.InstancedMesh(voxelGeometry, matGlass, 1); m2.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
                     const m3 = new THREE.InstancedMesh(voxelGeometry, matEmission, 1); m3.scale.set(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
@@ -907,12 +915,22 @@ const bucketPreviewMesh = new THREE.InstancedMesh(voxelGeometry, new THREE.MeshB
                 bMesh.visible = selBoxMesh.visible;
                 pivotGroup.rotation.set(THREE.MathUtils.degToRad(copyStepRotX * step), THREE.MathUtils.degToRad(copyStepRotY * step), THREE.MathUtils.degToRad(copyStepRotZ * step), 'XYZ');
                 const stScale = Math.pow(copyStepScale, step); pivotGroup.scale.set(stScale, stScale, stScale); pivotGroup.updateMatrix();
-                g.position.set(tgtCX, tgtCY, tgtCZ); g.scale.set(sx, sy, sz); g.rotation.set(0, polarAngle, 0, 'XYZ');
-                g.updateMatrix(); g.updateMatrixWorld(true); g.visible = true; pIdx++;
+		g.position.set(tgtCX, tgtCY, tgtCZ);
+		g.scale.set(sx, sy, sz);
+		g.rotation.set(0, polarAngle, 0, 'XYZ');
+		g.updateMatrix();
+		g.updateMatrixWorld(true);
+		g.traverse(obj => { obj.frustumCulled = false; });
+		g.visible = true;
+		pIdx++;
             }
 
-            const steps = transformMode === 'copy' ? numCopies : 1, offX = Math.round(selectionGroup.position.x / VOXEL_SIZE) * VOXEL_SIZE, offY = Math.round(selectionGroup.position.y / VOXEL_SIZE) * VOXEL_SIZE, offZ = Math.round(selectionGroup.position.z / VOXEL_SIZE) * VOXEL_SIZE, pCX = pivotPoint.x * VOXEL_SIZE, pCY = pivotPoint.y * VOXEL_SIZE, pCZ = pivotPoint.z * VOXEL_SIZE;
-            for (let step = 1; step <= steps; step++) {
+	    const steps = transformMode === 'copy' ? numCopies : 1, offX = Math.round(selectionGroup.position.x / VOXEL_SIZE) * VOXEL_SIZE, offY = Math.round(selectionGroup.position.y / VOXEL_SIZE) * VOXEL_SIZE, offZ = Math.round(selectionGroup.position.z / VOXEL_SIZE) * VOXEL_SIZE, pCX = pivotPoint.x * VOXEL_SIZE, pCY = pivotPoint.y * VOXEL_SIZE, pCZ = pivotPoint.z * VOXEL_SIZE;
+
+	    selectionGroup.visible = selectedVoxelsCount > 0;
+	    selBoxMesh.visible = selectedVoxelsCount > 0;
+
+	    for (let step = 1; step <= steps; step++) {
                 const bx = pCX + offX * step, by = pCY + offY * step, bz = pCZ + offZ * step;
                 for (let i = 0; i < activeSymmetries.length; i++) {
                     const sym = activeSymmetries[i]; let fx = bx * sym.sx, fy = by * sym.sy, fz = bz * sym.sz, rot = 0;
